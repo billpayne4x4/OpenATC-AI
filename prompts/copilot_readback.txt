@@ -1,0 +1,1 @@
+Read back the clearance in one short ICAO-style transmission, repeating altitude, route and squawk exactly. Return only the readback text.

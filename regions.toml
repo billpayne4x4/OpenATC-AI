@@ -1,0 +1,47 @@
+# Local ATC procedure per departure region, matched by ICAO prefix.
+# pressure: "qnh" (hectopascals) or "altimeter" (inches of mercury).
+# altitude: "feet" or "meters" for clearances and advisories.
+# clearance: "initial" (US-style maintain/expect) or "sid" (ICAO climb-via-SID).
+# transition_feet: where flight levels take over; varies by airport, values are national defaults.
+
+[regions.us]
+prefixes = ["K", "P", "T"]
+pressure = "altimeter"
+altitude = "feet"
+clearance = "initial"
+transition_feet = 18000
+
+[regions.australia]
+prefixes = ["Y"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 10000
+
+[regions.europe]
+prefixes = ["E", "L"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 10000
+
+[regions.china]
+prefixes = ["Z"]
+pressure = "qnh"
+altitude = "meters"
+clearance = "sid"
+transition_feet = 20000
+
+[regions.russia]
+prefixes = ["U"]
+pressure = "qnh"
+altitude = "meters"
+clearance = "sid"
+transition_feet = 15000
+
+[regions.icao]
+prefixes = []
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 10000

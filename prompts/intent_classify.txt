@@ -1,0 +1,1 @@
+Classify the pilot message. Return only JSON with intent (radio_check,repeat,standby,unable,clearance,taxi,pushback,ready,go_around,cancel_ifr,altitude,descent,direct,approach,gate,frequency,emergency,conversation), altitudeFeet integer and waypoint string. Never issue clearances. Use conversation if uncertain.

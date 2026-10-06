@@ -18,11 +18,20 @@
 #endif
 #include <GL/gl.h>
 #endif
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <cmath>
+#include <string>
+#if LIN || APL
+#include <cerrno>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#endif
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
 #error The X-Plane plugin must not link OpenSSL. Route HTTPS through the engine.
 #endif
@@ -38,6 +47,74 @@ bool graphicsReady=false;
 GLADapiproc resolveGraphicsFunction(const char* name){return reinterpret_cast<GLADapiproc>(dlsym(graphicsLibrary,name));}
 #endif
 bool enabled=false;auto previousFrame=std::chrono::steady_clock::now();
+std::string engineBinaryPath;bool disconnectedTiming=false;std::chrono::steady_clock::time_point disconnectedSince{},lastSpawnAttempt{};int spawnFailures=0;bool binaryMissingLogged=false;
+std::string findEngineBinary(){
+    if(!engineBinaryPath.empty())return engineBinaryPath;
+    char pluginPath[4096]{};XPLMGetPluginInfo(XPLMGetMyID(),nullptr,pluginPath,nullptr,nullptr);
+    std::filesystem::path folder=std::filesystem::path(pluginPath).parent_path().parent_path();
+#if IBM
+    folder/="bin";folder/="open-atc-engine.exe";
+#else
+    folder/="bin";folder/="open-atc-engine";
+#endif
+    engineBinaryPath=folder.string();return engineBinaryPath;
+}
+std::string engineLogPath(){
+#if IBM
+    if(const char* appdata=std::getenv("APPDATA"))return (std::filesystem::path(appdata)/"openatc"/"engine.log").string();
+#else
+    if(const char* home=std::getenv("HOME"))return (std::filesystem::path(home)/".config"/"openatc"/"engine.log").string();
+#endif
+    return {};
+}
+bool spawnEngine(const char* binary,const char* log){
+#if LIN || APL
+    pid_t first=fork();if(first<0)return false;
+    if(first==0){
+        if(fork()!=0)_exit(0);
+        setsid();
+        if(log&&log[0]){int logFile=open(log,O_WRONLY|O_CREAT|O_APPEND,0644);if(logFile>=0){dup2(logFile,STDOUT_FILENO);dup2(logFile,STDERR_FILENO);if(logFile>STDERR_FILENO)close(logFile);}}
+#if defined(__linux__)
+        close_range(3,~0U,0);
+#elif defined(__APPLE__)
+        closefrom(3);
+#endif
+        execl(binary,binary,(char*)nullptr);
+        _exit(127);
+    }
+    int status=0;while(waitpid(first,&status,0)<0&&errno==EINTR){}
+    return WIFEXITED(status)&&WEXITSTATUS(status)==0;
+#elif IBM
+    std::string log=engineLogPath();HANDLE logHandle=INVALID_HANDLE_VALUE;
+    if(!log.empty()){std::filesystem::create_directories(std::filesystem::path(log).parent_path());logHandle=CreateFileA(log.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);if(logHandle!=INVALID_HANDLE_VALUE)SetFilePointer(logHandle,0,nullptr,FILE_END);}
+    STARTUPINFOA startup{};startup.cb=sizeof(startup);
+    if(logHandle!=INVALID_HANDLE_VALUE){startup.dwFlags=STARTF_USESTDHANDLES;startup.hStdOutput=logHandle;startup.hStdError=logHandle;}
+    std::string command="\""+binary+"\"";PROCESS_INFORMATION info{};
+    bool launched=CreateProcessA(nullptr,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW|DETACHED_PROCESS,nullptr,nullptr,&startup,&info)!=0;
+    if(launched){CloseHandle(info.hProcess);CloseHandle(info.hThread);}
+    if(logHandle!=INVALID_HANDLE_VALUE)CloseHandle(logHandle);
+    return launched;
+#else
+    return false;
+#endif
+}
+void ensureEngineRunning(){
+    if(!engine)return;
+    if(engine->connected()){disconnectedTiming=false;spawnFailures=0;return;}
+    auto now=std::chrono::steady_clock::now();
+    if(!disconnectedTiming){disconnectedTiming=true;disconnectedSince=now;return;}
+    if(now-disconnectedSince<std::chrono::seconds(5))return;
+    double backoff=std::min(60.0,5.0*(1<<std::min(spawnFailures,3)));
+    if(now-lastSpawnAttempt<std::chrono::seconds(static_cast<int>(backoff)))return;
+    lastSpawnAttempt=now;
+    std::string binary=findEngineBinary();std::error_code code;
+    if(!std::filesystem::is_regular_file(binary,code)){if(!binaryMissingLogged){XPLMDebugString("OpenATC AI: engine binary missing, start open-atc-engine manually\n");binaryMissingLogged=true;}return;}
+    binaryMissingLogged=false;
+    std::string log=engineLogPath();
+    if(!log.empty()){std::error_code directories;std::filesystem::create_directories(std::filesystem::path(log).parent_path(),directories);}
+    if(spawnEngine(binary.c_str(),log.c_str()))spawnFailures=0;
+    else{spawnFailures++;XPLMDebugString("OpenATC AI: engine launch failed\n");}
+}
 #if LIN
 void setClipboardText(void*,const char* text){FILE* pipe=popen("wl-copy 2>/dev/null","w");if(!pipe)return;fwrite(text,1,std::strlen(text),pipe);pclose(pipe);}
 const char* getClipboardText(void*){static std::string cached;cached.clear();FILE* pipe=popen("wl-paste 2>/dev/null","r");if(pipe){char chunk[4096];size_t count;while((count=fread(chunk,1,sizeof(chunk),pipe))>0)cached.append(chunk,count);pclose(pipe);if(!cached.empty()&&cached.back()=='\n')cached.pop_back();}return cached.c_str();}
@@ -80,7 +157,7 @@ void keyboard(XPLMWindowID,char character,XPLMKeyFlags flags,char virtualKey,voi
     ImGuiKey key=ImGuiKey_None;switch(static_cast<unsigned char>(virtualKey)){case 8:key=ImGuiKey_Backspace;break;case 9:key=ImGuiKey_Tab;break;case 13:key=ImGuiKey_Enter;break;case 27:key=ImGuiKey_Escape;break;case 37:key=ImGuiKey_LeftArrow;break;case 38:key=ImGuiKey_UpArrow;break;case 39:key=ImGuiKey_RightArrow;break;case 40:key=ImGuiKey_DownArrow;break;case 46:key=ImGuiKey_Delete;break;case 36:key=ImGuiKey_Home;break;case 35:key=ImGuiKey_End;break;default:if(virtualKey>='A'&&virtualKey<='Z')key=static_cast<ImGuiKey>(ImGuiKey_A+virtualKey-'A');}
     if(key!=ImGuiKey_None)input.AddKeyEvent(key,down);if(down && static_cast<unsigned char>(character)>=32 && !(flags&xplm_ControlFlag))input.AddInputCharacter(static_cast<unsigned char>(character));if(down&&key==ImGuiKey_Escape)XPLMTakeKeyboardFocus(nullptr);
 }
-float flightLoop(float,float,int,void*){if(!enabled||!engine)return 0.5f;openatc::Telemetry telemetry;telemetry.latitude=XPLMGetDatad(latitudeRef);telemetry.longitude=XPLMGetDatad(longitudeRef);telemetry.altitudeFeet=XPLMGetDatad(altitudeRef)*3.280839895;telemetry.groundSpeedKnots=XPLMGetDataf(speedRef)*1.943844492;telemetry.headingDegrees=XPLMGetDataf(headingRef);telemetry.onGround=XPLMGetDatai(groundRef)!=0;telemetry.paused=XPLMGetDatai(pauseRef)!=0;telemetry.verticalSpeedFpm=verticalSpeedRef?XPLMGetDataf(verticalSpeedRef):0;telemetry.heightAglFeet=aglRef?XPLMGetDataf(aglRef)*3.280839895:0;telemetry.com1Khz=com1Ref?XPLMGetDatai(com1Ref):0;telemetry.positionValid=true;
+float flightLoop(float,float,int,void*){if(!enabled||!engine)return 0.5f;ensureEngineRunning();openatc::Telemetry telemetry;telemetry.latitude=XPLMGetDatad(latitudeRef);telemetry.longitude=XPLMGetDatad(longitudeRef);telemetry.altitudeFeet=XPLMGetDatad(altitudeRef)*3.280839895;telemetry.groundSpeedKnots=XPLMGetDataf(speedRef)*1.943844492;telemetry.headingDegrees=XPLMGetDataf(headingRef);telemetry.onGround=XPLMGetDatai(groundRef)!=0;telemetry.paused=XPLMGetDatai(pauseRef)!=0;telemetry.verticalSpeedFpm=verticalSpeedRef?XPLMGetDataf(verticalSpeedRef):0;telemetry.heightAglFeet=aglRef?XPLMGetDataf(aglRef)*3.280839895:0;telemetry.com1Khz=com1Ref?XPLMGetDatai(com1Ref):0;telemetry.positionValid=true;
     if(interface){ContextScope contextScope;interface->tick();}
     auto snapshot=engine->state();auto settings=engine->settings();
     if(snapshot.nextSequence<lastStateSequence)lastFrequencySequence=0;lastStateSequence=snapshot.nextSequence;
@@ -100,7 +177,7 @@ PLUGIN_API int XPluginStart(char* name,char* signature,char* description){std::s
     XPLMCreateWindow_t parameters{};parameters.structSize=sizeof(parameters);parameters.left=60;parameters.top=940;parameters.right=1260;parameters.bottom=120;parameters.visible=0;parameters.drawWindowFunc=drawWindow;parameters.handleMouseClickFunc=mouseClick;parameters.handleKeyFunc=keyboard;parameters.handleCursorFunc=cursor;parameters.handleMouseWheelFunc=mouseWheel;parameters.handleRightClickFunc=rightClick;parameters.decorateAsFloatingWindow=xplm_WindowDecorationRoundRectangle;parameters.layer=xplm_WindowLayerFloatingWindows;windowId=XPLMCreateWindowEx(&parameters);if(!windowId){ImGui::DestroyContext(context);context=nullptr;return 0;}XPLMSetWindowTitle(windowId,openatc::productName);XPLMSetWindowResizingLimits(windowId,1060,760,2200,1600);
     toggleCommand=XPLMCreateCommand("openatc/toggle_window","Toggle OpenATC AI window");XPLMRegisterCommandHandler(toggleCommand,toggle,1,nullptr);menuIndex=XPLMAppendMenuItem(XPLMFindPluginsMenu(),openatc::productName,nullptr,0);menuId=XPLMCreateMenu(openatc::productName,XPLMFindPluginsMenu(),menuIndex,menu,nullptr);XPLMAppendMenuItem(menuId,"Show / hide",nullptr,0);return 1;
 }
-PLUGIN_API int XPluginEnable(){latitudeRef=XPLMFindDataRef("sim/flightmodel/position/latitude");longitudeRef=XPLMFindDataRef("sim/flightmodel/position/longitude");altitudeRef=XPLMFindDataRef("sim/flightmodel/position/elevation");speedRef=XPLMFindDataRef("sim/flightmodel/position/groundspeed");headingRef=XPLMFindDataRef("sim/flightmodel/position/psi");groundRef=XPLMFindDataRef("sim/flightmodel/failures/onground_any");pauseRef=XPLMFindDataRef("sim/time/paused");verticalSpeedRef=XPLMFindDataRef("sim/flightmodel/position/vh_ind_fpm");aglRef=XPLMFindDataRef("sim/flightmodel/position/y_agl");com1Ref=XPLMFindDataRef("sim/cockpit2/radios/actuators/com1_frequency_hz_833");if(!latitudeRef||!longitudeRef||!altitudeRef||!speedRef||!headingRef||!groundRef||!pauseRef)return 0;engine=std::make_unique<openatc::EngineClient>();interface=std::make_unique<openatc::Interface>(*engine);char simulatorPath[2048]{};XPLMGetSystemPath(simulatorPath);engine->post("/simulator/root",{{"root",simulatorPath}});lastFrequencySequence=0;enabled=true;XPLMRegisterFlightLoopCallback(flightLoop,0.5f,nullptr);return 1;}
+PLUGIN_API int XPluginEnable(){latitudeRef=XPLMFindDataRef("sim/flightmodel/position/latitude");longitudeRef=XPLMFindDataRef("sim/flightmodel/position/longitude");altitudeRef=XPLMFindDataRef("sim/flightmodel/position/elevation");speedRef=XPLMFindDataRef("sim/flightmodel/position/groundspeed");headingRef=XPLMFindDataRef("sim/flightmodel/position/psi");groundRef=XPLMFindDataRef("sim/flightmodel/failures/onground_any");pauseRef=XPLMFindDataRef("sim/time/paused");verticalSpeedRef=XPLMFindDataRef("sim/flightmodel/position/vh_ind_fpm");aglRef=XPLMFindDataRef("sim/flightmodel/position/y_agl");com1Ref=XPLMFindDataRef("sim/cockpit2/radios/actuators/com1_frequency_hz_833");if(!latitudeRef||!longitudeRef||!altitudeRef||!speedRef||!headingRef||!groundRef||!pauseRef)return 0;engine=std::make_unique<openatc::EngineClient>();interface=std::make_unique<openatc::Interface>(*engine);char simulatorPath[2048]{};XPLMGetSystemPath(simulatorPath);engine->post("/simulator/root",{{"root",simulatorPath}});lastFrequencySequence=0;enabled=true;engineBinaryPath.clear();disconnectedTiming=false;spawnFailures=0;binaryMissingLogged=false;lastSpawnAttempt={};XPLMRegisterFlightLoopCallback(flightLoop,0.5f,nullptr);return 1;}
 PLUGIN_API void XPluginDisable(){enabled=false;XPLMUnregisterFlightLoopCallback(flightLoop,nullptr);XPLMSetWindowIsVisible(windowId,0);XPLMTakeKeyboardFocus(nullptr);interface.reset();engine.reset();}
 PLUGIN_API void XPluginStop(){if(enabled)XPluginDisable();if(toggleCommand)XPLMUnregisterCommandHandler(toggleCommand,toggle,1,nullptr);if(menuId)XPLMDestroyMenu(menuId);if(menuIndex>=0)XPLMRemoveMenuItem(XPLMFindPluginsMenu(),menuIndex);if(windowId)XPLMDestroyWindow(windowId);if(context)ImGui::DestroyContext(context);fontTexture=0;context=nullptr;windowId=nullptr;
 #if LIN

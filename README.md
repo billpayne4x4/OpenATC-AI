@@ -25,7 +25,7 @@ back clearances, and cabin/ground crew chat — all running on your own hardware
   - [4. First run checklist](#4-first-run-checklist)
 - [Using the plugin](#using-the-plugin)
   - [ATC page](#atc-page)
-  - [Flight Plan, Taxi, Cruise, Arrival, Airports, Weather](#flight-plan-taxi-cruise-arrival-airports-weather)
+  - [Flight Plan, Taxi, Arrival, Airports](#flight-plan-taxi-arrival-airports)
   - [Settings reference](#settings-reference)
 - [Configuration reference](#configuration-reference)
 - [openatc-ai server (Rust, preview)](#openatc-ai-server-rust-preview)
@@ -56,9 +56,16 @@ back clearances, and cabin/ground crew chat — all running on your own hardware
   congestion (delays, standby, background chatter), mayday practice flows, emergency intent.
 - **Radio sound**: bandpass, hiss, crackle, static bursts baked into every radio transmission.
   Cabin intercom and the wired ground interphone stay clean by default (per-role toggles).
-- **SimBrief OFP import**, NOAA METAR map, airport/taxi-graph/frequency/navaid loading from
-  installed scenery, demo session, persistent settings, session reset.
+- **SimBrief OFP import**, live-METAR hazardous-weather advisories from the controller,
+  airport/taxi-graph/frequency/navaid loading from installed scenery, demo session, persistent
+  settings, session reset.
 - **Desktop preview**: run the identical UI outside X-Plane for testing (Linux/Wayland).
+- **Units and regions**: Imperial (the standard), Metric, or Region-following display and
+  controller speech, with per-departure local procedure (QNH vs altimeter, clearance shape)
+  from `regions.toml`.
+- **Prompt files**: cabin, ground, copilot and classifier prompts live in `prompts/*.txt`
+  (`{{callsign}}` placeholder), editable without recompiling. Crew chat always addresses you
+  as the captain on the interphone.
 - **Rust workspace** (`rust/`): settings schema, tri-OS platform layer, model manager, and the
   `openatc-ai` server (LLM slice live; STT/TTS slices in progress). See below.
 
@@ -69,6 +76,8 @@ src/            C++ engine, plugin, UI, speech, core logic
 include/openatc/ public headers (protocol, settings, core, UI)
 tests/          core checks + integration tests
 scripts/        build, packaging, engine test, speech gateway (Python), SDK fetch
+prompts/        cabin/ground/copilot/classifier prompt texts ({{callsign}} placeholder)
+regions.toml    per-departure local procedure (pressure, units, clearance shape)
 aircraft/       (planned) per-aircraft TOML profiles + checklists
 checklists/     (planned) shipped crew flows
 rust/           Rust workspace: settings, platform, ai-core, openatc-ai server, models.toml
@@ -83,7 +92,7 @@ docs/           ARCHITECTURE, ROADMAP, THIRD_PARTY, VALIDATION, CHANGELOG
 | Build | cmake, ninja, GCC/Clang, ALSA, OpenSSL dev | Xcode CLT, cmake, ninja, OpenSSL (Homebrew) | MSVC, cmake, ninja, OpenSSL (vcpkg) |
 | Sim | X-Plane 12 (Steam or standalone) | X-Plane 12 | X-Plane 12 |
 | AI services | Ollama **or** `openatc-ai` server (Rust) | Ollama Mac app **or** `openatc-ai` | Ollama Windows installer **or** `openatc-ai` |
-| Voice services | Python 3.10+ `speech_gateway.py` (kokoro + faster-whisper) until the Rust TTS/STT slices land | same (venv) | same (venv) |
+| Voice services | Python 3.10+ `speech_gateway.py` (kokoro + faster-whisper) for STT/TTS — the Rust server covers LLM today, its audio slices are still to come | same (venv) | same (venv) |
 | Paste in plugin | `wl-copy`/`wl-paste` (`wl-clipboard` package) on Wayland | native | native |
 
 Status notes, stated plainly: **Linux is the fully exercised platform.** Windows/macOS plugin
@@ -94,10 +103,11 @@ SDK 4.4 native-renderer migration is on the roadmap.
 
 ## Setup
 
-Three pieces: **AI services** (LLM + STT + TTS, anywhere reachable) → **engine** (sim machine,
-loopback `:8087`) → **plugin** (sim machine, `Resources/plugins`). The plugin and engine must
-share a machine (loopback HTTP); services may live on the same machine or a separate box on
-your LAN — only the three base URLs in Settings change.
+- **Three pieces**: **AI services** (LLM + STT + TTS, anywhere reachable) → **engine**
+  (sim machine, loopback `:8087`, auto-started by the plugin from its own folder) →
+  **plugin** (sim machine, `Resources/plugins`). The plugin and engine must share a machine
+  (loopback HTTP); services may live on the same machine or a separate box on
+  your LAN — only the three base URLs in Settings change.
 
 ### 1. AI services (same machine or separate)
 
@@ -110,7 +120,8 @@ You need three OpenAI-compatible endpoints. Mix and match per service:
   For LAN use, Ollama must bind off localhost once:
   `sudo mkdir -p /etc/systemd/system/ollama.service.d` +
   `Environment="OLLAMA_HOST=0.0.0.0:11434"` in `lan.conf`, then daemon-reload + restart.
-- **STT + TTS**: the Python gateway until the Rust slices land —
+- **STT + TTS**: the Python gateway (the Rust server answers these two paths with `501`
+  until its STT/TTS slices land) —
   `python3 -m venv ~/.venvs/atc && source ~/.venvs/atc/bin/activate &&
   pip install -r scripts/speech-gateway-requirements.txt`,
   models (`kokoro-v1.0.onnx`, `voices-v1.0.bin`) beside `scripts/speech_gateway.py`,
@@ -123,12 +134,17 @@ one `/v1/audio/speech` call returning a valid WAV) before touching the UI.
 
 ### 2. Engine (sim machine)
 
+The plugin starts the bundled engine itself (`OpenATC/bin/open-atc-engine` inside the
+plugin folder) when it cannot reach one — output goes to `~/.config/openatc/engine.log`
+(`%APPDATA%/openatc` on Windows, `~/Library/Application Support/openatc` on macOS).
+Manual start is only a fallback:
+
 ```bash
 bash scripts/fedora-build.sh plugin   # builds engine + plugin + tests + audit (Linux)
 ./build/wayland/open-atc-engine       # listens on http://127.0.0.1:8087, keep running
 ```
 
-Start the engine **before** X-Plane. Settings persist to `~/.config/openatc/settings.json`
+The plugin starts its bundled engine on demand, so installation order no longer matters. Settings persist to `~/.config/openatc/settings.json`
 (`%APPDATA%/openatc` on Windows, `~/Library/Application Support/openatc` on macOS);
 controller memory to `controllers.json` beside it. API keys (if your providers need them) come
 from `OPENATC_AI_KEY` / `OPENATC_STT_KEY` / `OPENATC_TTS_KEY` on the engine only — never in
@@ -146,18 +162,22 @@ Copy the staged plugin into X-Plane **with the sim closed**:
   (or `<X-Plane.app dir>/Resources/plugins/OpenATC/` for standalone installs)
 - Windows: `<X-Plane 12>\Resources\plugins\OpenATC\`
 
-The folder needs `64/lin.xpl` (Linux) / `64/win.xpl` (Windows) / `64/mac.xpl` (macOS). Back up
+The folder needs `64/lin.xpl` (Linux) / `64/win.xpl` (Windows) / `64/mac.xpl` (macOS),
+plus the bundled `bin/open-atc-engine`, `prompts/` and `regions.toml` (the plugin starts
+its own engine from these). Back up
 the old folder first; never keep two copies of the plugin folder inside `Resources/plugins`
 (X-Plane loads both and warns about duplicates). Plugin binaries load at sim startup — a
 running sim will not pick up a replaced `.xpl`.
 
 ### 4. First run checklist
 
-1. Engine terminal shows `OpenATC AI … engine: http://127.0.0.1:8087`.
-2. Launch X-Plane, load an apron. `Log.txt` shows `lin.xpl (org.openatc.development)` with no
+1. Launch X-Plane, load an apron. The plugin starts its bundled engine itself —
+   `~/.config/openatc/engine.log` shows the engine banner
+   (`OpenATC AI … engine: http://127.0.0.1:8087`).
+2. `Log.txt` shows `lin.xpl (org.openatc.development)` with no
    loader errors.
-3. Plugins → OpenATC AI → Show/hide. Status reads `X-Plane connected` (if it says
-   `Engine disconnected`, the engine isn't running).
+3. Plugins → OpenATC AI → Show/hide. Status reads `X-Plane connected` (a persistent
+   `Engine disconnected` means the bundled engine keeps failing — read `engine.log`).
 4. Settings → AI: base URL + model, enable. Settings → STT/TTS: bases + models. Apply saves
    (edits also auto-save ~1 s after you stop typing, once connected).
 5. Type `request altitude FL320` → Transmit → reply in transcript → **Replay ATC** speaks it.
@@ -182,24 +202,25 @@ running sim will not pick up a replaced `.xpl`.
 - Transcript rows show the speaker plus ATC position (`ATC · Tower`); crew lines show
   `CABIN`/`GROUND`; copilot readbacks show `COPILOT`.
 
-### Flight Plan, Taxi, Cruise, Arrival, Airports, Weather
+### Flight Plan, Taxi, Arrival, Airports
 
 - **Flight Plan**: SimBrief Pilot ID → import OFP (route, weights, cruise, callsign), or hand-fill;
   validation errors name the bad field. Demo session available without the sim.
 - **Taxi**: airport load (scenery priority), clearance → pushback → taxi approval gates the green
   route; stands, taxiways, parking layers toggleable.
-- **Cruise / Arrival**: stage-appropriate requests (altitude, direct-to, descent, approach
-  briefing); descent shows planned vs current profile.
+- **Arrival**: approach briefing, descent target/angle, planned vs current profile.
 - **Airports**: scenery-priority airport search with frequencies, navaids, procedures; loads the
   active airport for taxi graph + frequency selection.
-- **Weather**: NOAA METAR map (route, ownship, stations, wind, clouds, labels). The engine
-  `/weather` endpoint stays available for future ATC weather awareness.
+- **Weather watch** (no page): the engine polls live METARs for your departure, destination
+  and alternate every 10 minutes and the controller warns once per new hazard —
+  thunderstorms, hail, freezing rain, volcanic ash, destination IFR/LIFR, windshear on
+  approach — then asks your intentions. Calm weather stays silent.
 
 ### Settings reference
 
 - **General**: X-Plane folder (auto-detected; engine learns it from the plugin), SimBrief ID,
-  session save/restore, demo controls, Reset flight (clears flight state, keeps controller
-  memory — airspace assignments are about places, not flights).
+  units (Imperial/Metric/Region), session save/restore, demo controls, Reset flight (clears
+  flight state, keeps controller memory — airspace assignments are about places, not flights).
 - **Copilot**: readbacks on/off, COM1 auto-tune (structured OpenATC assignments only; never
   barometer/autopilot; X-Plane's own ATC, Next ATC and VATSIM untouched).
 - **AI**: enable, base URL (bare origin, no `/v1`), model. AI-off falls back to buttons and the
@@ -221,13 +242,31 @@ running sim will not pick up a replaced `.xpl`.
 Text fields support system clipboard copy/paste (Ctrl+C/V/X/A), including the 1024-char pool box
 (Linux/Wayland uses `wl-copy`/`wl-paste`).
 
+### Units, regions and AI prompts
+
+- **Units** (Settings → General): Imperial is the standard (feet, knots, nautical miles).
+  Metric switches readouts and speech to meters, km/h, kilometers. Region follows local
+  procedure for the departure country. Weights stay kilograms; pressure and visibility follow
+  regional procedure. Altitude entry accepts meters too (`request altitude 3000 meters`).
+- **Regions** (`regions.toml`, shipped inside the plugin folder): ICAO-prefix table with pressure
+  (QNH/altimeter), altitude unit, clearance shape (US initial-altitude vs ICAO climb-via-SID)
+  and transition altitude. Missing file falls back to built-in defaults; `/health` reports
+  which source won. `OPENATC_REGIONS_FILE` overrides the path.
+- **Prompts** (`prompts/*.txt`, shipped inside the plugin folder): cabin, ground, copilot-readback
+  and intent-classifier texts with a `{{callsign}}` placeholder. Edit them without
+  recompiling; the engine picks them up on restart (`OPENATC_PROMPTS_DIR` overrides the path,
+  `/health` reports the source). Your settings-file personalities are prepended to the
+  cabin/ground/copilot prompts.
+
 ## Configuration reference
 
 | Item | Linux | macOS | Windows |
 |---|---|---|---|
 | `settings.json` | `~/.config/openatc/` | `~/Library/Application Support/openatc/` | `%APPDATA%\openatc\` |
 | `controllers.json` | same dir | same dir | same dir |
-| Engine | `./build/wayland/open-atc-engine` | `./build/open-atc-engine` | `open-atc-engine.exe` |
+| Engine | bundled in the plugin folder (`OpenATC/bin/`), auto-started; build-tree fallback `./build/wayland/open-atc-engine` | same (`OpenATC/bin/`) | same (`OpenATC\bin\`) |
+| Engine log | `~/.config/openatc/engine.log` | `~/Library/Application Support/openatc/engine.log` | `%APPDATA%\openatc\engine.log` |
+| Prompts / regions | `OpenATC/prompts/*.txt`, `OpenATC/regions.toml` (`OPENATC_PROMPTS_DIR` / `OPENATC_REGIONS_FILE` override) | same | same |
 | Engine port | `http://127.0.0.1:8087` (fixed loopback) | same | same |
 | Service URLs | bare origins, e.g. `http://192.168.1.10:11434` (LAN) or `http://127.0.0.1:8099` (local) | same | same |
 | Model names | `qwen2.5:7b-instruct`, `whisper-1`, `tts-1` (accepted by all servers; the Rust server maps the LLM name) | same | same |
@@ -240,8 +279,8 @@ server (it serves both paths on one port).
 
 ## openatc-ai server (Rust, preview)
 
-Single-box AI: one process embedding LLM inference (llama.cpp, Qwen 7B Q4_K_M today, CPU with
-CUDA planned), whisper STT and kokoro TTS slices landing next — audio endpoints currently answer
+Single-box AI: LLM chat is live today (llama.cpp, Qwen 7B Q4_K_M, CPU with CUDA planned).
+Whisper STT and kokoro TTS slices land next — audio endpoints currently answer
 `501` with a pointer to the Python gateway.
 
 ```bash
@@ -257,7 +296,7 @@ Point the engine AI base at it to cut Ollama out — the engine needs no changes
 
 | Symptom | Check |
 |---|---|
-| `Engine disconnected` / Apply says “connect first” / Transmit greyed | Engine not running — start it, plugin reconnects on its own |
+| `Engine disconnected` / Apply says “connect first” / Transmit greyed | Plugin restarts its bundled engine on its own — if it stays down, read `engine.log` beside the settings for the reason |
 | `AI endpoint unavailable` | AI base URL typo, model name wrong, or provider down; buttons still work |
 | `Speech synthesis failed…` | TTS base/model wrong, voice unknown (falls back with a gateway-log warning), or key missing |
 | `TTS response is not decodable audio` | Gateway WAV bug — report with the status text |

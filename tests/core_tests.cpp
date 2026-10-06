@@ -116,6 +116,59 @@ int main(){try{
     check(!applyRequest(readback,partial,nullptr,{},{},Realism()).accepted,"Strict readback rejects wrong altitude");
     Realism lenient;lenient.strictReadbacks=false;
     check(applyRequest(readback,partial,nullptr,{},{},lenient).accepted,"Lenient readback accepts matching sequence");}
+    check(resolveUnits("imperial","YMLT")==UnitSystem::Imperial,"Imperial preference wins");
+    check(resolveUnits("metric","KJFK")==UnitSystem::Metric,"Metric preference wins");
+    check(resolveUnits("region","KJFK")==UnitSystem::Imperial,"US region flies imperial");
+    check(resolveUnits("region","YMLT")==UnitSystem::Hybrid,"Australia region flies hybrid");
+    check(resolveUnits("region","ZBAA")==UnitSystem::Metric,"China region flies metric");
+    check(resolveUnits("region","")!=UnitSystem::Metric,"Empty departure stays imperial");
+    check(altitudeText(32000,UnitSystem::Imperial,false)=="32000 ft","Imperial altitude display");
+    check(altitudeText(32000,UnitSystem::Metric,false)=="9750 m","Metric altitude display");
+    check(altitudeText(32000,UnitSystem::Metric,true)=="9750 meters","Metric altitude speech");
+    check(altitudeText(32000,UnitSystem::Hybrid,false)=="32000 ft","Hybrid altitude stays feet");
+    check(speedText(440,UnitSystem::Imperial,false)=="440 kt","Imperial speed display");
+    check(speedText(440,UnitSystem::Metric,true)=="815 kilometers per hour","Metric speed speech");
+    check(distanceText(214,UnitSystem::Imperial,false)=="214 NM","Imperial distance display");
+    check(distanceText(214,UnitSystem::Metric,false)=="396 km","Metric distance display");
+    check(climbRateText(500,UnitSystem::Imperial,true)=="500 feet per minute","Imperial climb speech");
+    check(climbRateText(500,UnitSystem::Metric,false)=="2.5 m/s","Metric climb display");
+    check(metersToFeet(3000)==9800,"Meter entry rounds to 100-foot steps");
+    check(interpretText("request altitude 3000 meters").altitudeFeet==9800,"Typed meters convert to feet");
+    {State metric;metric.plan.callsign="N123AB";metric.phase=Phase::Parked;metric.telemetry.onGround=true;
+    check(applyRequest(metric,intent("clearance"),nullptr,{},{},{},UnitSystem::Metric).message.find("meters")!=std::string::npos,"Metric clearance speaks meters");}
+    check(parseMetar("KJFK 050900Z 18005KT 10SM CLR 20/10 A2992").altimeter==2992,"US altimeter captured");
+    check(pressureText(parseMetar("YMLT 050900Z 32012KT 9999 SCT030 14/08 Q1018"),builtinRegion("YMLT"),true)=="QNH 1018","QNH speech outside the US");
+    check(pressureText(parseMetar("KJFK 050900Z 18005KT 10SM CLR 20/10 A2992"),builtinRegion("KJFK"),true)=="Altimeter 2992","Altimeter speech in the US");
+    check(pressureText(parseMetar("KJFK 050900Z 18005KT 10SM CLR 20/10 A2992"),builtinRegion("KJFK"),false)=="29.92 inHg","Altimeter display converts");
+    {std::ofstream regions(directory/"regions.toml");regions<<"[regions.us]\nprefixes = [\"K\"]\npressure = \"altimeter\"\naltitude = \"feet\"\nclearance = \"initial\"\ntransition_feet = 18000\n[regions.icao]\nprefixes = []\npressure = \"qnh\"\naltitude = \"feet\"\nclearance = \"sid\"\ntransition_feet = 10000\n";}
+    auto regions=loadRegions((directory/"regions.toml").string());
+    check(regionFor(regions,"KJFK").clearance=="initial","US clearance variant from file");
+    check(regionFor(regions,"YMLT").clearance=="sid","ICAO clearance variant from file");
+    check(regionFor(regions,"YMLT").transitionFeet==10000,"Transition altitude from file");
+    rejects([&]{loadRegions((directory/"missing.toml").string());},"Missing regions file rejected");
+    {State us;us.plan.callsign="N123AB";us.plan.departure="KJFK";us.plan.destination="KLAX";us.phase=Phase::Parked;us.telemetry.onGround=true;
+    check(applyRequest(us,intent("clearance"),nullptr,{},{},{},UnitSystem::Imperial,regionFor(regions,"KJFK")).message.find("initial altitude")!=std::string::npos,"US clearance shape");
+    State icao;icao.plan.callsign="VH-ABC";icao.plan.departure="YMLT";icao.plan.destination="YMML";icao.phase=Phase::Parked;icao.telemetry.onGround=true;
+    check(applyRequest(icao,intent("clearance"),nullptr,{},{},{},UnitSystem::Imperial,regionFor(regions,"YMLT")).message.find("climb to")!=std::string::npos,"ICAO clearance shape");}
+    Json calm={{"icaoId","YMLT"},{"wxString",""},{"fltCat","VFR"},{"rawOb","YMLT 050900Z 32005KT 9999 SCT030 14/08 Q1018"}};
+    check(evaluateWeather(Json::array({calm}),"YMLT","YMML","",Phase::Cruise).empty(),"Calm VFR raises nothing");
+    Json storm={{"icaoId","YMML"},{"wxString","TSRA"},{"fltCat","IFR"},{"rawOb","YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018"},{"wdir",320},{"wspd",12},{"wgst",25},{"visib",4}};
+    auto hazards=evaluateWeather(Json::array({storm,calm}),"YMLT","YMML","",Phase::Cruise);
+    check(hazards.size()==2&&hazards[0].kind=="thunderstorm"&&hazards[1].kind=="ifr","Thunderstorm plus destination IFR flagged");
+    Json offroute={{"icaoId","KJFK"},{"wxString","TSRA"},{"fltCat","LIFR"},{"rawOb","KJFK 050900Z 18005KT 1SM TSRA OVC008 20/10 A2992"}};
+    check(evaluateWeather(Json::array({offroute}),"YMLT","YMML","",Phase::Cruise).empty(),"Off-route weather stays silent");
+    Json shear={{"icaoId","YMML"},{"wxString","SHRA"},{"fltCat","MVFR"},{"rawOb","YMML 050900Z 32012KT 6000 SHRA WS RWY16 14/08 Q1018"}};
+    check(evaluateWeather(Json::array({shear}),"YMLT","YMML","",Phase::Approach).size()==1,"Windshear flagged on approach");
+    check(evaluateWeather(Json::array({shear}),"YMLT","YMML","",Phase::Cruise).empty(),"Windshear silent enroute");
+    Json ice={{"icaoId","YMML"},{"wxString","FZRA"},{"fltCat","IFR"},{"rawOb","YMML 050900Z 32012KT 4000 FZRA OVC008 01/00 Q1018"}};
+    check(evaluateWeather(Json::array({ice}),"YMLT","YMML","",Phase::Cruise).front().kind=="freezing_rain","Freezing rain flagged");
+    {State advised;check(!advisoryKnown(advised,"YMML","thunderstorm"),"No advisory remembered initially");rememberAdvisory(advised,"YMML","thunderstorm",1);rememberAdvisory(advised,"YMML","thunderstorm",2);check(advised.weatherAdvisories.size()==1&&advisoryKnown(advised,"YMML","thunderstorm"),"Advisory remembered once");clearAdvisory(advised,"YMML","thunderstorm");check(!advisoryKnown(advised,"YMML","thunderstorm"),"Cleared hazard advises again");}
+    {Json report={{"icaoId","YMML"},{"wxString","TSRA"},{"fltCat","IFR"},{"rawOb","YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018"},{"wdir",320},{"wspd",12},{"wgst",25},{"visib",4},{"clouds",Json::array({{ {"cover","OVC"},{"base",2400} }})}};
+    WeatherHazard storm{"YMML","thunderstorm","thunderstorm"}, low{"YMML","ifr","IFR conditions"}, shear{"YMML","windshear","windshear"};
+    check(advisoryText("VH-BIL",report,storm,builtinRegion("YMLT"),UnitSystem::Imperial)=="VH-BIL, YMML weather: thunderstorm, wind 320 at 12 gusting 25 knots, visibility 4 miles, QNH 1018. Advise intentions.","Thunderstorm advisory sentence");
+    check(advisoryText("VH-BIL",report,low,builtinRegion("YMLT"),UnitSystem::Imperial)=="VH-BIL, YMML is now IFR conditions, ceiling 2400 feet overcast, QNH 1018. Advise intentions.","IFR advisory sentence");
+    check(advisoryText("VH-BIL",report,shear,builtinRegion("YMLT"),UnitSystem::Imperial)=="VH-BIL, windshear reported at YMML. Advise intentions.","Windshear advisory sentence");
+    check(advisoryText("VH-BIL",report,storm,builtinRegion("YMLT"),UnitSystem::Metric)=="VH-BIL, YMML weather: thunderstorm, wind 320 at 12 gusting 25 knots, visibility 6400 meters, QNH 1018. Advise intentions.","Metric advisory sentence");}
     for(int index=0;index<600;++index){addTransmission(state,"test","bounded");}
     check(state.transcript.size()==500,"Transcript retention cap");
     std::filesystem::remove_all(directory);std::cout<<checks<<" checks passed\n";return 0;

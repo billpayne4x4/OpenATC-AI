@@ -16,6 +16,17 @@ Rust workspace: settings schema, tri-OS platform layer, verified model manager, 
 full manual (per-OS setup, same/split machine, complete usage guide). Cabin and ground crew
 default to FX-free audio (intercom/interphone are not radio) with per-role toggles.
 
+Cruise and Weather pages removed (Arrival keeps descent planning; the engine `/weather`
+endpoint stays). The controller now watches live METARs for departure/destination/alternate
+and warns once per new hazard (thunderstorm, hail, freezing rain, ash, destination IFR/LIFR,
+windshear on approach) in ICAO-neutral phraseology with regional pressure. Units switch
+(Imperial/Metric/Region) for display and speech with `regions.toml` local procedure
+(QNH/altimeter, clearance shape, transition altitude). AI prompts moved to `prompts/*.txt`;
+cabin/ground address you as the captain and never deflect to the flight deck.
+The plugin supervises the engine: if it cannot reach one it launches the bundled
+`OpenATC/bin/open-atc-engine` (output to `engine.log` beside the settings) with backoff,
+so a closed or crashed engine comes back on its own.
+
 # 0.2.1
 
 The visible product name is OpenATC AI in the sidebar, compact view, plugin menus, window titles, voice test and engine banner. The sidebar has a cyan vector control tower with radio arcs, a white OpenATC wordmark and cyan AI suffix. The subtitle is removed and sidebar width accounts for the complete wordmark at the selected UI scale.

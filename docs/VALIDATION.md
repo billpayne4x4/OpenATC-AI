@@ -39,14 +39,14 @@ The Linux audit rejects missing dependencies, X11/XCB/GLX and legacy GL dependen
 ## Runtime checks after building
 
 1. Run the Fedora plugin build and `python3 scripts/test_engine.py build/wayland` as shown in the README.
-2. Start the engine, install the staged plugin with X-Plane closed, then launch X-Plane. Check `Log.txt` for OpenATC startup and loader errors.
+ 2. Install the staged plugin with X-Plane closed, then launch X-Plane (the plugin starts its bundled engine itself; `~/.config/openatc/engine.log` shows its output). Check `Log.txt` for OpenATC startup and loader errors.
 3. At a loaded airport, confirm that parked controls exclude altitude/direct-to, aircraft position matches the surface map, and taxi is unavailable before clearance readback.
 4. Import the latest SimBrief OFP and compare its route/procedures, fuel and payload with the SimBrief output before accepting it.
 5. Check font clarity, centered menu labels, resizing, request dialogs and layer filters on the target display.
 6. Select microphone/output devices; use the local input monitor before enabling transcription, controller speech or copilot speech. Check separate volume controls and COM1 tuning on an explicit airport frequency assignment.
 7. Fly a departure, descent, go-around and landing. Confirm stage transitions and that taxi-in finishes only when stopped at the assigned stand.
 
-Weather is a METAR observation map, not precipitation radar. Procedure lists do not implement full procedure-leg navigation. Taxi approval covers the loaded graph; dashed ramp connectors are unverified and runway-crossing clearances are not implemented. These limits are also stated in the UI and README.
+Weather awareness is controller-spoken METAR hazard advisories, not precipitation radar. Procedure lists do not implement full procedure-leg navigation. Taxi approval covers the loaded graph; dashed ramp connectors are unverified and runway-crossing clearances are not implemented. These limits are also stated in the UI and README.
 
 ## 0.2.1 branding follow-up
 

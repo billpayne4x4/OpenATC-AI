@@ -25,6 +25,9 @@ fn brisk() -> Delivery {
 fn quiet() -> Congestion {
     Congestion::Quiet
 }
+fn imperial() -> Units {
+    Units::Imperial
+}
 
 /// TTS delivery preset. Speeds and pauses are resolved by the speech service.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -50,6 +53,19 @@ pub enum Congestion {
     Quiet,
     /// Longer delays with standby calls and background chatter.
     Busy,
+}
+
+/// Display and speech units. Imperial is the aviation standard.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Units {
+    /// Feet, knots, nautical miles.
+    #[default]
+    Imperial,
+    /// Meters, km/h, kilometers.
+    Metric,
+    /// Local procedure per departure region.
+    Region,
 }
 
 /// Discipline rules for a request. Defaults reproduce the classic controller.
@@ -145,6 +161,9 @@ pub struct Settings {
     #[serde(default = "quiet")]
     /// Simulated frequency congestion level.
     pub congestion: Congestion,
+    #[serde(default = "imperial")]
+    /// Display and speech units; imperial is the standard.
+    pub units: Units,
     /// Lower bound of the per-controller speed draw.
     pub controller_speed_min: f32,
     /// Upper bound of the per-controller speed draw.
@@ -221,18 +240,6 @@ pub struct Settings {
     pub show_planned_descent: bool,
     /// Draw the current-trajectory descent line.
     pub show_current_descent: bool,
-    /// Draw the imported route on the weather map.
-    pub weather_route: bool,
-    /// Draw your aircraft on the weather map.
-    pub weather_ownship: bool,
-    /// Draw METAR station markers.
-    pub weather_stations: bool,
-    /// Draw station wind barbs.
-    pub weather_wind: bool,
-    /// Draw cloud-cover symbols.
-    pub weather_clouds: bool,
-    /// Draw station labels.
-    pub weather_labels: bool,
     /// Master playback volume.
     pub master_volume: f32,
     /// Controller speech volume.
@@ -310,6 +317,7 @@ impl Default for Settings {
             teaching_corrections: true,
             practice_emergencies: false,
             congestion: Congestion::Quiet,
+            units: Units::Imperial,
             // Window and map display.
             pin_open: true,
             show_taxiways: true,
@@ -319,12 +327,6 @@ impl Default for Settings {
             show_labels: true,
             show_planned_descent: true,
             show_current_descent: true,
-            weather_route: true,
-            weather_ownship: true,
-            weather_stations: true,
-            weather_wind: true,
-            weather_clouds: true,
-            weather_labels: true,
             // Audio levels.
             master_volume: 0.8,
             controller_volume: 1.0,
@@ -466,8 +468,17 @@ mod tests {
         assert_eq!(settings.voice, "alloy");
         assert_eq!(settings.controller_delivery, Delivery::Brisk);
         assert_eq!(settings.congestion, Congestion::Quiet);
+        assert_eq!(settings.units, Units::Imperial);
         assert!(settings.realism().strict_readbacks);
         settings.validate().unwrap();
+    }
+
+    #[test]
+    fn units_accept_all_modes() {
+        let settings: Settings = serde_json::from_str(r#"{"units":"metric"}"#).unwrap();
+        assert_eq!(settings.units, Units::Metric);
+        let settings: Settings = serde_json::from_str(r#"{"units":"region"}"#).unwrap();
+        assert_eq!(settings.units, Units::Region);
     }
 
     #[test]

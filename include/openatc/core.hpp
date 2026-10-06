@@ -6,8 +6,10 @@
 #include <random>
 #include <string>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 namespace openatc {
+using Json=nlohmann::json;
 enum class Phase { Parked, Clearance, Taxi, Departure, Cruise, Arrival, Approach, Landed, Pushback, TaxiIn, Finished };
 struct Telemetry {
     double latitude=0, longitude=0, altitudeFeet=0, groundSpeedKnots=0, headingDegrees=0;
@@ -30,6 +32,19 @@ struct Transmission { std::string speaker, text; unsigned sequence=0; std::strin
 struct Request { std::string intent, text; int altitudeFeet=0; std::string waypoint; unsigned clearanceSequence=0; std::string role="atc"; };
 // Discipline rules for a request. Defaults reproduce the classic lenient controller.
 struct Realism { bool strictReadbacks=true, requireFrequency=false, requireCallsign=false, strictPhraseology=true, teachingCorrections=true, practiceEmergencies=false; };
+// Effective display/speech units. Hybrid flies feet aloft; pressure and visibility stay regional.
+enum class UnitSystem { Imperial, Metric, Hybrid };
+UnitSystem resolveUnits(const std::string& preference,const std::string& departureIcao);
+// Local procedure for one departure region. pressure is "qnh" or "altimeter",
+// altitude "feet" or "meters", clearance "initial" (US) or "sid" (ICAO).
+struct Region { std::string name="icao", pressure="qnh", altitude="feet", clearance="sid"; int transitionFeet=10000; };
+UnitSystem unitsForRegion(const Region& region);
+double feetToMeters(double feet);
+int metersToFeet(int meters);
+std::string altitudeText(double feet,UnitSystem units,bool speech);
+std::string speedText(double knots,UnitSystem units,bool speech);
+std::string distanceText(double nm,UnitSystem units,bool speech);
+std::string climbRateText(double fpm,UnitSystem units,bool speech);
 // Voice/appearance tag stamped onto transmissions at creation time.
 struct SpeechTag { std::string position, voice, delivery="standard"; float speed=1; bool urgent=false; };
 // Remembered controller for one airspace ("ICAO:Service").
@@ -56,6 +71,7 @@ struct Airport {
     std::vector<Procedure> procedures;
 };
 struct TaxiClearance { std::string airport, destination, instructions; std::vector<Point> points; bool approved=false; unsigned sequence=0; double referenceLatitude=0, referenceLongitude=0; Point destinationPoint; bool toParking=false; };
+struct WeatherAdvisory { std::string station, hazard; double observed=0; };
 struct State {
     FlightPlan plan; Telemetry telemetry; Phase phase=Phase::Parked;
     std::optional<Clearance> clearance; std::vector<Transmission> transcript;
@@ -63,6 +79,7 @@ struct State {
     bool hasDeparted=false; int phaseEvidence=0; Phase candidatePhase=Phase::Parked;
     TaxiClearance taxiClearance;
     int recommendedFrequencyKhz=0; unsigned frequencySequence=0;
+    std::vector<WeatherAdvisory> weatherAdvisories;
 };
 struct Result { bool accepted; std::string message; };
 struct RequestDefinition { const char* intent; const char* title; const char* category; bool parameter=false; };
@@ -71,7 +88,7 @@ std::string phaseName(Phase phase);
 bool requestAvailable(const State& state,const std::string& intent);
 void updateFlightPhase(State& state,const Telemetry& telemetry);
 Request interpretText(const std::string& text);
-Result applyRequest(State& state,const Request& request,const Airport* airport=nullptr,const SpeechTag& atcTag={},const SpeechTag& pilotTag={},const Realism& realism={});
+Result applyRequest(State& state,const Request& request,const Airport* airport=nullptr,const SpeechTag& atcTag={},const SpeechTag& pilotTag={},const Realism& realism={},UnitSystem units=UnitSystem::Imperial,const Region& region=Region{});
 void addTransmission(State& state,const std::string& speaker,const std::string& text,const SpeechTag& tag={});
 std::string controllerService(const State& state);
 std::string controllerAirspace(const State& state,const Airport* airport=nullptr);
@@ -88,6 +105,19 @@ Airport loadAirportFromSimulator(const std::string& root,const std::string& icao
 void loadNavaids(Airport& airport,const std::string& path);
 void loadProcedures(Airport& airport,const std::string& path);
 TaxiClearance calculateTaxiRoute(const Airport& airport,const Telemetry& telemetry,const std::string& destination,bool toParking,char aircraftSize='C');
-struct Weather { std::string raw, source="Manually entered METAR", wind="Unavailable", visibility="Unavailable", clouds="Unavailable"; std::optional<int> qnh; };
+struct Weather { std::string raw, source="Manually entered METAR", wind="Unavailable", visibility="Unavailable", clouds="Unavailable"; std::optional<int> qnh, altimeter; };
 Weather parseMetar(const std::string& raw);
+std::map<std::string,Region> loadRegions(const std::string& path);
+Region regionFor(const std::map<std::string,Region>& table,const std::string& icao);
+Region builtinRegion(const std::string& icao);
+std::string pressureText(const Weather& weather,const Region& region,bool speech);
+std::string regionNotes(const Region& region,UnitSystem units);
+struct WeatherHazard { std::string station, kind, summary; };
+std::vector<WeatherHazard> evaluateWeather(const Json& reports,const std::string& departure,const std::string& destination,const std::string& alternate,Phase phase);
+bool advisoryKnown(const State& state,const std::string& station,const std::string& hazard);
+void rememberAdvisory(State& state,const std::string& station,const std::string& hazard,double observed);
+void clearAdvisory(State& state,const std::string& station,const std::string& hazard);
+std::string reportWord(const Json& report,const char* key);
+double reportNumber(const Json& report,const char* key);
+std::string advisoryText(const std::string& callsign,const Json& report,const WeatherHazard& hazard,const Region& region,UnitSystem units);
 }
