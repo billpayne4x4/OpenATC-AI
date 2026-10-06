@@ -1,0 +1,70 @@
+/build/
+/stage-wayland/
+/dist/
+/packages/
+/vendor/
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+*.orig
+*.rej
+*.bak
+.env
+openatc-session.json
+settings.json
+session.json
+imgui.ini
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+# ML model weights / TTS voices (host-local, large, licensed separately)
+/atc_test/
+*.onnx
+*.onnx.data
+*.pt
+*.gguf
+*.ggml
+ggml-*.bin
+voices-*.bin
+*.safetensors
+*.part
+# Generated audio / logs
+*.wav
+*.mp3
+Log.txt
+*.log
+*.tmp
+# Built plugin binaries (rebuild via scripts/fedora-build.sh)
+*.xpl
+# Crash dumps (huge; keep only while diagnosing)
+core
+*.core
+# OS leftovers
+.DS_Store
+Thumbs.db
+desktop.ini
+# Rust build output (lockfile stays committed: reproducible service builds)
+rust/target/
+# CMake leftovers outside build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CMakeUserPresets.json
+# AI assistant / agent tooling (local-only state, never committed)
+.opencode/
+.agents/
+.claude/
+.cursor/
+.windsurf/
+CLAUDE.local.md
+# Local notes and scratch
+scratch/

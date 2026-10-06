@@ -1,0 +1,90 @@
+name: Build and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: linux-x64
+          - os: windows-2022
+            label: windows-x64
+          - os: macos-15-intel
+            label: macos-x64
+          - os: macos-15
+            label: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwayland-dev libxkbcommon-dev libssl-dev pkg-config
+      - name: macOS build dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew list openssl@3 >/dev/null 2>&1 || brew install openssl@3
+          echo "OPENSSL_ROOT_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
+      - name: Windows build dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          vcpkg install openssl:x64-windows-static-md
+          "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: OpenGL declaration generator dependency
+        run: python -m pip install Jinja2==3.1.6
+      - name: Download official compatibility SDK
+        run: python scripts/download_sdk.py
+      - name: Configure Unix
+        if: runner.os != 'Windows'
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DOPENATC_BUILD_PLUGIN=ON -DXPLANE_SDK=${{ github.workspace }}/vendor/SDK -DOPENSSL_USE_STATIC_LIBS=TRUE
+      - name: Configure Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cmake -S . -B build -A x64 "-DCMAKE_TOOLCHAIN_FILE=$env:CMAKE_TOOLCHAIN_FILE" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENATC_BUILD_PLUGIN=ON "-DXPLANE_SDK=${{ github.workspace }}/vendor/SDK"
+      - name: Compile
+        run: cmake --build build --config Release --parallel 3
+      - name: Core tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Audit Linux link dependencies
+        if: runner.os == 'Linux'
+        run: python scripts/check_linux_dependencies.py build/lin.xpl build/open-atc build/open-atc-engine
+      - name: Engine integration test
+        run: python scripts/test_engine.py build
+      - name: Stage
+        run: cmake --install build --config Release --prefix dist
+      - name: Package with dependency notices
+        run: python scripts/package.py ${{ matrix.label }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: open-atc-${{ matrix.label }}
+          path: packages/*
+          if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: open-atc-*
+          path: release
+          merge-multiple: true
+      - name: Publish development release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" release/* --verify-tag --prerelease --generate-notes --title "Open ATC $RELEASE_TAG"

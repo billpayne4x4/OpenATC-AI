@@ -1,0 +1,23 @@
+[package]
+name = "openatc-ai"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "openatc-ai"
+path = "src/main.rs"
+
+[dependencies]
+openatc-ai-core = { path = "../ai-core" }
+openatc-platform = { path = "../platform" }
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+llama-cpp-2 = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+toml = "1"
+
+[lints]
+workspace = true

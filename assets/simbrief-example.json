@@ -1,0 +1,6 @@
+{
+  "origin": {"icao_code": "YMLT"},
+  "destination": {"icao_code": "YMML"},
+  "general": {"route": "DCT", "initial_altitude": "32000"},
+  "note": "Synthetic import fixture, not a generated or validated flight plan"
+}
