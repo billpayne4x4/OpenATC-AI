@@ -7,6 +7,12 @@
 //! format avoids exact-half values in fixtures where `format!` (half to even)
 //! and `snprintf` could disagree.
 
+pub mod hazards;
+pub mod intents;
+pub mod metar;
+pub mod profiles;
+pub mod regions;
+
 /// Effective display/speech units. Hybrid flies feet aloft.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum UnitSystem {
@@ -45,8 +51,9 @@ pub fn feet_to_meters(feet: f64) -> f64 {
 /// Whole meters to feet, rounded to 100-foot steps (validation granularity).
 /// Operation order mirrors the C++ (`meters / 0.3048 / 100`) bit-for-bit.
 #[must_use]
-pub fn meters_to_feet(meters: i32) -> i64 {
-    rounded(f64::from(meters) / 0.3048 / 100.0) * 100
+pub fn meters_to_feet(meters: i32) -> i32 {
+    let feet = rounded(f64::from(meters) / 0.3048 / 100.0) * 100;
+    i32::try_from(feet).unwrap_or(i32::MAX)
 }
 
 fn plural(value: i64, one: &str, many: &str) -> String {
@@ -60,7 +67,7 @@ fn plural(value: i64, one: &str, many: &str) -> String {
 /// The single cast below is exact: inputs are rounded aviation magnitudes,
 // far inside `i64` range, exactly like the `static_cast<long>` it mirrors.
 #[allow(clippy::cast_possible_truncation)]
-fn rounded(value: f64) -> i64 {
+pub(crate) fn rounded(value: f64) -> i64 {
     value.round() as i64
 }
 
@@ -205,7 +212,11 @@ mod tests {
                 "metersToFeet" => {
                     let value =
                         meters_to_feet(i32::try_from(case["meters"].as_i64().unwrap()).unwrap());
-                    assert_eq!(value, case["expected"].as_i64().unwrap(), "metersToFeet");
+                    assert_eq!(
+                        value,
+                        i32::try_from(case["expected"].as_i64().unwrap()).unwrap(),
+                        "metersToFeet"
+                    );
                     count += 1;
                     continue;
                 }

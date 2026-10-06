@@ -1,0 +1,18 @@
+{
+  "parses": [
+    {"raw": "YMLT 050900Z 32012KT 9999 SCT030 14/08 Q1018", "wind": "32012KT", "visibility": "9999", "clouds": "SCT030", "qnh": 1018, "altimeter": null},
+    {"raw": "KJFK 050900Z 18005KT 10SM CLR 20/10 A2992", "wind": "18005KT", "visibility": "10SM", "clouds": "Unavailable", "qnh": 1013, "altimeter": 2992},
+    {"raw": "YMML 050900Z VRB03KT 9999 FEW010 12/10 Q1005", "wind": "VRB03KT", "visibility": "9999", "clouds": "FEW010", "qnh": 1005, "altimeter": null},
+    {"raw": "EGLL 050900Z 27008G18KT CAVOK 15/07 Q0998", "wind": "27008G18KT", "visibility": "10 km or more", "clouds": "CAVOK", "qnh": 998, "altimeter": null},
+    {"raw": "INVALID", "wind": "Unavailable", "visibility": "Unavailable", "clouds": "Unavailable", "qnh": null, "altimeter": null}
+  ],
+  "pressures": [
+    {"raw": "KJFK 050900Z 18005KT 10SM CLR 20/10 A2992", "region": "us", "speech": true, "expected": "Altimeter 2992"},
+    {"raw": "KJFK 050900Z 18005KT 10SM CLR 20/10 A2992", "region": "us", "speech": false, "expected": "29.92 inHg"},
+    {"raw": "YMLT 050900Z 32012KT 9999 SCT030 14/08 Q1018", "region": "icao", "speech": true, "expected": "QNH 1018"},
+    {"raw": "YMLT 050900Z 32012KT 9999 SCT030 14/08 Q1018", "region": "icao", "speech": false, "expected": "QNH 1018"},
+    {"raw": "YMLT 050900Z 32012KT 9999 SCT030 14/08 Q1018", "region": "us", "speech": true, "expected": "Altimeter 3006"},
+    {"raw": "INVALID", "region": "icao", "speech": true, "expected": "pressure unknown"},
+    {"raw": "INVALID", "region": "icao", "speech": false, "expected": "pressure --"}
+  ]
+}

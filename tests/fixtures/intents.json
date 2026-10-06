@@ -1,0 +1,51 @@
+{
+  "interpret": [
+    {"text": "radio check", "intent": "radio_check", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "Say Again", "intent": "repeat", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "UNABLE", "intent": "unable", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "stand by", "intent": "standby", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "request clearance", "intent": "clearance", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "request taxi", "intent": "taxi", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "request pushback", "intent": "pushback", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "ready for departure", "intent": "ready", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "going around", "intent": "go_around", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "cancel ifr", "intent": "cancel_ifr", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "request altimeter", "intent": "altimeter", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "request weather", "intent": "weather", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "MAYDAY MAYDAY", "intent": "emergency", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "request altitude 32000 feet", "intent": "altitude", "altitudeFeet": 32000, "waypoint": ""},
+    {"text": "climb FL350", "intent": "altitude", "altitudeFeet": 35000, "waypoint": ""},
+    {"text": "descend to 5000 feet", "intent": "descent", "altitudeFeet": 5000, "waypoint": ""},
+    {"text": "request altitude 3000 meters", "intent": "altitude", "altitudeFeet": 9800, "waypoint": ""},
+    {"text": "request direct TESAT", "intent": "direct", "altitudeFeet": 0, "waypoint": "TESAT"},
+    {"text": "taxi to parking", "intent": "gate", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "confirm position", "intent": "position", "altitudeFeet": 0, "waypoint": ""},
+    {"text": "how are you?", "intent": "conversation", "altitudeFeet": 0, "waypoint": ""}
+  ],
+  "roles": [
+    {"attendant": false, "ground": false, "expected": "atc"},
+    {"attendant": true, "ground": false, "expected": "cabin"},
+    {"attendant": false, "ground": true, "expected": "ground"},
+    {"attendant": true, "ground": true, "expected": "ground"}
+  ],
+  "gates": [
+    {"role": "atc", "radio": true, "bus": true, "expected": true},
+    {"role": "atc", "radio": false, "bus": true, "expected": false},
+    {"role": "cabin", "radio": true, "bus": false, "expected": false},
+    {"role": "ground", "radio": true, "bus": false, "expected": false},
+    {"role": "copilot", "radio": false, "bus": false, "expected": true}
+  ],
+  "presets": [
+    {"strictReadbacks": false, "requireFrequency": false, "requireCallsign": false, "strictPhraseology": false, "teachingCorrections": false, "practiceEmergencies": false, "congestion": "off", "expected": "relaxed"},
+    {"strictReadbacks": true, "requireFrequency": false, "requireCallsign": false, "strictPhraseology": true, "teachingCorrections": true, "practiceEmergencies": false, "congestion": "quiet", "expected": "standard"},
+    {"strictReadbacks": true, "requireFrequency": true, "requireCallsign": true, "strictPhraseology": true, "teachingCorrections": false, "practiceEmergencies": true, "congestion": "busy", "expected": "real"},
+    {"strictReadbacks": true, "requireFrequency": false, "requireCallsign": false, "strictPhraseology": true, "teachingCorrections": true, "practiceEmergencies": false, "congestion": "busy", "expected": "custom"}
+  ],
+  "worthSending": [
+    {"seconds": 1.5, "peak": 0.2, "text": "Request taxi", "expected": true},
+    {"seconds": 0.1, "peak": 0.2, "text": "Wilco", "expected": false},
+    {"seconds": 1.5, "peak": 0.001, "text": "Wilco", "expected": false},
+    {"seconds": 1.5, "peak": 0.2, "text": "", "expected": false},
+    {"seconds": 1.5, "peak": 0.2, "text": "[BLANK_AUDIO]", "expected": false}
+  ]
+}

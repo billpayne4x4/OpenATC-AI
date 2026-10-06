@@ -1,0 +1,42 @@
+{
+  "evaluations": [
+    {"name": "calm", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "YMLT", "wxString": "", "fltCat": "VFR", "rawOb": "YMLT 050900Z 32005KT 9999 SCT030 14/08 Q1018"}],
+     "expected": []},
+    {"name": "storm", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "YMML", "wxString": "TSRA", "fltCat": "IFR", "rawOb": "YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018", "wdir": 320, "wspd": 12, "wgst": 25, "visib": 4}],
+     "expected": ["thunderstorm", "ifr"]},
+    {"name": "offroute", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "KJFK", "wxString": "TSRA", "fltCat": "LIFR", "rawOb": "KJFK 050900Z 18005KT 1SM TSRA OVC008 20/10 A2992"}],
+     "expected": []},
+    {"name": "shear-approach", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Approach",
+     "reports": [{"icaoId": "YMML", "wxString": "SHRA", "fltCat": "MVFR", "rawOb": "YMML 050900Z 32012KT 6000 SHRA WS RWY16 14/08 Q1018"}],
+     "expected": ["windshear"]},
+    {"name": "shear-cruise", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "YMML", "wxString": "SHRA", "fltCat": "MVFR", "rawOb": "YMML 050900Z 32012KT 6000 SHRA WS RWY16 14/08 Q1018"}],
+     "expected": []},
+    {"name": "ice", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "YMML", "wxString": "FZRA", "fltCat": "IFR", "rawOb": "YMML 050900Z 32012KT 4000 FZRA OVC008 01/00 Q1018"}],
+     "expected": ["freezing_rain", "ifr"]},
+    {"name": "hail", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "YMML", "wxString": "GR", "fltCat": "MVFR", "rawOb": "YMML 050900Z 32012KT 6000 GR SCT030 14/02 Q1018"}],
+     "expected": ["hail"]},
+    {"name": "ash", "departure": "YMLT", "destination": "YMML", "alternate": "", "phase": "Cruise",
+     "reports": [{"icaoId": "YMML", "wxString": "VA", "fltCat": "MVFR", "rawOb": "YMML 050900Z 32012KT 9999 VA SCT030 14/08 Q1018"}],
+     "expected": ["volcanic_ash"]}
+  ],
+  "advisories": [
+    {"name": "thunderstorm", "station": "YMML", "kind": "thunderstorm", "summary": "thunderstorm", "region": "icao", "units": "imperial",
+     "report": {"icaoId": "YMML", "wxString": "TSRA", "fltCat": "IFR", "rawOb": "YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018", "wdir": 320, "wspd": 12, "wgst": 25, "visib": 4, "clouds": [{"cover": "OVC", "base": 2400}]},
+     "expected": "VH-BIL, YMML weather: thunderstorm, wind 320 at 12 gusting 25 knots, visibility 4 miles, QNH 1018. Advise intentions."},
+    {"name": "ifr", "station": "YMML", "kind": "ifr", "summary": "IFR conditions", "region": "icao", "units": "imperial",
+     "report": {"icaoId": "YMML", "wxString": "TSRA", "fltCat": "IFR", "rawOb": "YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018", "wdir": 320, "wspd": 12, "wgst": 25, "visib": 4, "clouds": [{"cover": "OVC", "base": 2400}]},
+     "expected": "VH-BIL, YMML is now IFR conditions, ceiling 2400 feet overcast, QNH 1018. Advise intentions."},
+    {"name": "windshear", "station": "YMML", "kind": "windshear", "summary": "windshear", "region": "icao", "units": "imperial",
+     "report": {"icaoId": "YMML", "wxString": "SHRA", "fltCat": "MVFR", "rawOb": "YMML 050900Z 32012KT 6000 SHRA WS RWY16 14/08 Q1018"},
+     "expected": "VH-BIL, windshear reported at YMML. Advise intentions."},
+    {"name": "metric", "station": "YMML", "kind": "thunderstorm", "summary": "thunderstorm", "region": "icao", "units": "metric",
+     "report": {"icaoId": "YMML", "wxString": "TSRA", "fltCat": "IFR", "rawOb": "YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018", "wdir": 320, "wspd": 12, "wgst": 25, "visib": 4, "clouds": [{"cover": "OVC", "base": 2400}]},
+     "expected": "VH-BIL, YMML weather: thunderstorm, wind 320 at 12 gusting 25 knots, visibility 6400 meters, QNH 1018. Advise intentions."}
+  ]
+}

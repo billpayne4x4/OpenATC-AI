@@ -1,0 +1,18 @@
+[aircraft]
+name = "Test Bird"
+match_author = "Test Works"
+match_icao = ["TST1", "TST2"]
+
+[aircraft.comms]
+attendant_refs = ["test/cabin"]
+ground_refs = ["test/ramp"]
+emer_action = "ignore"
+
+[aircraft.electrical]
+bat_volts_ref = "test/volts"
+min_volts = 25.5
+battery_refs = ["test/battery"]
+gpu_refs = []
+apu_refs = []
+rmp_refs = ["test/rmp"]
+avionics_refs = []

@@ -1,0 +1,21 @@
+{
+  "toml": "aircraft_fixture.toml",
+  "match": [
+    {"author": "Test Works", "icao": "TST1", "matches": true},
+    {"author": "test works", "icao": "tst2", "matches": true},
+    {"author": "Other Works", "icao": "TST1", "matches": false},
+    {"author": "Test Works", "icao": "B738", "matches": false}
+  ],
+  "power": [
+    {"name": "dark", "volts": 0.0, "has_volts": false, "battery": [0], "gpu": [0], "apu": [0], "rmp": [0], "avionics": [0], "radio": false, "bus": false},
+    {"name": "battery", "volts": 27.0, "has_volts": true, "battery": [1], "gpu": [0], "apu": [0], "rmp": [0], "avionics": [0], "radio": false, "bus": true},
+    {"name": "gpu", "volts": 0.0, "has_volts": false, "battery": [0], "gpu": [1], "apu": [0], "rmp": [0], "avionics": [0], "radio": false, "bus": true},
+    {"name": "rmp", "volts": 0.0, "has_volts": false, "battery": [0], "gpu": [0], "apu": [0], "rmp": [1], "avionics": [0], "radio": true, "bus": false},
+    {"name": "low-volts", "volts": 20.0, "has_volts": true, "battery": [0], "gpu": [0], "apu": [0], "rmp": [0], "avionics": [0], "radio": false, "bus": false}
+  ],
+  "invalid": [
+    "[aircraft]\nname = \"x\"\n",
+    "[aircraft]\nname = \"x\"\nmatch_author = \"y\"\nmatch_icao = []\n[aircraft.comms]\nattendant_refs = []\nground_refs = []\nemer_action = \"party\"\n[aircraft.electrical]\nbat_volts_ref = \"\"\nmin_volts = 25.5\nbattery_refs = []\ngpu_refs = []\napu_refs = []\nrmp_refs = []\navionics_refs = []\n",
+    "[aircraft]\nname = \"x\"\nmatch_author = \"y\"\nmatch_icao = []\n[aircraft.comms]\nattendant_refs = []\nground_refs = []\nemer_action = \"ignore\"\n[aircraft.electrical]\nbat_volts_ref = \"\"\nmin_volts = -1.0\nbattery_refs = []\ngpu_refs = []\napu_refs = []\nrmp_refs = []\navionics_refs = []\n"
+  ]
+}

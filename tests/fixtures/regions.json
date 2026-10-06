@@ -1,0 +1,23 @@
+{
+  "toml": "regions_fixture.toml",
+  "lookups": [
+    {"icao": "KJFK", "name": "testus", "pressure": "altimeter", "altitude": "feet", "clearance": "initial", "transition_feet": 18000, "units": "imperial"},
+    {"icao": "kjfk", "name": "testus", "pressure": "altimeter", "altitude": "feet", "clearance": "initial", "transition_feet": 18000, "units": "imperial"},
+    {"icao": "QQQQ", "name": "testq", "pressure": "qnh", "altitude": "meters", "clearance": "sid", "transition_feet": 15000, "units": "metric"},
+    {"icao": "ZZZZ", "name": "china", "pressure": "qnh", "altitude": "meters", "clearance": "sid", "transition_feet": 20000, "units": "metric"},
+    {"icao": "", "name": "icao", "pressure": "qnh", "altitude": "feet", "clearance": "sid", "transition_feet": 10000, "units": "hybrid"}
+  ],
+  "builtin": [
+    {"icao": "KJFK", "name": "us", "pressure": "altimeter", "altitude": "feet", "clearance": "initial", "transition_feet": 18000},
+    {"icao": "ZBAA", "name": "china", "pressure": "qnh", "altitude": "meters", "clearance": "sid", "transition_feet": 20000},
+    {"icao": "UUEE", "name": "russia", "pressure": "qnh", "altitude": "meters", "clearance": "sid", "transition_feet": 15000},
+    {"icao": "", "name": "icao", "pressure": "qnh", "altitude": "feet", "clearance": "sid", "transition_feet": 10000}
+  ],
+  "invalid": [
+    "[regions.bad]\npressure = \"qnh\"\n",
+    "[regions.bad]\nprefixes = []\npressure = \"vacuum\"\naltitude = \"feet\"\nclearance = \"sid\"\ntransition_feet = 10000\n",
+    "[regions.bad]\nprefixes = []\npressure = \"qnh\"\naltitude = \"feet\"\nclearance = \"sid\"\ntransition_feet = -5\n",
+    "[regions.bad]\nprefixes = [\"KL\"]\npressure = \"qnh\"\naltitude = \"feet\"\nclearance = \"sid\"\ntransition_feet = 10000\n",
+    "[other.bad]\nprefixes = []\n"
+  ]
+}

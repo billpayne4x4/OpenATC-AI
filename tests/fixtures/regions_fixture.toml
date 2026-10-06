@@ -1,0 +1,20 @@
+[regions.testus]
+prefixes = ["K"]
+pressure = "altimeter"
+altitude = "feet"
+clearance = "initial"
+transition_feet = 18000
+
+[regions.testq]
+prefixes = ["Q"]
+pressure = "qnh"
+altitude = "meters"
+clearance = "sid"
+transition_feet = 15000
+
+[regions.icao]
+prefixes = []
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 10000
