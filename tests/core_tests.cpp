@@ -1,4 +1,6 @@
 #include "openatc/core.hpp"
+#include "openatc/serialization.hpp"
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -104,7 +106,9 @@ int main(){try{
     Request odd;odd.intent="weather";odd.text="request weather";
     check(applyRequest(strict,odd,nullptr,{},{},Realism()).message.find("Say again")!=std::string::npos,"Strict phraseology corrects unknown requests");
     Realism relaxed;relaxed.strictPhraseology=false;
-    check(applyRequest(strict,odd,nullptr,{},{},relaxed).message.find("catalogue")!=std::string::npos,"Relaxed keeps the catalogue fallback");
+    check(applyRequest(strict,odd,nullptr,{},{},relaxed).message.find("For example")!=std::string::npos,"Relaxed mix teaches with examples");
+    Realism easy;easy.strictPhraseology=false;easy.teachingCorrections=false;
+    check(applyRequest(strict,odd,nullptr,{},{},easy).message.find("Didn't catch")!=std::string::npos,"Pure relaxed guesses helpfully");
     Request crisis;crisis.intent="emergency";crisis.text="mayday mayday";
     check(!applyRequest(strict,crisis,nullptr,{},{},Realism()).accepted,"Emergency practice off refuses");
     Realism drills;drills.practiceEmergencies=true;
@@ -163,12 +167,78 @@ int main(){try{
     Json ice={{"icaoId","YMML"},{"wxString","FZRA"},{"fltCat","IFR"},{"rawOb","YMML 050900Z 32012KT 4000 FZRA OVC008 01/00 Q1018"}};
     check(evaluateWeather(Json::array({ice}),"YMLT","YMML","",Phase::Cruise).front().kind=="freezing_rain","Freezing rain flagged");
     {State advised;check(!advisoryKnown(advised,"YMML","thunderstorm"),"No advisory remembered initially");rememberAdvisory(advised,"YMML","thunderstorm",1);rememberAdvisory(advised,"YMML","thunderstorm",2);check(advised.weatherAdvisories.size()==1&&advisoryKnown(advised,"YMML","thunderstorm"),"Advisory remembered once");clearAdvisory(advised,"YMML","thunderstorm");check(!advisoryKnown(advised,"YMML","thunderstorm"),"Cleared hazard advises again");}
+    {Json withNulls={{"intent","altitude"},{"altitudeFeet",nullptr},{"waypoint",nullptr},{"extra",Json::array({Json::object({{"a",nullptr},{"b",1}}),nullptr})}};
+    Json clean=dropNulls(withNulls);
+    check(!clean.contains("altitudeFeet")&&!clean.contains("waypoint"),"Null object keys dropped");
+    check(clean.at("intent")=="altitude","Present keys survive");
+    check(clean.at("extra").size()==2&&!clean.at("extra").at(0).contains("a"),"Nested nulls dropped, array shape kept");
+    Request parsed=clean.get<Request>();check(parsed.intent=="altitude"&&parsed.altitudeFeet==0,"Nulled request parses to defaults");}
     {Json report={{"icaoId","YMML"},{"wxString","TSRA"},{"fltCat","IFR"},{"rawOb","YMML 050900Z 32012G25KT 4000 TSRA SCT030 14/08 Q1018"},{"wdir",320},{"wspd",12},{"wgst",25},{"visib",4},{"clouds",Json::array({{ {"cover","OVC"},{"base",2400} }})}};
     WeatherHazard storm{"YMML","thunderstorm","thunderstorm"}, low{"YMML","ifr","IFR conditions"}, shear{"YMML","windshear","windshear"};
     check(advisoryText("VH-BIL",report,storm,builtinRegion("YMLT"),UnitSystem::Imperial)=="VH-BIL, YMML weather: thunderstorm, wind 320 at 12 gusting 25 knots, visibility 4 miles, QNH 1018. Advise intentions.","Thunderstorm advisory sentence");
     check(advisoryText("VH-BIL",report,low,builtinRegion("YMLT"),UnitSystem::Imperial)=="VH-BIL, YMML is now IFR conditions, ceiling 2400 feet overcast, QNH 1018. Advise intentions.","IFR advisory sentence");
     check(advisoryText("VH-BIL",report,shear,builtinRegion("YMLT"),UnitSystem::Imperial)=="VH-BIL, windshear reported at YMML. Advise intentions.","Windshear advisory sentence");
     check(advisoryText("VH-BIL",report,storm,builtinRegion("YMLT"),UnitSystem::Metric)=="VH-BIL, YMML weather: thunderstorm, wind 320 at 12 gusting 25 knots, visibility 6400 meters, QNH 1018. Advise intentions.","Metric advisory sentence");}
+    check(resolveCrewRole(false,false)=="atc","Quiet panel talks to ATC");
+    check(resolveCrewRole(true,false)=="cabin","Attendant call routes to cabin");
+    check(resolveCrewRole(false,true)=="ground","Ground call routes to ground");
+    check(resolveCrewRole(true,true)=="ground","Ground call wins over attendant");
+    check(canTransmit("atc",true,true),"Powered radio transmits");
+    check(!canTransmit("atc",false,true),"Dead radio blocks ATC");
+    check(!canTransmit("cabin",true,false),"Dead bus blocks cabin");
+    check(!canTransmit("ground",true,false),"Dead bus blocks ground");
+    check(canTransmit("copilot",false,false),"Copilot needs no power");
+    check(canTransmit("atc",false,false)==false,"Dark cockpit blocks all but copilot");
+    check(speechWorthSending(1.5,0.2,"Request taxi"),"Real utterance sends");
+    check(!speechWorthSending(0.1,0.2,"Wilco"),"Bumped button drops");
+    check(!speechWorthSending(1.5,0.001,"Wilco"),"Silent hold drops");
+    check(!speechWorthSending(1.5,0.2,""),"Empty transcript drops");
+    check(!speechWorthSending(1.5,0.2,"[BLANK_AUDIO]"),"Whisper blank drops");
+    Realism relaxed{false,false,false,false,false,false},standard{true,false,false,true,true,false},real{true,true,true,true,false,true};
+    check(disciplinePreset(relaxed,"off")=="relaxed","Relaxed preset matches");
+    check(disciplinePreset(standard,"quiet")=="standard","Standard preset matches");
+    check(disciplinePreset(real,"busy")=="real","Real preset matches");
+    check(disciplinePreset(standard,"busy")=="custom","Edited toggles read custom");
+    {State calm;calm.plan.callsign="N123AB";calm.phase=Phase::Parked;calm.telemetry.onGround=true;
+    check(applyRequest(calm,intent("weather"),nullptr,{},{},relaxed).message.find("Didn't catch")!=std::string::npos,"Relaxed guesses helpfully");
+    State strict=calm;
+    check(applyRequest(strict,intent("weather"),nullptr,{},{},Realism{true,false,false,true,false,false}).message.find("Say again")==0,"Strict gives no hints");}
+    {State cockpit;cockpit.plan.callsign="N123AB";cockpit.phase=Phase::Parked;cockpit.telemetry.onGround=true;
+    auto accepted=applyRequest(cockpit,intent("clearance"),nullptr,{},{},{},UnitSystem::Imperial,Region{});
+    check(accepted.accepted,"Clearance accepted for readback setup");
+    Request readback;readback.intent="readback";readback.altitudeFeet=cockpit.clearance->altitudeFeet;readback.waypoint=cockpit.clearance->route;readback.clearanceSequence=cockpit.clearance->sequence;
+    readback.text="N123AB maintaining 5000 feet";check(applyRequest(cockpit,readback,nullptr,{},{},Realism{true,true,true,true,false,true}).accepted,"Exact copilot readback passes full discipline");}
+    {std::ofstream profile(directory/"toliss.toml");profile<<"[aircraft]\nname = \"ToLiss A320neo\"\nmatch_author = \"Gliding Kiwi\"\nmatch_icao = [\"A20N\", \"A21N\"]\n[aircraft.comms]\nattendant_refs = [\"AirbusFBW/purser/fwd\"]\nground_refs = [\"AirbusFBW/purser/mech\"]\nemer_action = \"ignore\"\n[aircraft.electrical]\nbat_volts_ref = \"AirbusFBW/BatVolts\"\nmin_volts = 25.5\nbattery_refs = []\ngpu_refs = []\napu_refs = []\nrmp_refs = []\navionics_refs = []\n";}
+    auto aircraft=loadAircraftProfile((directory/"toliss.toml").string());
+    check(aircraft.name=="ToLiss A320neo","Profile name loads");
+    check(aircraftMatches(aircraft,"Gliding Kiwi","A20N"),"A20N matches ToLiss profile");
+    check(!aircraftMatches(aircraft,"Laminar Research","B738"),"Other aircraft do not match");
+    check(!aircraftMatches(aircraft,"Gliding Kiwi","A339"),"Unlisted variant does not match");
+    check(aircraft.electrical.minVolts==25.5,"Voltage threshold loads");
+    check(profileHasPowerSources(aircraft),"Profile power sources detected");
+    PowerInput dead;auto noPower=evaluatePower(dead,25.5);
+    check(!noPower.bus&&!noPower.radio,"Dark cockpit means no power");
+    PowerInput volts;volts.batVolts=27.0;volts.hasVolts=true;
+    check(evaluatePower(volts,25.5).bus,"Healthy volts power the bus");
+    PowerInput radio;radio.rmp.push_back(1);
+    check(evaluatePower(radio,25.5).radio&&!evaluatePower(radio,25.5).bus,"RMP alone powers radio only");
+    PowerInput gpu;gpu.gpu.push_back(1);
+    check(evaluatePower(gpu,25.5).bus&&!evaluatePower(gpu,25.5).radio,"GPU powers bus without radio");
+    rejects([&]{loadAircraftProfile((directory/"missing.toml").string());},"Missing aircraft file rejected");
+    {std::ofstream acf(directory/"a320.acf");acf<<"A\nI\n1000 Version\nP acf/_ICAO A20N\nP acf/_author Gliding Kiwi\nP acf/_descrip test\n";}
+    std::string author,icao;check(readAcfIdentity((directory/"a320.acf").string(),author,icao),"ACF identity reads");
+    check(author=="Gliding Kiwi"&&icao=="A20N","ACF identity has no leading space");
+    check(!readAcfIdentity((directory/"missing.acf").string(),author,icao),"Missing ACF rejected");
+    {std::ifstream fixtures(std::string(OPENATC_FIXTURE_DIR)+"/units.json");check(fixtures.good(),"units fixtures open");Json cases=Json::parse(fixtures);int matched=0;for(const auto& kase:cases){std::string fn=kase.at("fn");UnitSystem fixtureUnits=UnitSystem::Imperial;if(kase.contains("units"))fixtureUnits=kase.at("units")=="metric"?UnitSystem::Metric:(kase.at("units")=="hybrid"?UnitSystem::Hybrid:UnitSystem::Imperial);bool speech=kase.value("speech",false);std::string label="fixture "+fn;
+    if(fn=="resolveUnits"){UnitSystem resolved=resolveUnits(kase.at("preference"),kase.at("departure"));std::string got=resolved==UnitSystem::Metric?"metric":(resolved==UnitSystem::Hybrid?"hybrid":"imperial");check(got==kase.at("expected"),label.c_str());}
+    else if(fn=="altitudeText")check(altitudeText(kase.at("feet"),fixtureUnits,speech)==kase.at("expected"),label.c_str());
+    else if(fn=="speedText")check(speedText(kase.at("knots"),fixtureUnits,speech)==kase.at("expected"),label.c_str());
+    else if(fn=="distanceText")check(distanceText(kase.at("nm"),fixtureUnits,speech)==kase.at("expected"),label.c_str());
+    else if(fn=="climbRateText")check(climbRateText(kase.at("fpm"),fixtureUnits,speech)==kase.at("expected"),label.c_str());
+    else if(fn=="feetToMeters")check(std::abs(feetToMeters(kase.at("feet"))-static_cast<double>(kase.at("expected")))<1e-9,label.c_str());
+    else if(fn=="metersToFeet")check(metersToFeet(kase.at("meters"))==static_cast<int>(kase.at("expected")),label.c_str());
+    else throw std::runtime_error("unknown fixture "+fn);++matched;}
+    check(matched==29,"all fixtures run");}
     for(int index=0;index<600;++index){addTransmission(state,"test","bounded");}
     check(state.transcript.size()==500,"Transcript retention cap");
     std::filesystem::remove_all(directory);std::cout<<checks<<" checks passed\n";return 0;

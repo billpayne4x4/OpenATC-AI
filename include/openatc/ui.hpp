@@ -15,7 +15,10 @@ class Interface {
     std::string message_,search_,requestedWaypoint_,airportCode_="YMLT",notice_,planNotice_,airportNotice_,settingsNotice_;
     std::string lastSettingsJson_;double settingsChangedAt_=0,lastInteraction_=0;
     std::string modalIntent_,modalTitle_;int requestedAltitude_=32000;float targetFeet_=3000,descentAngle_=3;
-    bool showVoicePopup_=false;int commRole_=0;
+    bool showVoicePopup_=false;std::string panelRole_,panelSource_,engineFault_;bool radioPower_=true,busPower_=true;
+    struct LocalNotice { std::string speaker,text; };std::vector<LocalNotice> localNotices_;std::string lastPowerRefusal_;
+    std::string voiceHealth_;double lastVoiceCheck_=0;std::string lastAction_;
+    bool pttArmed_=false;std::string pttRole_;double recordStart_=0;float recordPeak_=0;
     float zoom_=1;ImVec2 pan_{};
     bool importing_=false,loadingAirport_=false,showRunways_=true,showNavaids_=true,orbitView_=false,showBuildings_=true;float yaw_=0.35f,pitch_=0.85f;
     unsigned lastTranscriptSequence_=0,lastSpeechSequence_=0;std::deque<Transmission> speechQueue_;
@@ -28,5 +31,11 @@ public:
     static void configureStyle();static void configureFonts();
     void tick();void draw(ImVec2 position,ImVec2 size);
     void setPage(int page){page_=std::clamp(page,0,5);}
+    void setPanelRole(const std::string& role,const std::string& source){panelRole_=role;panelSource_=source;}
+    void setElectricalPower(bool radio,bool bus){radioPower_=radio;busPower_=bus;}
+    void setEngineFault(const std::string& fault){engineFault_=fault;}
+    const std::string& lastNotice()const{return notice_;}
+    std::string crewRole()const{return resolveCrewRole(panelRole_=="cabin",panelRole_=="ground");}
+    bool transmitBox();bool transmitBoxToCopilot();void micPushToTalk(bool down);void talkPushToTalk(bool down,bool copilot);
 };
 }

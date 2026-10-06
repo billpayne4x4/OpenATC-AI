@@ -19,6 +19,9 @@ fn alloy() -> String {
 fn am_adam() -> String {
     "am_adam".to_owned()
 }
+fn am_echo() -> String {
+    "am_echo".to_owned()
+}
 fn brisk() -> Delivery {
     Delivery::Brisk
 }
@@ -142,7 +145,7 @@ pub struct Settings {
     #[serde(default = "alloy")]
     /// Fallback controller voice when the pool is empty.
     pub voice: String,
-    #[serde(default = "alloy")]
+    #[serde(default = "am_echo")]
     /// Copilot readback voice.
     pub copilot_voice: String,
     /// Comma-separated controller voices; new airspaces draw from it.
@@ -158,6 +161,16 @@ pub struct Settings {
     pub pilot_voice: String,
     /// Custom copilot persona for AI readbacks; empty uses the fixed template.
     pub copilot_personality: String,
+    /// Attendant-call dataref; empty means the panel never routes to cabin.
+    pub attendant_ref: String,
+    /// Ground-crew-call dataref; empty means the panel never routes to ground.
+    pub ground_ref: String,
+    #[serde(default = "yes")]
+    /// Show the copilot talk button beside Transmit.
+    pub copilot_button: bool,
+    #[serde(default = "yes")]
+    /// Developer mode: verbose errors and error copying.
+    pub dev_mode: bool,
     #[serde(default = "quiet")]
     /// Simulated frequency congestion level.
     pub congestion: Congestion,
@@ -279,12 +292,16 @@ impl Default for Settings {
             tts_model: tts(),
             // Voices.
             voice: alloy(),
-            copilot_voice: alloy(),
+            copilot_voice: am_echo(),
             voice_pool: String::new(),
             controller_delivery: Delivery::Brisk,
             copilot_delivery: Delivery::Brisk,
             pilot_voice: am_adam(),
             copilot_personality: String::new(),
+            attendant_ref: String::new(),
+            ground_ref: String::new(),
+            copilot_button: true,
+            dev_mode: true,
             // Speeds (multiplied by the master tts_speed, clamped 0.5..2).
             controller_speed_min: 0.9,
             controller_speed_max: 1.15,
@@ -469,6 +486,10 @@ mod tests {
         assert_eq!(settings.controller_delivery, Delivery::Brisk);
         assert_eq!(settings.congestion, Congestion::Quiet);
         assert_eq!(settings.units, Units::Imperial);
+        assert!(settings.attendant_ref.is_empty());
+        assert!(settings.ground_ref.is_empty());
+        assert!(settings.copilot_button);
+        assert!(settings.dev_mode);
         assert!(settings.realism().strict_readbacks);
         settings.validate().unwrap();
     }

@@ -33,4 +33,5 @@ url = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files
 size = 0
 sha256 = ""
 
-# espeak-ng phonemizer data: resolved during the TTS slice (source TBD).
+# espeak-ng phonemizer: source-built at compile time (no download, no system
+# package); nothing to pin here.

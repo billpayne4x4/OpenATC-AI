@@ -4,7 +4,7 @@ The 0.2 interface, online OFP import, local navdata reader, stage controller, ta
 
 Still needed for a complete ATC system:
 
-- Simulator runtime validation across X-Plane UI scales, multi-monitor and pop-out configurations; native SDK 4.4 graphics integration, clipboard and non-ASCII keyboard entry.
+- Simulator runtime validation across X-Plane UI scales, multi-monitor and pop-out configurations; native SDK 4.4 graphics integration, non-ASCII keyboard entry.
 - Traffic ownership, separation, runway occupancy and sequencing; full published-procedure execution and navigation/terrain validation.
 - Enroute airspace/sector data and automatic handoffs. Existing copilot tuning uses explicit structured assignments from the loaded airport.
 - Validated ramp/apron connectors, clearance for specific runway crossings, taxi-route amendments and hold-short geometry from richer scenery data.

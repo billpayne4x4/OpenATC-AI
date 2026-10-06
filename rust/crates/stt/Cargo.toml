@@ -1,0 +1,19 @@
+[package]
+name = "openatc-stt"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+hound = "3"
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+whisper-rs = "0.16"
+
+[features]
+cuda = ["whisper-rs/cuda"]
+
+[lints]
+workspace = true

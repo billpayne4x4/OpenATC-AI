@@ -101,6 +101,27 @@ std::string regionNotes(const Region& region,UnitSystem units) {
     std::string altitude=units==UnitSystem::Metric?"meters":"feet";
     return "Local procedure ("+region.name+"): "+(region.pressure=="altimeter"?"altimeter in inches of mercury":"QNH in hectopascals")+"; altitudes in "+altitude+"; transition altitude "+std::to_string(region.transitionFeet)+" feet.";
 }
+std::string disciplinePreset(const Realism& realism,const std::string& congestion) {
+    bool quiet=!realism.strictReadbacks&&!realism.requireFrequency&&!realism.requireCallsign&&!realism.strictPhraseology&&!realism.teachingCorrections&&!realism.practiceEmergencies&&congestion=="off";
+    if(quiet)return "relaxed";
+    bool standard=realism.strictReadbacks&&!realism.requireFrequency&&!realism.requireCallsign&&realism.strictPhraseology&&realism.teachingCorrections&&!realism.practiceEmergencies&&congestion=="quiet";
+    if(standard)return "standard";
+    bool real=realism.strictReadbacks&&realism.requireFrequency&&realism.requireCallsign&&realism.strictPhraseology&&!realism.teachingCorrections&&congestion=="busy"&&realism.practiceEmergencies;
+    if(real)return "real";
+    return "custom";
+}
+bool speechWorthSending(double seconds,double peakLevel,const std::string& text) {
+    if(seconds<0.5||peakLevel<0.02)return false;
+    size_t first=text.find_first_not_of(" \t\r\n\"'");
+    if(first==std::string::npos)return false;
+    size_t last=text.find_last_not_of(" \t\r\n\"'");
+    return text.substr(first,last-first+1)!="[BLANK_AUDIO]";
+}
+Json dropNulls(const Json& value) {
+    if(value.is_object()){Json clean=Json::object();for(auto entry=value.begin();entry!=value.end();++entry){if(entry.value().is_null())continue;clean[entry.key()]=dropNulls(entry.value());}return clean;}
+    if(value.is_array()){Json clean=Json::array();for(const auto& item:value)clean.push_back(dropNulls(item));return clean;}
+    return value;
+}
 namespace {
 std::string reportText(const Json& report,const char* key){if(!report.is_object()||!report.contains(key)||!report[key].is_string())return {};return report[key].get<std::string>();}
 }
@@ -134,6 +155,64 @@ void rememberAdvisory(State& state,const std::string& station,const std::string&
 }
 void clearAdvisory(State& state,const std::string& station,const std::string& hazard) {
     state.weatherAdvisories.erase(std::remove_if(state.weatherAdvisories.begin(),state.weatherAdvisories.end(),[&](const WeatherAdvisory& advisory){return advisory.station==station&&advisory.hazard==hazard;}),state.weatherAdvisories.end());
+}
+namespace {
+std::string stripQuotes(std::string value){if(value.size()>=2&&value.front()=='"'&&value.back()=='"')return value.substr(1,value.size()-2);return value;}
+std::vector<std::string> parseStringList(const std::string& text,const std::string& what){if(text.size()<2||text.front()!='['||text.back()!=']')throw std::runtime_error(what+" must be a list");std::vector<std::string> items;std::istringstream list(text.substr(1,text.size()-2));std::string item;while(std::getline(list,item,',')){size_t first=item.find_first_not_of(" \t\""),last=item.find_last_not_of(" \t\"");if(first==std::string::npos)continue;items.push_back(item.substr(first,last-first+1));}return items;}
+std::string lowercased(std::string text){for(char& c:text)c=static_cast<char>(std::tolower(static_cast<unsigned char>(c)));return text;}
+}
+AircraftProfile loadAircraftProfile(const std::string& path) {
+    std::ifstream input(path);
+    if(!input)throw std::runtime_error("Cannot open aircraft file: "+path);
+    std::map<std::string,std::map<std::string,std::string>> sections;std::string current,line;
+    while(std::getline(input,line)) {
+        size_t first=line.find_first_not_of(" \t\r\n");if(first==std::string::npos||line[first]=='#')continue;size_t last=line.find_last_not_of(" \t\r\n");line=line.substr(first,last-first+1);
+        if(line.front()=='['&&line.back()==']'){current=line.substr(1,line.size()-2);if(current!="aircraft"&&current!="aircraft.comms"&&current!="aircraft.electrical")throw std::runtime_error("Aircraft file holds only [aircraft] sections");continue;}
+        size_t equals=line.find('=');if(equals==std::string::npos||current.empty())throw std::runtime_error("Malformed aircraft line: "+line);
+        std::string key=line.substr(0,equals),value=line.substr(equals+1);
+        size_t keyFirst=key.find_first_not_of(" \t"),keyLast=key.find_last_not_of(" \t");
+        size_t valueFirst=value.find_first_not_of(" \t"),valueLast=value.find_last_not_of(" \t");
+        if(keyFirst==std::string::npos||valueFirst==std::string::npos)throw std::runtime_error("Malformed aircraft line: "+line);
+        key=key.substr(keyFirst,keyLast-keyFirst+1);value=value.substr(valueFirst,valueLast-valueFirst+1);
+        sections[current][key]=stripQuotes(value);
+    }
+    auto raw=[&](const std::string& sectionName,const std::string& key){auto sectionFound=sections.find(sectionName);if(sectionFound==sections.end())throw std::runtime_error("Aircraft file misses ["+sectionName+"]");auto found=sectionFound->second.find(key);if(found==sectionFound->second.end())throw std::runtime_error("Aircraft ["+sectionName+"] misses "+key);return found->second;};
+    auto rawList=[&](const std::string& sectionName,const std::string& key){std::string value=raw(sectionName,key);if(value.empty())return std::vector<std::string>{};return parseStringList(value,key);};
+    AircraftProfile profile;profile.source=path;
+    profile.name=raw("aircraft","name");
+    profile.matchAuthor=raw("aircraft","match_author");
+    profile.matchIcao=rawList("aircraft","match_icao");
+    profile.comms.attendantRefs=rawList("aircraft.comms","attendant_refs");
+    profile.comms.groundRefs=rawList("aircraft.comms","ground_refs");
+    profile.comms.emerAction=raw("aircraft.comms","emer_action");
+    if(profile.comms.emerAction!="ignore")throw std::runtime_error("Aircraft emer_action must be ignore");
+    profile.electrical.batVoltsRef=raw("aircraft.electrical","bat_volts_ref");
+    profile.electrical.minVolts=std::stod(raw("aircraft.electrical","min_volts"));
+    if(profile.electrical.minVolts<0)throw std::runtime_error("Aircraft min_volts must not be negative");
+    profile.electrical.batteryRefs=rawList("aircraft.electrical","battery_refs");
+    profile.electrical.gpuRefs=rawList("aircraft.electrical","gpu_refs");
+    profile.electrical.apuRefs=rawList("aircraft.electrical","apu_refs");
+    profile.electrical.rmpRefs=rawList("aircraft.electrical","rmp_refs");
+    profile.electrical.avionicsRefs=rawList("aircraft.electrical","avionics_refs");
+    return profile;
+}
+bool readAcfIdentity(const std::string& acfPath,std::string& author,std::string& icao){std::ifstream input(acfPath);if(!input)return false;std::string line;bool foundAuthor=false,foundIcao=false;while(std::getline(input,line)){if(line.compare(0,14,"P acf/_author ")==0){author=line.substr(14);foundAuthor=true;}else if(line.compare(0,12,"P acf/_ICAO ")==0){icao=line.substr(12);foundIcao=true;}if(foundAuthor&&foundIcao)break;}return foundAuthor||foundIcao;}
+bool aircraftMatches(const AircraftProfile& profile,const std::string& author,const std::string& icao) {
+    if(lowercased(author).find(lowercased(profile.matchAuthor))==std::string::npos)return false;
+    std::string upper=icao;for(char& c:upper)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    for(const auto& candidate:profile.matchIcao){std::string want=candidate;for(char& c:want)c=static_cast<char>(std::toupper(static_cast<unsigned char>(c)));if(want==upper)return true;}
+    return false;
+}
+bool profileHasPowerSources(const AircraftProfile& profile) {
+    const auto& electrical=profile.electrical;
+    return !electrical.batVoltsRef.empty()||!electrical.batteryRefs.empty()||!electrical.gpuRefs.empty()||!electrical.apuRefs.empty()||!electrical.rmpRefs.empty()||!electrical.avionicsRefs.empty();
+}
+PowerState evaluatePower(const PowerInput& input,double minVolts) {
+    auto anyOn=[](const std::vector<int>& values){for(int value:values)if(value!=0)return true;return false;};
+    PowerState power;
+    power.bus=(input.hasVolts&&input.batVolts>=minVolts)||anyOn(input.battery)||anyOn(input.gpu)||anyOn(input.apu);
+    power.radio=anyOn(input.rmp)||anyOn(input.avionics);
+    return power;
 }
 std::string reportWord(const Json& report,const char* key) {if(!report.is_object()||!report.contains(key)||!report[key].is_string())return {};return report[key].get<std::string>();}
 double reportNumber(const Json& report,const char* key) {if(!report.is_object()||!report.contains(key)||report[key].is_null())return 0;if(report[key].is_number())return report[key].get<double>();return 0;}
@@ -220,6 +299,16 @@ Request interpretText(const std::string& text) {
     }
     if(request.intent=="conversation")for(const auto& definition:requestDefinitions()){std::string title=definition.title;std::transform(title.begin(),title.end(),title.begin(),[](unsigned char value){return std::tolower(value);});if(title==normalized){request.intent=definition.intent;break;}}
     return request;
+}
+std::string resolveCrewRole(bool attendantActive,bool groundActive) {
+    if(groundActive)return "ground";
+    if(attendantActive)return "cabin";
+    return "atc";
+}
+bool canTransmit(const std::string& role,bool radioPower,bool busPower) {
+    if(role=="copilot")return true;
+    if(role=="cabin"||role=="ground")return busPower;
+    return radioPower;
 }
 Result applyRequest(State& state,const Request& request,const Airport* airport,const SpeechTag& atcTag,const SpeechTag& pilotTag,const Realism& realism,UnitSystem units,const Region& region) {
     addTransmission(state,state.plan.callsign,request.text.empty()?request.intent:request.text,pilotTag);
@@ -318,8 +407,9 @@ Result applyRequest(State& state,const Request& request,const Airport* airport,c
         if(!realism.practiceEmergencies)return reply(false,"Emergency practice is off. Enable practice emergencies in Realism settings.");
         return reply(true,"Roger mayday. Squawk 7700, state intentions and souls on board. Priority handling.");
     }
-    if(!realism.strictPhraseology)return reply(false,"This request is in the catalogue but its operational procedure is not implemented yet.");
-    return reply(false,std::string("Say again with a standard request.")+(realism.teachingCorrections?" For example: 'request taxi' or 'request altitude FL320'.":""));
+    if(!realism.strictPhraseology&&!realism.teachingCorrections)return reply(false,"Didn't catch that — try 'request taxi', 'request takeoff', or pick a request button below.");
+    if(realism.teachingCorrections)return reply(false,std::string("Say again with a standard request. For example: 'request taxi' or 'request altitude FL320'."));
+    return reply(false,"Say again with a standard request.");
 }
 double descentDistanceNm(double altitudeFeet,double targetFeet,double angleDegrees) {
     if(!std::isfinite(altitudeFeet)||!std::isfinite(targetFeet)||!std::isfinite(angleDegrees)||angleDegrees<=0||angleDegrees>=15) throw std::invalid_argument("Invalid descent profile input");

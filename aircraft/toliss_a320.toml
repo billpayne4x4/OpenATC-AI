@@ -1,0 +1,22 @@
+# ToLiss A320neo (A20N) first-class profile. Field refs are call LIGHTS, not buttons.
+# Settings attendantRef/groundRef beat these lists; an openatc.toml beside the
+# aircraft .acf beats this file. Missing refs mean powered — demo never breaks.
+
+[aircraft]
+name = "ToLiss A320neo"
+match_author = "Gliding Kiwi"
+match_icao = ["A20N", "A21N", "A19N", "A320", "A321"]
+
+[aircraft.comms]
+attendant_refs = ["AirbusFBW/purser/fwd", "AirbusFBW/purser/aft"]
+ground_refs = ["AirbusFBW/purser/mech"]
+emer_action = "ignore"
+
+[aircraft.electrical]
+bat_volts_ref = "AirbusFBW/BatVolts"
+min_volts = 25.5
+battery_refs = ["sim/cockpit/electrical/battery_on"]
+gpu_refs = ["sim/cockpit2/electrical/GPU_generator_on"]
+apu_refs = ["sim/cockpit/electrical/generator_apu_on"]
+rmp_refs = ["AirbusFBW/RMP1Available"]
+avionics_refs = ["sim/cockpit/electrical/avionics_on"]

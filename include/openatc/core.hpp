@@ -45,6 +45,18 @@ std::string altitudeText(double feet,UnitSystem units,bool speech);
 std::string speedText(double knots,UnitSystem units,bool speech);
 std::string distanceText(double nm,UnitSystem units,bool speech);
 std::string climbRateText(double fpm,UnitSystem units,bool speech);
+// Per-aircraft profile (aircraft/*.toml). Settings datarefs beat profile lists;
+// an openatc.toml beside the .acf beats the bundled file.
+struct AircraftComms { std::vector<std::string> attendantRefs, groundRefs; std::string emerAction="ignore"; };
+struct AircraftElectrical { std::string batVoltsRef; double minVolts=0; std::vector<std::string> batteryRefs, gpuRefs, apuRefs, rmpRefs, avionicsRefs; };
+struct AircraftProfile { std::string name, matchAuthor, source; std::vector<std::string> matchIcao; AircraftComms comms; AircraftElectrical electrical; };
+AircraftProfile loadAircraftProfile(const std::string& path);
+bool aircraftMatches(const AircraftProfile& profile,const std::string& author,const std::string& icao);
+bool readAcfIdentity(const std::string& acfPath,std::string& author,std::string& icao);
+bool profileHasPowerSources(const AircraftProfile& profile);
+struct PowerInput { double batVolts=0; bool hasVolts=false; std::vector<int> battery, gpu, apu, rmp, avionics; };
+struct PowerState { bool radio=false, bus=false; };
+PowerState evaluatePower(const PowerInput& input,double minVolts);
 // Voice/appearance tag stamped onto transmissions at creation time.
 struct SpeechTag { std::string position, voice, delivery="standard"; float speed=1; bool urgent=false; };
 // Remembered controller for one airspace ("ICAO:Service").
@@ -88,6 +100,10 @@ std::string phaseName(Phase phase);
 bool requestAvailable(const State& state,const std::string& intent);
 void updateFlightPhase(State& state,const Telemetry& telemetry);
 Request interpretText(const std::string& text);
+std::string resolveCrewRole(bool attendantActive,bool groundActive);
+// True when a transmission to `role` may go out under the given power state.
+// Copilot speech needs no aircraft power; ATC needs radio; cabin/ground bus.
+bool canTransmit(const std::string& role,bool radioPower,bool busPower);
 Result applyRequest(State& state,const Request& request,const Airport* airport=nullptr,const SpeechTag& atcTag={},const SpeechTag& pilotTag={},const Realism& realism={},UnitSystem units=UnitSystem::Imperial,const Region& region=Region{});
 void addTransmission(State& state,const std::string& speaker,const std::string& text,const SpeechTag& tag={});
 std::string controllerService(const State& state);
@@ -112,6 +128,14 @@ Region regionFor(const std::map<std::string,Region>& table,const std::string& ic
 Region builtinRegion(const std::string& icao);
 std::string pressureText(const Weather& weather,const Region& region,bool speech);
 std::string regionNotes(const Region& region,UnitSystem units);
+// Discipline preset name from the full toggle state; anything else is custom.
+std::string disciplinePreset(const Realism& realism,const std::string& congestion);
+// True when a PTT recording is worth transmitting: held long enough, real voice
+// energy (not hiss/clicks), and words heard (not whisper's blank marker).
+bool speechWorthSending(double seconds,double peakLevel,const std::string& text);
+// Deep-copy without null-valued object keys, so explicit nulls from AI JSON
+// behave like missing keys (struct defaults apply) instead of throwing.
+Json dropNulls(const Json& value);
 struct WeatherHazard { std::string station, kind, summary; };
 std::vector<WeatherHazard> evaluateWeather(const Json& reports,const std::string& departure,const std::string& destination,const std::string& alternate,Phase phase);
 bool advisoryKnown(const State& state,const std::string& station,const std::string& hazard);

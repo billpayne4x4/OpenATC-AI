@@ -1,8 +1,8 @@
-//! `openatc-ai`: one server, three embedded engines (LLM today, STT/TTS next).
+//! `openatc-ai`: one server, three embedded engines (LLM + STT + TTS live).
 //!
 //! OpenAI-compatible surface the engine already speaks:
-//! `POST /v1/chat/completions`, `GET /v1/voices`, `GET /health`.
-//! Audio endpoints answer 501 until their slices land.
+//! `POST /v1/chat/completions`, `GET /v1/voices`, `GET /health`,
+//! `POST /v1/audio/transcriptions`, `POST /v1/audio/speech`.
 //!
 //! Threading: the llama context is `!Send`, so all inference lives on one
 //! dedicated thread. HTTP handlers post jobs to it and await oneshot replies;
@@ -12,7 +12,7 @@ mod voices;
 
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Multipart, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -23,6 +23,7 @@ use llama_cpp_2::{
 };
 use openatc_ai_core::{LockedModel, Lockfile, Manifest, ModelEntry, ensure, resolve, sha256_hex};
 use openatc_platform::{detect_gpu, models_dir};
+use openatc_tts::{TtsEngine, fx::Fx, fx::apply_fx, wav_bytes};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -41,6 +42,12 @@ struct Args {
     /// KV context size for the LLM.
     #[arg(long, default_value_t = 4096)]
     ctx_size: u32,
+    /// STT compute: auto (CUDA when built for it, else CPU), cpu, or cuda.
+    #[arg(long, default_value = "auto")]
+    stt_backend: String,
+    /// `openatc-stt` binary override (default: beside this binary, else PATH).
+    #[arg(long)]
+    stt_bin: Option<PathBuf>,
 }
 
 /// One inference request crossing into the llama thread.
@@ -64,12 +71,163 @@ struct InferenceHandle {
     jobs: mpsc::Sender<InferenceJob>,
 }
 
+/// Handle to the STT sidecar (separate process: `whisper.cpp` and
+/// `llama.cpp` each vendor `ggml` and cannot link into one binary).
+/// The child dies with the server (`kill_on_drop`).
+struct SttHandle {
+    base_url: String,
+    client: reqwest::Client,
+    #[allow(dead_code)]
+    child: tokio::process::Child,
+}
+
+/// Locate the `openatc-stt` sidecar: explicit flag, beside this binary, else PATH.
+fn sidecar_path(explicit: Option<&std::path::Path>) -> PathBuf {
+    if let Some(path) = explicit {
+        return path.to_owned();
+    }
+    if let Ok(us) = std::env::current_exe()
+        && let Some(dir) = us.parent()
+        && dir.join("openatc-stt").exists()
+    {
+        return dir.join("openatc-stt");
+    }
+    PathBuf::from("openatc-stt")
+}
+
+/// Start the sidecar and wait for `/health`, returning its base URL and backend.
+/// Fails fast when the model cannot load, mirroring the inference loop.
+async fn start_sidecar(
+    bin: &std::path::Path,
+    model: &std::path::Path,
+    backend: &str,
+) -> Result<(tokio::process::Child, String, String), String> {
+    let port = {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .map_err(|error| format!("cannot pick a sidecar port: {error}"))?;
+        listener
+            .local_addr()
+            .map_err(|error| format!("cannot read sidecar port: {error}"))?
+            .port()
+    };
+    let mut child = tokio::process::Command::new(bin)
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--model")
+        .arg(model)
+        .arg("--backend")
+        .arg(backend)
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|error| format!("cannot start {}: {error}", bin.display()))?;
+    let base_url = format!("http://127.0.0.1:{port}");
+    let client = reqwest::Client::new();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        if let Ok(exit) = child.try_wait()
+            && exit.is_some()
+        {
+            return Err("STT sidecar exited during load".to_owned());
+        }
+        if let Ok(response) = client
+            .get(format!("{base_url}/health"))
+            .timeout(std::time::Duration::from_secs(2))
+            .send()
+            .await
+        {
+            if response.status().is_success() {
+                let body: serde_json::Value = response.json().await.unwrap_or_default();
+                let backend = body
+                    .get("backend")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("cpu")
+                    .to_owned();
+                return Ok((child, base_url, backend));
+            }
+        } else if std::time::Instant::now() > deadline {
+            return Err("STT sidecar never became healthy".to_owned());
+        } else {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        if std::time::Instant::now() > deadline {
+            return Err("STT sidecar never became healthy".to_owned());
+        }
+    }
+}
+
+/// Handle to the TTS worker thread (the session lives there, mirroring the
+/// gateway's single-inference lock).
+struct TtsHandle {
+    jobs: mpsc::Sender<TtsJob>,
+}
+
+/// One synthesis request crossing into the TTS thread.
+struct TtsJob {
+    text: String,
+    voice: String,
+    speed: f32,
+    sentence_pause: f32,
+    clause_pause: f32,
+    fx: Fx,
+    reply: oneshot::Sender<Result<Vec<u8>, String>>,
+}
+
 /// Shared server state (all fields are Send).
 struct AppState {
     inference: InferenceHandle,
+    stt: SttHandle,
+    tts: TtsHandle,
     model_name: String,
     model_status: BTreeMap<String, String>,
     backend: String,
+    stt_backend: String,
+}
+
+/// Run synthesis on the TTS thread. The engine loads here so a bad model
+/// fails fast at startup, mirroring the inference loop.
+fn tts_loop(
+    model_path: &std::path::Path,
+    voices_path: &std::path::Path,
+    jobs: mpsc::Receiver<TtsJob>,
+) {
+    let mut engine = match TtsEngine::load(model_path, voices_path) {
+        Ok(engine) => engine,
+        Err(error) => {
+            eprintln!("openatc-ai: TTS load failed: {error}");
+            return;
+        }
+    };
+    eprintln!(
+        "openatc-ai: TTS ready ({} voices)",
+        engine.voice_names().len()
+    );
+    for job in jobs {
+        let result = engine
+            .synthesize(
+                &job.text,
+                &job.voice,
+                job.speed,
+                job.sentence_pause,
+                job.clause_pause,
+            )
+            .map(|samples| {
+                let seed = format!(
+                    "{}|{}|{}|{}|{}|{}/{}/{}/{}",
+                    job.text,
+                    job.voice,
+                    job.speed,
+                    job.sentence_pause,
+                    job.clause_pause,
+                    job.fx.hiss,
+                    job.fx.crackle,
+                    job.fx.static_,
+                    job.fx.bandpass
+                );
+                wav_bytes(&apply_fx(&samples, openatc_tts::SAMPLE_RATE, job.fx, &seed))
+            });
+        let _ = job.reply.send(result);
+    }
 }
 
 /// One `OpenAI` chat message.
@@ -208,6 +366,12 @@ fn inference_loop(
     Ok(())
 }
 
+/// One transcription result, gateway-compatible shape.
+#[derive(Serialize)]
+struct TranscriptionResponse {
+    text: String,
+}
+
 /// `OpenAI` chat completion response shape.
 #[derive(Serialize)]
 struct ChatResponse {
@@ -336,29 +500,163 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ok",
         "backend": state.backend,
+        "stt": state.stt_backend,
         "models": state.model_status,
     }))
 }
 
-/// Kokoro v1 voice roster (replaced by runtime query in the TTS slice).
+/// Kokoro v1 voice roster, matching the voices table on disk.
 async fn list_voices() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "voices": voices::KOKORO_V1 }))
 }
 
-/// Placeholder until the STT slice lands.
-async fn transcriptions() -> (StatusCode, Json<ErrorBody>) {
-    api_error(
-        StatusCode::NOT_IMPLEMENTED,
-        "transcriptions arrive with the STT slice; use the gateway meanwhile".to_owned(),
-    )
+/// Speech-to-text: multipart `file` (16 kHz mono WAV) plus ignored `model`.
+/// Answers `{"text"}` exactly like the gateway it replaces.
+async fn transcriptions(
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> Result<Json<TranscriptionResponse>, (StatusCode, Json<ErrorBody>)> {
+    let mut wav: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))?
+    {
+        if field.name() == Some("file") {
+            wav = Some(
+                field
+                    .bytes()
+                    .await
+                    .map_err(|error| api_error(StatusCode::BAD_REQUEST, error.to_string()))?
+                    .to_vec(),
+            );
+        }
+    }
+    let wav = wav.ok_or_else(|| {
+        api_error(
+            StatusCode::BAD_REQUEST,
+            "multipart needs a file part".to_owned(),
+        )
+    })?;
+    let response = state
+        .stt
+        .client
+        .post(format!("{}/transcribe", state.stt.base_url))
+        .body(wav)
+        .send()
+        .await
+        .map_err(|error| {
+            api_error(
+                StatusCode::BAD_GATEWAY,
+                format!("sidecar unreachable: {error}"),
+            )
+        })?;
+    if !response.status().is_success() {
+        return Err(api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "transcription failed".to_owned(),
+        ));
+    }
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|error| api_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?;
+    let text = body
+        .get("text")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    Ok(Json(TranscriptionResponse { text }))
 }
 
-/// Placeholder until the TTS slice lands.
-async fn speech() -> (StatusCode, Json<ErrorBody>) {
-    api_error(
-        StatusCode::NOT_IMPLEMENTED,
-        "speech arrives with the TTS slice; use the gateway meanwhile".to_owned(),
-    )
+/// Text-to-speech: gateway-compatible JSON in, 16-bit PCM WAV bytes out.
+/// Validation mirrors the gateway it replaces.
+async fn speech(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl axum::response::IntoResponse, (StatusCode, Json<ErrorBody>)> {
+    let text = body
+        .get("input")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
+    if text.is_empty() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "missing input text".to_owned(),
+        ));
+    }
+    if text.len() > openatc_tts::MAX_TEXT {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "speech text too long".to_owned(),
+        ));
+    }
+    let speed = body
+        .get("speed")
+        .and_then(serde_json::Value::as_f64)
+        .unwrap_or(1.0)
+        .clamp(0.5, 2.0) as f32;
+    let pause = |key: &str, default: f64| {
+        body.get(key)
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(default)
+            .clamp(0.0, 1.0) as f32
+    };
+    let sentence_pause = pause("sentence_pause", 0.25);
+    let clause_pause = pause("clause_pause", 0.1);
+    let fx_body = body.get("effects");
+    let level = |key: &str| {
+        fx_body
+            .and_then(|fx| fx.get(key))
+            .and_then(serde_json::Value::as_f64)
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0) as f32
+    };
+    let fx = Fx {
+        hiss: level("hiss"),
+        crackle: level("crackle"),
+        static_: level("static"),
+        bandpass: fx_body
+            .and_then(|fx| fx.get("bandpass"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false),
+    };
+    let voice = body
+        .get("voice")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_owned();
+    let (reply_tx, reply_rx) = oneshot::channel();
+    state
+        .tts
+        .jobs
+        .send(TtsJob {
+            text,
+            voice,
+            speed,
+            sentence_pause,
+            clause_pause,
+            fx,
+            reply: reply_tx,
+        })
+        .map_err(|_| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "synthesizer gone".to_owned(),
+            )
+        })?;
+    let wav = reply_rx
+        .await
+        .map_err(|_| {
+            api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "synthesis reply lost".to_owned(),
+            )
+        })?
+        .map_err(|message| api_error(StatusCode::INTERNAL_SERVER_ERROR, message))?;
+    Ok(([(axum::http::header::CONTENT_TYPE, "audio/wav")], wav))
 }
 
 /// Ensure every manifest entry, recording lockfile data for fresh fetches.
@@ -433,15 +731,70 @@ async fn main() -> Result<(), String> {
     if !llm_path.exists() {
         return Err(format!("LLM file missing: {}", llm_path.display()));
     }
+    let stt_backend = match args.stt_backend.as_str() {
+        "auto" | "cpu" | "cuda" => args.stt_backend.clone(),
+        other => {
+            return Err(format!(
+                "unknown --stt-backend {other:?}; want auto, cpu or cuda"
+            ));
+        }
+    };
+    let stt_path = resolve(
+        &root,
+        manifest
+            .model
+            .iter()
+            .find(|entry| entry.path.starts_with("stt/"))
+            .ok_or("manifest has no stt entry")?,
+    );
+    if !stt_path.exists() {
+        return Err(format!("STT file missing: {}", stt_path.display()));
+    }
     let (job_tx, job_rx) = mpsc::channel();
     let loader = std::thread::spawn(move || inference_loop(llm_path, args.ctx_size, job_rx));
-    // Fail fast when the model itself cannot load (bad file, OOM).
+    let sidecar_bin = sidecar_path(args.stt_bin.as_deref());
+    let (stt_child, stt_base_url, stt_backend_name) =
+        start_sidecar(&sidecar_bin, &stt_path, &stt_backend).await?;
+    let tts_path = resolve(
+        &root,
+        manifest
+            .model
+            .iter()
+            .find(|entry| entry.name == "kokoro-v1.0")
+            .ok_or("manifest has no kokoro entry")?,
+    );
+    let voices_path = resolve(
+        &root,
+        manifest
+            .model
+            .iter()
+            .find(|entry| entry.name == "kokoro-voices-v1.0")
+            .ok_or("manifest has no kokoro voices entry")?,
+    );
+    if !tts_path.exists() {
+        return Err(format!("TTS file missing: {}", tts_path.display()));
+    }
+    if !voices_path.exists() {
+        return Err(format!("TTS voices missing: {}", voices_path.display()));
+    }
+    let (tts_tx, tts_rx) = mpsc::channel();
+    let tts_loader = std::thread::spawn(move || tts_loop(&tts_path, &voices_path, tts_rx));
+    // Fail fast when a model itself cannot load (bad file, OOM).
     std::thread::sleep(std::time::Duration::from_secs(2));
     if loader.is_finished() {
         return Err("inference thread exited during load".to_owned());
     }
+    if tts_loader.is_finished() {
+        return Err("TTS thread exited during load".to_owned());
+    }
     let state = Arc::new(AppState {
         inference: InferenceHandle { jobs: job_tx },
+        tts: TtsHandle { jobs: tts_tx },
+        stt: SttHandle {
+            base_url: stt_base_url,
+            client: reqwest::Client::new(),
+            child: stt_child,
+        },
         model_name: "qwen2.5:7b-instruct".to_owned(),
         model_status: status,
         backend: match detect_gpu() {
@@ -450,6 +803,7 @@ async fn main() -> Result<(), String> {
             openatc_platform::GpuBackend::Cpu => "cpu",
         }
         .to_owned(),
+        stt_backend: stt_backend_name,
     });
     let app = Router::new()
         .route("/health", get(health))
@@ -466,6 +820,7 @@ async fn main() -> Result<(), String> {
         .await
         .map_err(|error| error.to_string())?;
     let _ = loader.join();
+    let _ = tts_loader.join();
     Ok(())
 }
 

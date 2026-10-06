@@ -1,9 +1,12 @@
 #include "openatc/branding.hpp"
 #include "openatc/ui.hpp"
+#include "openatc/core.hpp"
+#include <fstream>
 #include <XPLMPlugin.h>
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
 #include <XPLMProcessing.h>
+#include <XPLMPlanes.h>
 #include <XPLMDataAccess.h>
 #include <XPLMUtilities.h>
 #include <XPLMMenus.h>
@@ -37,9 +40,23 @@
 #endif
 
 namespace {
-XPLMWindowID windowId=nullptr;XPLMMenuID menuId=nullptr;int menuIndex=-1;XPLMCommandRef toggleCommand=nullptr;
+XPLMWindowID windowId=nullptr;XPLMMenuID menuId=nullptr;int menuIndex=-1;XPLMCommandRef toggleCommand=nullptr,talkCommand=nullptr,copilotCommand=nullptr,micCommand=nullptr,errorCommand=nullptr;std::string loggedNotice;
+void watchErrors();
 ImGuiContext* context=nullptr;std::unique_ptr<openatc::EngineClient> engine;std::unique_ptr<openatc::Interface> interface;GLuint fontTexture=0;
 XPLMDataRef latitudeRef,longitudeRef,altitudeRef,speedRef,headingRef,groundRef,pauseRef,verticalSpeedRef,aglRef,com1Ref;
+openatc::AircraftProfile aircraftProfile;bool profileActive=false;std::string activeAcfPath,activeProfilePath;
+std::vector<XPLMDataRef> attendantCallRefs,groundCallRefs;std::string resolvedAttendantKey,resolvedGroundKey;
+XPLMDataRef batVoltsRef=nullptr;std::vector<XPLMDataRef> batteryRefs,gpuRefs,apuRefs,rmpRefs,avionicsRefs;std::string resolvedPowerKey;int resolvedPowerCount=0;
+std::string findAircraftProfile(const std::string& acfPath,const std::string& author,const std::string& icao){std::filesystem::path folder=std::filesystem::path(acfPath).parent_path();std::error_code code;std::filesystem::path beside=folder/"openatc.toml";if(std::filesystem::is_regular_file(beside,code)){try{if(openatc::aircraftMatches(openatc::loadAircraftProfile(beside.string()),author,icao))return beside.string();}catch(...){}}
+    std::vector<std::string> bundles;if(const char* override=std::getenv("OPENATC_AIRCRAFT_DIR"))bundles.push_back(override);
+    {char pluginPath[4096]{};XPLMGetPluginInfo(XPLMGetMyID(),nullptr,pluginPath,nullptr,nullptr);bundles.push_back((std::filesystem::path(pluginPath).parent_path().parent_path()/"aircraft").string());}
+    for(const auto& bundle:bundles){std::error_code iterate;for(auto entry=std::filesystem::directory_iterator(bundle,iterate);!iterate&&entry!=std::filesystem::directory_iterator{};entry.increment(iterate)){if(entry->is_directory())continue;if(entry->path().extension()!=".toml")continue;try{if(openatc::aircraftMatches(openatc::loadAircraftProfile(entry->path().string()),author,icao))return entry->path().string();}catch(...){}}}
+    return {};
+}
+XPLMDataRef findRef(const std::string& name){return name.empty()?nullptr:XPLMFindDataRef(name.c_str());}
+std::vector<XPLMDataRef> findRefs(const std::vector<std::string>& names){std::vector<XPLMDataRef> refs;for(const auto& name:names)refs.push_back(findRef(name));return refs;}
+void resolvePowerRefs(){batVoltsRef=findRef(aircraftProfile.electrical.batVoltsRef);batteryRefs=findRefs(aircraftProfile.electrical.batteryRefs);gpuRefs=findRefs(aircraftProfile.electrical.gpuRefs);apuRefs=findRefs(aircraftProfile.electrical.apuRefs);rmpRefs=findRefs(aircraftProfile.electrical.rmpRefs);avionicsRefs=findRefs(aircraftProfile.electrical.avionicsRefs);resolvedPowerCount=(batVoltsRef?1:0);auto count=[](const std::vector<XPLMDataRef>& refs){int found=0;for(auto ref:refs)if(ref)++found;return found;};resolvedPowerCount+=count(batteryRefs)+count(gpuRefs)+count(apuRefs)+count(rmpRefs)+count(avionicsRefs);}
+void updateAircraftProfile(){char acf[512]{},path[1024]{};XPLMGetNthAircraftModel(0,acf,path);std::string acfPath=path;if(acfPath==activeAcfPath)return;activeAcfPath=acfPath;profileActive=false;attendantCallRefs.clear();groundCallRefs.clear();resolvedAttendantKey.clear();resolvedGroundKey.clear();batVoltsRef=nullptr;batteryRefs.clear();gpuRefs.clear();apuRefs.clear();rmpRefs.clear();avionicsRefs.clear();resolvedPowerKey.clear();resolvedPowerCount=0;if(acfPath.empty())return;std::string author,icao;if(!openatc::readAcfIdentity(acfPath,author,icao)){XPLMDebugString("OpenATC AI: aircraft identity unreadable, profile matching off\n");return;}std::string profilePath=findAircraftProfile(acfPath,author,icao);if(profilePath.empty())return;try{aircraftProfile=openatc::loadAircraftProfile(profilePath);}catch(...){return;}activeProfilePath=profilePath;profileActive=true;resolvePowerRefs();XPLMDebugString(("OpenATC AI: aircraft profile "+aircraftProfile.name+" active\n").c_str());}
 unsigned lastFrequencySequence=0,lastStateSequence=0;
 #if LIN
 void* graphicsLibrary=nullptr;
@@ -47,7 +64,7 @@ bool graphicsReady=false;
 GLADapiproc resolveGraphicsFunction(const char* name){return reinterpret_cast<GLADapiproc>(dlsym(graphicsLibrary,name));}
 #endif
 bool enabled=false;auto previousFrame=std::chrono::steady_clock::now();
-std::string engineBinaryPath;bool disconnectedTiming=false;std::chrono::steady_clock::time_point disconnectedSince{},lastSpawnAttempt{};int spawnFailures=0;bool binaryMissingLogged=false;
+std::string engineBinaryPath;bool disconnectedTiming=false;std::chrono::steady_clock::time_point disconnectedSince{},lastSpawnAttempt{};int spawnFailures=0,fruitlessSpawns=0;bool binaryMissingLogged=false;
 std::string findEngineBinary(){
     if(!engineBinaryPath.empty())return engineBinaryPath;
     char pluginPath[4096]{};XPLMGetPluginInfo(XPLMGetMyID(),nullptr,pluginPath,nullptr,nullptr);
@@ -100,7 +117,7 @@ bool spawnEngine(const char* binary,const char* log){
 }
 void ensureEngineRunning(){
     if(!engine)return;
-    if(engine->connected()){disconnectedTiming=false;spawnFailures=0;return;}
+    if(engine->connected()){disconnectedTiming=false;spawnFailures=0;fruitlessSpawns=0;if(interface)interface->setEngineFault("");return;}
     auto now=std::chrono::steady_clock::now();
     if(!disconnectedTiming){disconnectedTiming=true;disconnectedSince=now;return;}
     if(now-disconnectedSince<std::chrono::seconds(5))return;
@@ -112,14 +129,11 @@ void ensureEngineRunning(){
     binaryMissingLogged=false;
     std::string log=engineLogPath();
     if(!log.empty()){std::error_code directories;std::filesystem::create_directories(std::filesystem::path(log).parent_path(),directories);}
-    if(spawnEngine(binary.c_str(),log.c_str()))spawnFailures=0;
+    if(spawnEngine(binary.c_str(),log.c_str())){spawnFailures=0;if(++fruitlessSpawns>=3&&interface)interface->setEngineFault("Engine won't start - see engine.log");}
     else{spawnFailures++;XPLMDebugString("OpenATC AI: engine launch failed\n");}
 }
-#if LIN
-void setClipboardText(void*,const char* text){FILE* pipe=popen("wl-copy 2>/dev/null","w");if(!pipe)return;fwrite(text,1,std::strlen(text),pipe);pclose(pipe);}
-const char* getClipboardText(void*){static std::string cached;cached.clear();FILE* pipe=popen("wl-paste 2>/dev/null","r");if(pipe){char chunk[4096];size_t count;while((count=fread(chunk,1,sizeof(chunk),pipe))>0)cached.append(chunk,count);pclose(pipe);if(!cached.empty()&&cached.back()=='\n')cached.pop_back();}return cached.c_str();}
-#endif
 struct ContextScope { ImGuiContext* previous=ImGui::GetCurrentContext(); ContextScope(){ImGui::SetCurrentContext(context);} ~ContextScope(){ImGui::SetCurrentContext(previous);} };
+template<typename Work> int guarded(const char* where,Work work){try{work();}catch(const std::exception& error){XPLMDebugString(("OpenATC AI fault at "+std::string(where)+": "+error.what()+"\n").c_str());}catch(...){XPLMDebugString(("OpenATC AI fault at "+std::string(where)+"\n").c_str());}return 1;}
 void mousePosition(int horizontal,int vertical){ContextScope contextScope;int left,top,right,bottom;XPLMGetWindowGeometry(windowId,&left,&top,&right,&bottom);ImGui::GetIO().AddMousePosEvent(static_cast<float>(horizontal-left),static_cast<float>(top-vertical));}
 ImVec2 screenPoint(float horizontal,float vertical,const GLfloat* model,const GLfloat* projection,const GLint* viewport) {
     float input[]={horizontal,vertical,0,1},eye[4]{},clip[4]{};
@@ -136,6 +150,7 @@ void drawWindow(XPLMWindowID,void*) {
         graphicsReady=true;
     }
 #endif
+    guarded("drawWindow",[](){
     ContextScope contextScope;int left,top,right,bottom;XPLMGetWindowGeometry(windowId,&left,&top,&right,&bottom);
     auto& input=ImGui::GetIO();input.DisplaySize={static_cast<float>(right-left),static_cast<float>(top-bottom)};auto now=std::chrono::steady_clock::now();input.DeltaTime=std::clamp(std::chrono::duration<float>(now-previousFrame).count(),0.001f,0.1f);previousFrame=now;
     int mouseHorizontal,mouseVertical;XPLMGetMouseLocationGlobal(&mouseHorizontal,&mouseVertical);mousePosition(mouseHorizontal,mouseVertical);
@@ -148,6 +163,7 @@ void drawWindow(XPLMWindowID,void*) {
         auto lower=screenPoint(left+command.ClipRect.x,top-command.ClipRect.w,model,projection,viewport);auto upper=screenPoint(left+command.ClipRect.z,top-command.ClipRect.y,model,projection,viewport);glScissor(static_cast<int>(lower.x),static_cast<int>(lower.y),std::max(0,static_cast<int>(upper.x-lower.x)),std::max(0,static_cast<int>(upper.y-lower.y)));glBindTexture(GL_TEXTURE_2D,static_cast<GLuint>(command.GetTexID()));
         glBegin(GL_TRIANGLES);for(unsigned index=0;index<command.ElemCount;++index){auto& vertex=list->VtxBuffer[list->IdxBuffer[command.IdxOffset+index]+command.VtxOffset];auto color=vertex.col;glColor4ub(color&255,(color>>8)&255,(color>>16)&255,(color>>24)&255);glTexCoord2f(vertex.uv.x,vertex.uv.y);glVertex2f(left+vertex.pos.x,top-vertex.pos.y);}glEnd();}}
     glPopAttrib();
+    });
 }
 int mouseClick(XPLMWindowID,int horizontal,int vertical,XPLMMouseStatus status,void*){ContextScope contextScope;mousePosition(horizontal,vertical);ImGui::GetIO().AddMouseButtonEvent(0,status!=xplm_MouseUp);if(status==xplm_MouseDown)XPLMTakeKeyboardFocus(windowId);return 1;}
 int rightClick(XPLMWindowID,int horizontal,int vertical,XPLMMouseStatus status,void*){ContextScope contextScope;mousePosition(horizontal,vertical);ImGui::GetIO().AddMouseButtonEvent(1,status!=xplm_MouseUp);return 1;}
@@ -157,29 +173,54 @@ void keyboard(XPLMWindowID,char character,XPLMKeyFlags flags,char virtualKey,voi
     ImGuiKey key=ImGuiKey_None;switch(static_cast<unsigned char>(virtualKey)){case 8:key=ImGuiKey_Backspace;break;case 9:key=ImGuiKey_Tab;break;case 13:key=ImGuiKey_Enter;break;case 27:key=ImGuiKey_Escape;break;case 37:key=ImGuiKey_LeftArrow;break;case 38:key=ImGuiKey_UpArrow;break;case 39:key=ImGuiKey_RightArrow;break;case 40:key=ImGuiKey_DownArrow;break;case 46:key=ImGuiKey_Delete;break;case 36:key=ImGuiKey_Home;break;case 35:key=ImGuiKey_End;break;default:if(virtualKey>='A'&&virtualKey<='Z')key=static_cast<ImGuiKey>(ImGuiKey_A+virtualKey-'A');}
     if(key!=ImGuiKey_None)input.AddKeyEvent(key,down);if(down && static_cast<unsigned char>(character)>=32 && !(flags&xplm_ControlFlag))input.AddInputCharacter(static_cast<unsigned char>(character));if(down&&key==ImGuiKey_Escape)XPLMTakeKeyboardFocus(nullptr);
 }
-float flightLoop(float,float,int,void*){if(!enabled||!engine)return 0.5f;ensureEngineRunning();openatc::Telemetry telemetry;telemetry.latitude=XPLMGetDatad(latitudeRef);telemetry.longitude=XPLMGetDatad(longitudeRef);telemetry.altitudeFeet=XPLMGetDatad(altitudeRef)*3.280839895;telemetry.groundSpeedKnots=XPLMGetDataf(speedRef)*1.943844492;telemetry.headingDegrees=XPLMGetDataf(headingRef);telemetry.onGround=XPLMGetDatai(groundRef)!=0;telemetry.paused=XPLMGetDatai(pauseRef)!=0;telemetry.verticalSpeedFpm=verticalSpeedRef?XPLMGetDataf(verticalSpeedRef):0;telemetry.heightAglFeet=aglRef?XPLMGetDataf(aglRef)*3.280839895:0;telemetry.com1Khz=com1Ref?XPLMGetDatai(com1Ref):0;telemetry.positionValid=true;
+void updatePanelRole(){
+    if(!engine||!interface)return;
+    updateAircraftProfile();
+    auto settings=engine->settings();
+    std::vector<std::string> attendantNames=settings.attendantRef.empty()?(profileActive?aircraftProfile.comms.attendantRefs:std::vector<std::string>{}):std::vector<std::string>{settings.attendantRef};
+    std::vector<std::string> groundNames=settings.groundRef.empty()?(profileActive?aircraftProfile.comms.groundRefs:std::vector<std::string>{}):std::vector<std::string>{settings.groundRef};
+    auto join=[](const std::vector<std::string>& names){std::string key;for(const auto& name:names){if(!key.empty())key+=',';key+=name;}return key;};
+    if(join(attendantNames)!=resolvedAttendantKey){resolvedAttendantKey=join(attendantNames);attendantCallRefs=findRefs(attendantNames);for(size_t index=0;index<attendantNames.size();++index)XPLMDebugString(("OpenATC AI: attendant ref "+attendantNames[index]+(index<attendantCallRefs.size()&&attendantCallRefs[index]?" found":" MISSING")+"\n").c_str());}
+    if(join(groundNames)!=resolvedGroundKey){resolvedGroundKey=join(groundNames);groundCallRefs=findRefs(groundNames);for(size_t index=0;index<groundNames.size();++index)XPLMDebugString(("OpenATC AI: ground ref "+groundNames[index]+(index<groundCallRefs.size()&&groundCallRefs[index]?" found":" MISSING")+"\n").c_str());}
+    auto anyLit=[](const std::vector<XPLMDataRef>& refs){for(auto ref:refs)if(ref&&XPLMGetDatai(ref)!=0)return true;return false;};
+    bool ground=anyLit(groundCallRefs);
+    bool attendant=!ground&&anyLit(attendantCallRefs);
+    std::string role=ground?"ground":(attendant?"cabin":"");
+    interface->setPanelRole(role,role.empty()?"":"panel");
+    {static std::string loggedRole="init";if(role!=loggedRole){loggedRole=role;XPLMDebugString(("OpenATC AI: talking to "+std::string(role.empty()?"ATC":(role=="ground"?"GND":"CABIN"))+(role.empty()?"":" (cockpit panel)")+"\n").c_str());}}
+    if(!profileActive||!profileHasPowerSources(aircraftProfile)||resolvedPowerCount==0){interface->setElectricalPower(true,true);return;}
+    openatc::PowerInput input;
+    if(batVoltsRef){input.batVolts=XPLMGetDataf(batVoltsRef);input.hasVolts=true;}
+    auto readInts=[](const std::vector<XPLMDataRef>& refs){std::vector<int> values;for(auto ref:refs)if(ref)values.push_back(XPLMGetDatai(ref));return values;};
+    input.battery=readInts(batteryRefs);input.gpu=readInts(gpuRefs);input.apu=readInts(apuRefs);input.rmp=readInts(rmpRefs);input.avionics=readInts(avionicsRefs);
+    openatc::PowerState power=openatc::evaluatePower(input,aircraftProfile.electrical.minVolts);
+    interface->setElectricalPower(power.radio,power.bus);
+}
+float flightLoop(float,float,int,void*){if(!enabled||!engine)return 0.5f;guarded("flightLoop",[](){ensureEngineRunning();updatePanelRole();watchErrors();openatc::Telemetry telemetry;telemetry.latitude=XPLMGetDatad(latitudeRef);telemetry.longitude=XPLMGetDatad(longitudeRef);telemetry.altitudeFeet=XPLMGetDatad(altitudeRef)*3.280839895;telemetry.groundSpeedKnots=XPLMGetDataf(speedRef)*1.943844492;telemetry.headingDegrees=XPLMGetDataf(headingRef);telemetry.onGround=XPLMGetDatai(groundRef)!=0;telemetry.paused=XPLMGetDatai(pauseRef)!=0;telemetry.verticalSpeedFpm=verticalSpeedRef?XPLMGetDataf(verticalSpeedRef):0;telemetry.heightAglFeet=aglRef?XPLMGetDataf(aglRef)*3.280839895:0;telemetry.com1Khz=com1Ref?XPLMGetDatai(com1Ref):0;telemetry.positionValid=true;
     if(interface){ContextScope contextScope;interface->tick();}
     auto snapshot=engine->state();auto settings=engine->settings();
     if(snapshot.nextSequence<lastStateSequence)lastFrequencySequence=0;lastStateSequence=snapshot.nextSequence;
     if(settings.copilotTunes && snapshot.frequencySequence>lastFrequencySequence && snapshot.recommendedFrequencyKhz>=118000 && snapshot.recommendedFrequencyKhz<=136990 && com1Ref && XPLMCanWriteDataRef(com1Ref)) {
         XPLMSetDatai(com1Ref,snapshot.recommendedFrequencyKhz);lastFrequencySequence=snapshot.frequencySequence;
     }
-    engine->telemetry(telemetry);return 0.5f;}
+    engine->telemetry(telemetry);});return 0.5f;}
 int toggle(XPLMCommandRef,XPLMCommandPhase phase,void*){if(phase==xplm_CommandBegin&&windowId&&enabled)XPLMSetWindowIsVisible(windowId,!XPLMGetWindowIsVisible(windowId));return 1;}
+int talkTransmit(XPLMCommandRef,XPLMCommandPhase phase,void*){if(enabled&&interface){if(phase==xplm_CommandBegin){XPLMDebugString("OpenATC AI: openatc/talk recording\n");guarded("openatc/talk",[](){interface->talkPushToTalk(true,false);});}else if(phase==xplm_CommandEnd)guarded("openatc/talk",[](){interface->talkPushToTalk(false,false);});}return 1;}
+int copilotTransmit(XPLMCommandRef,XPLMCommandPhase phase,void*){if(enabled&&interface){if(phase==xplm_CommandBegin){XPLMDebugString("OpenATC AI: openatc/talk_copilot recording\n");guarded("openatc/talk_copilot",[](){interface->talkPushToTalk(true,true);});}else if(phase==xplm_CommandEnd)guarded("openatc/talk_copilot",[](){interface->talkPushToTalk(false,true);});}return 1;}
+int micPushToTalk(XPLMCommandRef,XPLMCommandPhase phase,void*){if(enabled&&interface){if(phase==xplm_CommandBegin){XPLMDebugString("OpenATC AI: openatc/mic_push_to_talk recording\n");guarded("openatc/mic_push_to_talk",[](){interface->micPushToTalk(true);});}else if(phase==xplm_CommandEnd)guarded("openatc/mic_push_to_talk",[](){interface->micPushToTalk(false);});}return 1;}
+int copyError(XPLMCommandRef,XPLMCommandPhase phase,void*){if(phase==xplm_CommandBegin&&enabled&&interface){std::string report="OpenATC AI error report ("+std::string(openatc::productVersion)+"): "+(interface->lastNotice().empty()?"no current error":interface->lastNotice())+"\n";XPLMDebugString(report.c_str());}return 1;}
+void watchErrors(){if(!enabled||!interface||!engine)return;auto settings=engine->settings();const std::string& notice=interface->lastNotice();if(settings.devMode&&!notice.empty()&&notice!=loggedNotice){loggedNotice=notice;std::string report="OpenATC AI error: "+notice+" ("+openatc::productVersion+")\n";XPLMDebugString(report.c_str());}if(notice.empty())loggedNotice.clear();}
 void menu(void*,void*){toggle(nullptr,xplm_CommandBegin,nullptr);}
 }
 PLUGIN_API int XPluginStart(char* name,char* signature,char* description){std::strcpy(name,openatc::productName);std::strcpy(signature,"org.openatc.development");std::strcpy(description,"OpenATC AI development UI and simulator controller interface");XPLMEnableFeature("XPLM_USE_NATIVE_PATHS",1);
     auto* previousContext=ImGui::GetCurrentContext();context=ImGui::CreateContext();ImGui::SetCurrentContext(previousContext);ContextScope contextScope;ImGui::GetIO().IniFilename=nullptr;ImGui::GetIO().BackendFlags|=ImGuiBackendFlags_RendererHasVtxOffset;
-#if LIN
-    ImGui::GetIO().SetClipboardTextFn=setClipboardText;ImGui::GetIO().GetClipboardTextFn=getClipboardText;
-#endif
     openatc::Interface::configureStyle();openatc::Interface::configureFonts();
     XPLMCreateWindow_t parameters{};parameters.structSize=sizeof(parameters);parameters.left=60;parameters.top=940;parameters.right=1260;parameters.bottom=120;parameters.visible=0;parameters.drawWindowFunc=drawWindow;parameters.handleMouseClickFunc=mouseClick;parameters.handleKeyFunc=keyboard;parameters.handleCursorFunc=cursor;parameters.handleMouseWheelFunc=mouseWheel;parameters.handleRightClickFunc=rightClick;parameters.decorateAsFloatingWindow=xplm_WindowDecorationRoundRectangle;parameters.layer=xplm_WindowLayerFloatingWindows;windowId=XPLMCreateWindowEx(&parameters);if(!windowId){ImGui::DestroyContext(context);context=nullptr;return 0;}XPLMSetWindowTitle(windowId,openatc::productName);XPLMSetWindowResizingLimits(windowId,1060,760,2200,1600);
-    toggleCommand=XPLMCreateCommand("openatc/toggle_window","Toggle OpenATC AI window");XPLMRegisterCommandHandler(toggleCommand,toggle,1,nullptr);menuIndex=XPLMAppendMenuItem(XPLMFindPluginsMenu(),openatc::productName,nullptr,0);menuId=XPLMCreateMenu(openatc::productName,XPLMFindPluginsMenu(),menuIndex,menu,nullptr);XPLMAppendMenuItem(menuId,"Show / hide",nullptr,0);return 1;
+    toggleCommand=XPLMCreateCommand("openatc/toggle_window","Toggle OpenATC AI window");XPLMRegisterCommandHandler(toggleCommand,toggle,1,nullptr);talkCommand=XPLMCreateCommand("openatc/talk","Hold to talk on the radio, release to transmit");XPLMRegisterCommandHandler(talkCommand,talkTransmit,1,nullptr);copilotCommand=XPLMCreateCommand("openatc/talk_copilot","Hold to talk to the copilot, release to transmit");XPLMRegisterCommandHandler(copilotCommand,copilotTransmit,1,nullptr);micCommand=XPLMCreateCommand("openatc/mic_push_to_talk","Hold to record microphone, release to transcribe");XPLMRegisterCommandHandler(micCommand,micPushToTalk,1,nullptr);errorCommand=XPLMCreateCommand("openatc/copy_error","Write the current error to Log.txt");XPLMRegisterCommandHandler(errorCommand,copyError,1,nullptr);menuIndex=XPLMAppendMenuItem(XPLMFindPluginsMenu(),openatc::productName,nullptr,0);menuId=XPLMCreateMenu(openatc::productName,XPLMFindPluginsMenu(),menuIndex,menu,nullptr);XPLMAppendMenuItem(menuId,"Show / hide",nullptr,0);return 1;
 }
-PLUGIN_API int XPluginEnable(){latitudeRef=XPLMFindDataRef("sim/flightmodel/position/latitude");longitudeRef=XPLMFindDataRef("sim/flightmodel/position/longitude");altitudeRef=XPLMFindDataRef("sim/flightmodel/position/elevation");speedRef=XPLMFindDataRef("sim/flightmodel/position/groundspeed");headingRef=XPLMFindDataRef("sim/flightmodel/position/psi");groundRef=XPLMFindDataRef("sim/flightmodel/failures/onground_any");pauseRef=XPLMFindDataRef("sim/time/paused");verticalSpeedRef=XPLMFindDataRef("sim/flightmodel/position/vh_ind_fpm");aglRef=XPLMFindDataRef("sim/flightmodel/position/y_agl");com1Ref=XPLMFindDataRef("sim/cockpit2/radios/actuators/com1_frequency_hz_833");if(!latitudeRef||!longitudeRef||!altitudeRef||!speedRef||!headingRef||!groundRef||!pauseRef)return 0;engine=std::make_unique<openatc::EngineClient>();interface=std::make_unique<openatc::Interface>(*engine);char simulatorPath[2048]{};XPLMGetSystemPath(simulatorPath);engine->post("/simulator/root",{{"root",simulatorPath}});lastFrequencySequence=0;enabled=true;engineBinaryPath.clear();disconnectedTiming=false;spawnFailures=0;binaryMissingLogged=false;lastSpawnAttempt={};XPLMRegisterFlightLoopCallback(flightLoop,0.5f,nullptr);return 1;}
+PLUGIN_API int XPluginEnable(){latitudeRef=XPLMFindDataRef("sim/flightmodel/position/latitude");longitudeRef=XPLMFindDataRef("sim/flightmodel/position/longitude");altitudeRef=XPLMFindDataRef("sim/flightmodel/position/elevation");speedRef=XPLMFindDataRef("sim/flightmodel/position/groundspeed");headingRef=XPLMFindDataRef("sim/flightmodel/position/psi");groundRef=XPLMFindDataRef("sim/flightmodel/failures/onground_any");pauseRef=XPLMFindDataRef("sim/time/paused");verticalSpeedRef=XPLMFindDataRef("sim/flightmodel/position/vh_ind_fpm");aglRef=XPLMFindDataRef("sim/flightmodel/position/y_agl");com1Ref=XPLMFindDataRef("sim/cockpit2/radios/actuators/com1_frequency_hz_833");if(!latitudeRef||!longitudeRef||!altitudeRef||!speedRef||!headingRef||!groundRef||!pauseRef)return 0;engine=std::make_unique<openatc::EngineClient>();interface=std::make_unique<openatc::Interface>(*engine);char simulatorPath[2048]{};XPLMGetSystemPath(simulatorPath);engine->post("/simulator/root",{{"root",simulatorPath}});lastFrequencySequence=0;enabled=true;engineBinaryPath.clear();disconnectedTiming=false;spawnFailures=0;fruitlessSpawns=0;binaryMissingLogged=false;lastSpawnAttempt={};activeAcfPath.clear();activeProfilePath.clear();profileActive=false;attendantCallRefs.clear();groundCallRefs.clear();resolvedAttendantKey.clear();resolvedGroundKey.clear();batVoltsRef=nullptr;batteryRefs.clear();gpuRefs.clear();apuRefs.clear();rmpRefs.clear();avionicsRefs.clear();resolvedPowerKey.clear();resolvedPowerCount=0;loggedNotice.clear();XPLMRegisterFlightLoopCallback(flightLoop,0.5f,nullptr);return 1;}
 PLUGIN_API void XPluginDisable(){enabled=false;XPLMUnregisterFlightLoopCallback(flightLoop,nullptr);XPLMSetWindowIsVisible(windowId,0);XPLMTakeKeyboardFocus(nullptr);interface.reset();engine.reset();}
-PLUGIN_API void XPluginStop(){if(enabled)XPluginDisable();if(toggleCommand)XPLMUnregisterCommandHandler(toggleCommand,toggle,1,nullptr);if(menuId)XPLMDestroyMenu(menuId);if(menuIndex>=0)XPLMRemoveMenuItem(XPLMFindPluginsMenu(),menuIndex);if(windowId)XPLMDestroyWindow(windowId);if(context)ImGui::DestroyContext(context);fontTexture=0;context=nullptr;windowId=nullptr;
+PLUGIN_API void XPluginStop(){if(enabled)XPluginDisable();if(talkCommand)XPLMUnregisterCommandHandler(talkCommand,talkTransmit,1,nullptr);if(copilotCommand)XPLMUnregisterCommandHandler(copilotCommand,copilotTransmit,1,nullptr);if(micCommand)XPLMUnregisterCommandHandler(micCommand,micPushToTalk,1,nullptr);if(errorCommand)XPLMUnregisterCommandHandler(errorCommand,copyError,1,nullptr);if(toggleCommand)XPLMUnregisterCommandHandler(toggleCommand,toggle,1,nullptr);if(menuId)XPLMDestroyMenu(menuId);if(menuIndex>=0)XPLMRemoveMenuItem(XPLMFindPluginsMenu(),menuIndex);if(windowId)XPLMDestroyWindow(windowId);if(context)ImGui::DestroyContext(context);fontTexture=0;context=nullptr;windowId=nullptr;
 #if LIN
     if(graphicsLibrary)dlclose(graphicsLibrary);graphicsLibrary=nullptr;graphicsReady=false;
 #endif

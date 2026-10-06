@@ -11,7 +11,9 @@ path = "src/main.rs"
 [dependencies]
 openatc-ai-core = { path = "../ai-core" }
 openatc-platform = { path = "../platform" }
-axum = "0.8"
+openatc-tts = { path = "../tts" }
+axum = { version = "0.8", features = ["multipart"] }
+reqwest = { version = "0.12", features = ["json"] }
 clap = { version = "4", features = ["derive"] }
 llama-cpp-2 = "0.1"
 serde = { version = "1", features = ["derive"] }

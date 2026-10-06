@@ -51,9 +51,6 @@ bool ImGui_ImplGlfw_InitForOpenGL(GLFWwindow* window,bool installCallbacks){
         glfwSetWindowFocusCallback(window,[](GLFWwindow*,int focused){ImGui::GetIO().AddFocusEvent(focused!=0);});
         glfwSetKeyCallback(window,[](GLFWwindow*,int key,int,int action,int modifiers){auto& input=ImGui::GetIO();input.AddKeyEvent(ImGuiMod_Ctrl,(modifiers&GLFW_MOD_CONTROL)!=0);input.AddKeyEvent(ImGuiMod_Shift,(modifiers&GLFW_MOD_SHIFT)!=0);input.AddKeyEvent(ImGuiMod_Alt,(modifiers&GLFW_MOD_ALT)!=0);input.AddKeyEvent(ImGuiMod_Super,(modifiers&GLFW_MOD_SUPER)!=0);auto translated=translateKey(key);if(translated!=ImGuiKey_None)input.AddKeyEvent(translated,action!=GLFW_RELEASE);});
     }
-    input.GetClipboardTextFn=[](void* user){return glfwGetClipboardString(static_cast<GLFWwindow*>(user));};
-    input.SetClipboardTextFn=[](void* user,const char* text){glfwSetClipboardString(static_cast<GLFWwindow*>(user),text);};
-    input.ClipboardUserData=window;
     return true;
 }
 void ImGui_ImplGlfw_NewFrame(){

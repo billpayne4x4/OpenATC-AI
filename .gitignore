@@ -45,8 +45,10 @@ Log.txt
 *.tmp
 # Built plugin binaries (rebuild via scripts/fedora-build.sh)
 *.xpl
-# Crash dumps (huge; keep only while diagnosing)
-core
+# Crash dumps (huge; keep only while diagnosing; root-anchored so crates named
+# core are not swallowed)
+/core
+core.*
 *.core
 # OS leftovers
 .DS_Store

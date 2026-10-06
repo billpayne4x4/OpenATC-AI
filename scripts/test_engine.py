@@ -44,6 +44,8 @@ with tempfile.TemporaryDirectory() as temporary:
             raise RuntimeError('Engine did not start')
         settings = call('/state')['settings']
         settings['copilotReplies'] = True
+        voice = call('/voice-health')
+        assert 'stt' in voice and 'tts' in voice
         settings['copilotTunes'] = True
         settings['masterVolume'] = 0.4
         call('/settings', settings)
@@ -53,6 +55,10 @@ with tempfile.TemporaryDirectory() as temporary:
         assert response['result']['accepted']
         assert response['state']['clearance']['acknowledged']
         assert any(entry['speaker'] == 'COPILOT' for entry in response['state']['transcript'])
+        copilot = call('/request', {'intent': 'conversation', 'role': 'copilot', 'text': 'how are you?'})
+        assert not copilot['result']['accepted']
+        assert 'Copilot chat needs AI' in copilot['result']['message']
+        assert any(entry['speaker'] == 'COPILOT' for entry in copilot['state']['transcript'])
         assert call('/request', {'intent': 'pushback'})['state']['phase'] == 8
         response = call('/request', {'intent': 'taxi'})
         assert response['result']['accepted']
@@ -71,6 +77,10 @@ with tempfile.TemporaryDirectory() as temporary:
             call('/telemetry', telemetry)
         assert call('/state')['phase'] == 4
         assert call('/request', {'intent': 'altitude', 'altitudeFeet': 34000})['result']['accepted']
+        relay = call('/request', {'intent': 'altitude', 'altitudeFeet': 36000, 'role': 'copilot', 'text': 'Request altitude 36000 feet'})
+        assert not relay['result']['accepted']
+        assert 'Copilot chat needs AI' in relay['result']['message']
+        assert not any(entry['speaker'] == 'COPILOT' and '36000' in entry['text'] for entry in relay['state']['transcript'])
         assert not call('/request', {'intent': 'pushback'})['result']['accepted']
         call('/session/load', {}, expected_status=400)
         call('/simbrief', {'userid': 'bad&userid=1'}, expected_status=400)

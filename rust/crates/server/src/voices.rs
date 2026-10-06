@@ -1,4 +1,4 @@
-//! Kokoro v1 voice roster, served until the TTS slice queries the runtime.
+//! Kokoro v1 voice roster, matching the voices table on disk.
 
 /// All 54 voices shipped in voices-v1.0.bin.
 pub const KOKORO_V1: &[&str] = &[

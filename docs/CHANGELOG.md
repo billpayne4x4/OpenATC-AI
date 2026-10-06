@@ -23,9 +23,63 @@ windshear on approach) in ICAO-neutral phraseology with regional pressure. Units
 (Imperial/Metric/Region) for display and speech with `regions.toml` local procedure
 (QNH/altimeter, clearance shape, transition altitude). AI prompts moved to `prompts/*.txt`;
 cabin/ground address you as the captain and never deflect to the flight deck.
-The plugin supervises the engine: if it cannot reach one it launches the bundled
-`OpenATC/bin/open-atc-engine` (output to `engine.log` beside the settings) with backoff,
-so a closed or crashed engine comes back on its own.
+Crew comms moved to the cockpit panel: the CALLS selector is gone, replaced by a TALKING TO
+readout — Transmit routes to cabin/ground while their call-light dataref is lit (mapped in
+Settings, ground wins, else ATC). Optional Copilot button addresses the copilot (chat, or
+relayed radio calls stamped COPILOT). `openatc/talk` and `openatc/talk_copilot` sim commands
+transmit with the plugin window closed. `openatc/mic_push_to_talk` records while held and
+transcribes into the box on release (review before transmitting). The plugin supervises the engine: if it cannot reach
+one it launches the bundled `OpenATC/bin/open-atc-engine` (output to `engine.log` beside the
+settings) with backoff, so a closed or crashed engine comes back on its own.
+The bundled engine carries its own OpenSSL (`$ORIGIN` RPATH) after Steam-runtime
+`libssl.so.3` failures, and repeated failed starts surface
+`Engine won't start - see engine.log` in the plugin status instead of silent grey.
+ToLiss A320neo first-class profile (`aircraft/toliss_a320.toml`, names extracted from the
+installed plugin): CALLS ATTN zones route to cabin, MECH to ground, no config needed
+(Settings override, `openatc.toml` beside the `.acf` overrides the bundle). Per-path power
+gating — ATC needs the radio on, cabin/ground need bus power — with status-line refusals;
+copilot chat is never gated. Transmit button renamed Talk for the copilot side: Transmit
+sends everything, Talk addresses the copilot.
+`openatc-ai.service` user unit (auto-restart, journal logs); engine verifies STT/TTS
+reachability with `Voice: ready/down` status, and reloads `settings.json` from disk
+within 30 s so file and UI edits converge. Talk sits left of Transmit; Transmit
+greys out without power (Talk never does); refused transmissions log one `SYSTEM`
+line per outage in the ATC log, never spoken.
+Talk is to the copilot only: the ATC relay is removed, so the copilot never transmits
+to ATC from it — ATC tasks get a brief in-character redirect instead.
+Crash hardening: all X-Plane entry points (flight loop, window draw, PTT commands) log
+instead of terminating on unexpected exceptions; PTT refuses overlaps with a Mic busy
+status; copilot preset wording migrations preserve saved selections; panel role
+transitions and call-ref resolution report to Log.txt. Attendant presets added (Warm
+Professional, Cheerful Chatty, Humorous, Jokey, Calm Reassuring, Custom on edit).
+Talk commands become true voice-PTT (hold to record, release to auto-transmit) with
+nothing-heard guards (short/quiet/blank recordings are dropped, never sent); the
+on-screen buttons and `mic_push_to_talk` keep the review flow.
+Realism presets become a dropdown (Relaxed/Standard/Real/Custom-auto); Strict renamed
+Real; unclear requests get helpful guesses at Relaxed instead of dead ends; the
+classifier gets a per-level leniency line; cockpit chat is exempt from discipline by
+rule (exact copilot readbacks pass full Strict). Copilot personalities become a
+dropdown with Custom-on-edit. In-plugin clipboard removed (crash reports) pending a
+planned replacement.
+Copilot speech no longer needs auto-readbacks on: Talk conversations and relayed
+calls speak whenever copilot speech is enabled (`copilotReplies` keeps meaning
+automatic readbacks only).
+Copilot presets grow Humorous + Super Silly (silliness stays cockpit-only, ops verbatim);
+attendant presets added (Warm Professional, Cheerful Chatty, Humorous, Jokey, Calm
+Reassuring); cabin base prompt is sociable by default; copilot voice defaults to am_echo.
+AI null-valued JSON no longer throws (explicit nulls behave like missing keys).
+Developer mode (default on) with verbose errors, auto-logging, and `openatc/copy_error`.
+Rust STT slice live: `openatc-stt` sidecar (whisper tiny, CPU; `--stt-backend`
+selects auto/cpu/cuda, CUDA needs a toolkit build) serving gateway-compatible
+`/v1/audio/transcriptions` — A/B parity with faster-whisper on identical audio, engine
+STT base repointed at it. Sidecar forced by the vendored-ggml link collision between
+whisper.cpp and llama.cpp. TTS stays on the Python gateway (one process) until its slice.
+Rust TTS slice live: kokoro via prebuilt ORT + source-built espeak-ng (zero system
+deps), same `voices-v1.0.bin` table and voice map, pause semantics and seeded FX chain
+ported from the gateway (perceptual parity, proven by closed-loop STT round-trip).
+TTS base repointed at it; Python gateway service stopped + disabled, venv + test dir
+deleted from the services host (~3.9 GB reclaimed, `scripts/` kept as rollback reference).
+Full Rust round-trip proven: TTS then STT with zero Python in the path.
 
 # 0.2.1
 

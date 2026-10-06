@@ -38,9 +38,10 @@ void saveJson(const std::filesystem::path& path,const Json& data) {
 }
 void configureClient(httplib::Client& client) {client.set_connection_timeout(5);client.set_read_timeout(25);client.set_write_timeout(10);client.set_follow_location(true);client.enable_server_certificate_verification(true);}
 httplib::Headers authorization(const char* name) {httplib::Headers headers;if(const char* key=std::getenv(name))headers.emplace("Authorization",std::string("Bearer ")+key);return headers;}
-struct Prompts { std::string cabin, ground, copilot, classify, source="built-in"; };
+struct Prompts { std::string cabin, ground, copilot, classify, copilotChat, source="built-in"; };
 std::string readPromptFile(const std::filesystem::path& directory,const std::string& name) {std::ifstream input(directory/name);if(!input)return {};std::string text((std::istreambuf_iterator<char>(input)),std::istreambuf_iterator<char>());while(!text.empty()&&(text.back()=='\n'||text.back()=='\r'))text.pop_back();return text;}
 std::string fillPrompt(std::string text,const std::string& callsign) {size_t at=0;while((at=text.find("{{callsign}}",at))!=std::string::npos){text.replace(at,12,callsign);at+=callsign.size();}return text;}
+std::filesystem::file_time_type fileStamp(const std::filesystem::path& file){std::error_code code;auto stamp=std::filesystem::last_write_time(file,code);return code?std::filesystem::file_time_type::min():stamp;}
 std::string resolveRegionsFile(const std::filesystem::path& directory,const std::filesystem::path& executable) {
     if(const char* override=std::getenv("OPENATC_REGIONS_FILE"))return override;
     std::vector<std::string> candidates={(directory/"regions.toml").string(),(executable/"../regions.toml").string()};
@@ -56,6 +57,7 @@ Prompts loadPrompts(const std::filesystem::path& directory,const std::filesystem
     prompts.ground="You are the ground crew working flight {{callsign}}, speaking with the captain. Answer briefly with ramp discipline in one or two sentences. You handle chocks, ground power and pushback readiness. For anything outside that, say you will confirm and report back. The captain IS the flight deck: never say you will confirm with the flight deck or cockpit. Return only the reply text.";
     prompts.copilot="Read back the clearance in one short ICAO-style transmission, repeating altitude, route and squawk exactly. Return only the readback text.";
     prompts.classify="Classify the pilot message. Return only JSON with intent (radio_check,repeat,standby,unable,clearance,taxi,pushback,ready,go_around,cancel_ifr,altitude,descent,direct,approach,gate,frequency,emergency,conversation), altitudeFeet integer and waypoint string. Never issue clearances. Use conversation if uncertain.";
+    prompts.copilotChat="You are the first officer of flight {{callsign}}, speaking with the captain. Answer briefly in one or two sentences. You work the radios when asked and you know the clearance, route and flight stage. Never invent clearances or procedures; say what you will do or what you need from the captain. Return only the reply text.";
     std::vector<std::filesystem::path> candidates;
     if(const char* override=std::getenv("OPENATC_PROMPTS_DIR"))candidates.push_back(override);
     candidates.push_back(directory/"prompts");
@@ -63,7 +65,7 @@ Prompts loadPrompts(const std::filesystem::path& directory,const std::filesystem
 #ifdef OPENATC_PROMPTS_SOURCE_DIR
     candidates.push_back(OPENATC_PROMPTS_SOURCE_DIR);
 #endif
-    for(const auto& candidate:candidates){if(readPromptFile(candidate,"cabin.txt").empty())continue;prompts.source=candidate.string();std::string text;if(!(text=readPromptFile(candidate,"cabin.txt")).empty())prompts.cabin=text;if(!(text=readPromptFile(candidate,"ground.txt")).empty())prompts.ground=text;if(!(text=readPromptFile(candidate,"copilot_readback.txt")).empty())prompts.copilot=text;if(!(text=readPromptFile(candidate,"intent_classify.txt")).empty())prompts.classify=text;break;}
+    for(const auto& candidate:candidates){if(readPromptFile(candidate,"cabin.txt").empty())continue;prompts.source=candidate.string();std::string text;if(!(text=readPromptFile(candidate,"cabin.txt")).empty())prompts.cabin=text;if(!(text=readPromptFile(candidate,"ground.txt")).empty())prompts.ground=text;if(!(text=readPromptFile(candidate,"copilot_readback.txt")).empty())prompts.copilot=text;if(!(text=readPromptFile(candidate,"copilot_chat.txt")).empty())prompts.copilotChat=text;if(!(text=readPromptFile(candidate,"intent_classify.txt")).empty())prompts.classify=text;break;}
     return prompts;
 }
 Json fetchMetarReports(const std::string& stations) {
@@ -75,6 +77,7 @@ Json fetchMetarReports(const std::string& stations) {
     if(!reports.is_array())throw std::runtime_error("Invalid weather response");
     return reports;
 }
+std::string chatContent(const Json& parsed){auto content=parsed.at("choices").at(0).at("message").at("content");return content.is_string()?content.get<std::string>():std::string{};}
 void validateSettings(Settings& settings) {
     for(const auto& url:{settings.aiUrl,settings.sttUrl,settings.ttsUrl})if(!std::regex_match(url,std::regex(R"(https?://[^/\s]+/?$)")))throw std::invalid_argument("Service URLs must be http(s) origins, without /v1 paths.");
     for(float value:{settings.masterVolume,settings.controllerVolume,settings.copilotVolume,settings.pilotVolume,settings.attendantVolume,settings.groundVolume})if(!std::isfinite(value)||value<0||value>1)throw std::invalid_argument("Volume must be between 0 and 1.");
@@ -84,6 +87,7 @@ void validateSettings(Settings& settings) {
     for(const auto& delivery:{settings.controllerDelivery,settings.copilotDelivery})if(delivery!="standard"&&delivery!="brisk"&&delivery!="urgent")throw std::invalid_argument("Unknown delivery style.");
     if(settings.congestion!="off"&&settings.congestion!="quiet"&&settings.congestion!="busy")throw std::invalid_argument("Unknown congestion level.");
     if(settings.units!="imperial"&&settings.units!="metric"&&settings.units!="region")throw std::invalid_argument("Unknown units mode.");
+    for(const auto& ref:{settings.attendantRef,settings.groundRef}){if(ref.size()>256||!std::regex_match(ref,std::regex("[A-Za-z0-9_/]*")))throw std::invalid_argument("Crew datarefs must be dataref names.");}
     if(settings.copilotPersonality.size()>2000||settings.attendantPersonality.size()>2000||settings.groundPersonality.size()>2000)throw std::invalid_argument("Personality text too long.");
     for(const auto& voice:parseVoicePool(settings.voicePool))if(!std::regex_match(voice,std::regex("[A-Za-z0-9_-]+")))throw std::invalid_argument("Voice pool entries must be voice names separated by commas.");
     for(float value:{settings.radioHiss,settings.radioCrackle,settings.radioStatic})if(!std::isfinite(value)||value<0||value>1)throw std::invalid_argument("Radio effect levels must be between 0 and 1.");
@@ -95,6 +99,7 @@ int main(int argumentCount,char** arguments) {
     State state;state.plan.runway="09";Settings settings;Airport airport=demoAirport();std::mutex stateMutex;httplib::Server server;auto directory=configurationPath();
     try{std::ifstream input(directory/"settings.json");if(input){Json saved;input>>saved;settings=saved.get<Settings>();validateSettings(settings);}}catch(const std::exception& error){std::cerr<<"Settings: "<<error.what()<<"\n";settings=Settings{};}
     Controllers controllers;std::mt19937 voiceRng{std::random_device{}()};
+    std::filesystem::file_time_type settingsStamp=fileStamp(directory/"settings.json");
     auto saveControllers=[&]{saveJson(directory/"controllers.json",controllers);};
     try{std::ifstream input(directory/"controllers.json");if(input){Json saved;input>>saved;controllers=saved.get<Controllers>();}}catch(const std::exception& error){std::cerr<<"Controllers: "<<error.what()<<"\n";controllers=Controllers{};}
     if(const char* value=std::getenv("OPENATC_AI_URL")){settings.aiUrl=value;settings.aiEnabled=true;}if(const char* value=std::getenv("OPENATC_AI_MODEL"))settings.aiModel=value;
@@ -105,16 +110,19 @@ int main(int argumentCount,char** arguments) {
     auto writeResult=[](auto& response,const Json& value){response.set_content(value.dump(),"application/json");};
     auto handleError=[&](auto& response,const std::exception& error){response.status=400;writeResult(response,{{"error",error.what()}});};
     server.Get("/health",[&](const auto&,auto& response){writeResult(response,{{"service","open-atc"},{"protocol",2},{"version",productVersion},{"prompts",prompts.source},{"regions",regionsPath.empty()?"built-in":regionsPath}});});
+    auto serviceOk=[](const std::string& url){if(url.empty())return false;httplib::Client client(url);client.set_connection_timeout(2);client.set_read_timeout(3);client.set_write_timeout(3);client.set_follow_location(true);auto result=client.Get("/health");return result&&result->status==200;};
+    server.Get("/voice-health",[&](const auto&,auto& response){Settings configuration;{std::lock_guard<std::mutex> guard(stateMutex);configuration=settings;}writeResult(response,{{"stt",serviceOk(configuration.sttUrl)},{"tts",serviceOk(configuration.ttsUrl)}});});
     server.Get("/state",[&](const auto&,auto& response){std::lock_guard<std::mutex> guard(stateMutex);Json snapshot=state;snapshot["settings"]=settings;writeResult(response,snapshot);});
     server.Post("/settings",[&](const auto& incoming,auto& response){try{auto proposed=Json::parse(incoming.body).template get<Settings>();validateSettings(proposed);std::lock_guard<std::mutex> guard(stateMutex);saveJson(directory/"settings.json",proposed);settings=proposed;saveControllers();writeResult(response,settings);}catch(const std::exception& error){handleError(response,error);}});
     server.Post("/simulator/root",[&](const auto& incoming,auto& response){try{auto root=Json::parse(incoming.body).at("root").template get<std::string>();if(!std::filesystem::is_directory(root))throw std::runtime_error("Invalid X-Plane folder");std::lock_guard<std::mutex> guard(stateMutex);if(settings.simulatorRoot.empty()){settings.simulatorRoot=root;saveJson(directory/"settings.json",settings);}writeResult(response,{{"accepted",true}});}catch(const std::exception& error){handleError(response,error);}});
     server.Post("/request",[&](const auto& incoming,auto& response){try {
         Request request=Json::parse(incoming.body).template get<Request>();if(request.text.size()>4000)throw std::invalid_argument("Message too long");
-        std::string role=request.role;if(role!="cabin"&&role!="ground")role="atc";
+        std::string role=request.role;if(role!="cabin"&&role!="ground"&&role!="copilot")role="atc";
         if(request.intent.empty()||request.intent=="conversation")request=interpretText(request.text);
         request.role=role;
         Settings configuration;{std::lock_guard<std::mutex> guard(stateMutex);configuration=settings;}
         if(request.role=="cabin"||request.role=="ground") {
+            // Cockpit-exempt: realism discipline grades frequency talk only, never crew chat.
             bool attendant=request.role=="cabin";std::string speaker=attendant?"CABIN":"GROUND";
             std::string voice=attendant?configuration.attendantVoice:configuration.groundVoice;if(voice.empty())voice="alloy";
             std::string callsign;{std::lock_guard<std::mutex> guard(stateMutex);callsign=state.plan.callsign;}
@@ -127,7 +135,7 @@ int main(int argumentCount,char** arguments) {
                 std::string system=personality.empty()?base:(personality+" "+base);
                 Json body={{"model",configuration.aiModel},{"temperature",0.7},{"messages",Json::array({{ {"role","system"},{"content",system} },{{"role","user"},{"content","Captain: "+request.text}}})}};
                 auto generated=client.Post("/v1/chat/completions",authorization("OPENATC_AI_KEY"),body.dump(),"application/json");
-                if(generated&&generated->status==200){auto parsed=Json::parse(generated->body);replyText=parsed.at("choices").at(0).at("message").at("content").template get<std::string>();
+                if(generated&&generated->status==200){auto parsed=Json::parse(generated->body);replyText=chatContent(parsed);
                     size_t first=replyText.find_first_not_of(" \t\r\n\"'"),last=replyText.find_last_not_of(" \t\r\n\"'");
                     replyText=first==std::string::npos?"":replyText.substr(first,last-first+1);
                     if(replyText.size()>500)replyText.resize(500);}
@@ -140,12 +148,40 @@ int main(int argumentCount,char** arguments) {
             writeResult(response,{{"result",Result{ok,replyText}},{"state",state}});return;
         }
         if(request.intent=="conversation" && configuration.aiEnabled && !configuration.aiModel.empty()) {
+            Realism level{configuration.strictReadbacks,configuration.requireFrequency,configuration.requireCallsign,configuration.strictPhraseology,configuration.teachingCorrections,configuration.practiceEmergencies};
+            std::string preset=disciplinePreset(level,configuration.congestion);
+            std::string classify=prompts.classify+(preset=="relaxed"?" Accept casual phrasing and slang; resolve the best-guess intent.":(preset=="real"?" Require standard phraseology; use conversation when unsure.":""));
             httplib::Client client(configuration.aiUrl);configureClient(client);
-            Json body={{"model",configuration.aiModel},{"temperature",0},{"messages",Json::array({{{"role","system"},{"content",prompts.classify}},{{"role","user"},{"content",request.text}}})}};
+            Json body={{"model",configuration.aiModel},{"temperature",0},{"messages",Json::array({{{"role","system"},{"content",classify}},{{"role","user"},{"content",request.text}}})}};
             auto result=client.Post("/v1/chat/completions",authorization("OPENATC_AI_KEY"),body.dump(),"application/json");if(!result||result->status!=200)throw std::runtime_error("AI endpoint unavailable. Use request buttons or supported text commands.");
-            auto parsed=Json::parse(result->body);auto classification=Json::parse(parsed.at("choices").at(0).at("message").at("content").template get<std::string>());auto interpreted=classification.template get<Request>();interpreted.text=request.text;interpreted.role=role;request=interpreted;if(request.intent=="readback")request.intent="conversation";
+            auto parsed=Json::parse(result->body);auto contentText=parsed.at("choices").at(0).at("message").at("content");if(contentText.is_string()){auto classification=dropNulls(Json::parse(contentText.get<std::string>()));auto interpreted=classification.template get<Request>();interpreted.text=request.text;interpreted.role=role;request=interpreted;if(request.intent=="readback")request.intent="conversation";}
         }
         request.role=role;
+        // Cockpit-exempt: the copilot path below ignores realism like cabin/ground above.
+        // Talk addresses the copilot; the copilot never transmits to ATC from here.
+        if(request.role=="copilot") {
+            std::string callsign;{std::lock_guard<std::mutex> guard(stateMutex);callsign=state.plan.callsign;}
+            std::string system=configuration.copilotPersonality.empty()?fillPrompt(prompts.copilotChat,callsign):(configuration.copilotPersonality+" "+fillPrompt(prompts.copilotChat,callsign));
+            if(request.intent!="conversation")system+=" The captain addressed an ATC task to you, but you cannot transmit on frequency. Briefly redirect them to say it themselves, then offer to read it back.";
+            std::string voice=configuration.copilotVoice;if(voice.empty())voice="alloy";
+            std::string replyText;
+            if(!configuration.aiEnabled||configuration.aiModel.empty())replyText="Copilot chat needs AI intent classification on.";
+            else{try{
+                httplib::Client client(configuration.aiUrl);configureClient(client);
+                Json body={{"model",configuration.aiModel},{"temperature",0.7},{"messages",Json::array({{ {"role","system"},{"content",system} },{{"role","user"},{"content","Captain: "+request.text}}})}};
+                auto generated=client.Post("/v1/chat/completions",authorization("OPENATC_AI_KEY"),body.dump(),"application/json");
+                if(generated&&generated->status==200){auto parsed=Json::parse(generated->body);replyText=chatContent(parsed);
+                    size_t first=replyText.find_first_not_of(" \t\r\n\"'"),last=replyText.find_last_not_of(" \t\r\n\"'");
+                    replyText=first==std::string::npos?"":replyText.substr(first,last-first+1);
+                    if(replyText.size()>500)replyText.resize(500);}
+            }catch(...){}
+            if(replyText.empty())replyText="Copilot line is busy. Try again.";}
+            bool ok=replyText!="Copilot chat needs AI intent classification on."&&replyText!="Copilot line is busy. Try again.";
+            std::lock_guard<std::mutex> guard(stateMutex);
+            addTransmission(state,state.plan.callsign,request.text.empty()?request.role:request.text,{});
+            addTransmission(state,"COPILOT",replyText,{"",voice,"standard",1,false});
+            writeResult(response,{{"result",Result{ok,replyText}},{"state",state}});return;
+        }
         if(configuration.congestion=="quiet"||configuration.congestion=="busy")std::this_thread::sleep_for(std::chrono::milliseconds(configuration.congestion=="busy"?1000+std::rand()%3000:500+std::rand()%1500));
         Realism realism{configuration.strictReadbacks,configuration.requireFrequency,configuration.requireCallsign,configuration.strictPhraseology,configuration.teachingCorrections,configuration.practiceEmergencies};
         std::string departure;{std::lock_guard<std::mutex> lookup(stateMutex);departure=state.plan.departure;}
@@ -159,7 +195,7 @@ int main(int argumentCount,char** arguments) {
                 std::string facts="Clearance: maintain "+std::to_string(pending.altitudeFeet)+" feet, route "+pending.route+", squawk "+pending.squawk+". Callsign "+callsign+".";
                 Json body={{"model",configuration.aiModel},{"temperature",0.7},{"messages",Json::array({{ {"role","system"},{"content",configuration.copilotPersonality+" "+prompts.copilot+" "+regionNotes(region,units)} },{{"role","user"},{"content",facts}}})}};
                 auto generated=client.Post("/v1/chat/completions",authorization("OPENATC_AI_KEY"),body.dump(),"application/json");
-                if(generated&&generated->status==200){auto parsed=Json::parse(generated->body);personalityReadback=parsed.at("choices").at(0).at("message").at("content").template get<std::string>();
+                if(generated&&generated->status==200){auto parsed=Json::parse(generated->body);personalityReadback=chatContent(parsed);
                     size_t first=personalityReadback.find_first_not_of(" \t\r\n\"'"),last=personalityReadback.find_last_not_of(" \t\r\n\"'");
                     personalityReadback=first==std::string::npos?"":personalityReadback.substr(first,last-first+1);
                     if(personalityReadback.size()>500)personalityReadback.resize(500);}
@@ -211,7 +247,7 @@ int main(int argumentCount,char** arguments) {
     server.Post("/simbrief",[&](const auto& incoming,auto& response){try{std::string identifier=Json::parse(incoming.body).value("userid",std::string{});if(identifier.empty()){std::lock_guard<std::mutex> guard(stateMutex);identifier=settings.simbriefId;}if(!std::regex_match(identifier,std::regex("[0-9]{1,12}")))throw std::invalid_argument("Enter your numeric SimBrief Pilot ID in Settings.");httplib::Client client("https://www.simbrief.com");configureClient(client);auto result=client.Get(("/api/xml.fetcher.php?userid="+identifier+"&json=1").c_str());if(!result||result->status!=200)throw std::runtime_error("SimBrief download failed. Check Pilot ID and generate a flight first.");writeResult(response,parseSimBrief(Json::parse(result->body)));}catch(const std::exception& error){handleError(response,error);}});
     server.Post("/airport/load",[&](const auto& incoming,auto& response){try{auto request=Json::parse(incoming.body);auto icao=request.at("icao").template get<std::string>();if(!std::regex_match(icao,std::regex("[A-Z0-9]{4}")))throw std::invalid_argument("Enter a four-character ICAO.");std::string root;{std::lock_guard<std::mutex> guard(stateMutex);root=settings.simulatorRoot;}Airport loaded=request.value("demo",false)?demoAirport():loadAirportFromSimulator(root,icao);{std::lock_guard<std::mutex> guard(stateMutex);if(airport.icao!=loaded.icao)state.taxiClearance=TaxiClearance{};airport=loaded;}writeResult(response,loaded);}catch(const std::exception& error){handleError(response,error);}});
     server.Post("/weather",[&](const auto& incoming,auto& response){try{auto request=Json::parse(incoming.body);writeResult(response,fetchMetarReports(request.value("stations",std::string{})));}catch(const std::exception& error){handleError(response,error);}});
-    server.Post("/speech/transcribe",[&](const auto& incoming,auto& response){try{Settings configuration;{std::lock_guard<std::mutex> guard(stateMutex);configuration=settings;}httplib::Client client(configuration.sttUrl);configureClient(client);httplib::MultipartFormDataItems parts={{"file",incoming.body,"request.wav","audio/wav"},{"model",configuration.sttModel,"",""}};auto result=client.Post("/v1/audio/transcriptions",authorization("OPENATC_STT_KEY"),parts);if(!result||result->status!=200)throw std::runtime_error("STT request failed. Check endpoint, model and OPENATC_STT_KEY on the engine.");writeResult(response,Json::parse(result->body));}catch(const std::exception& error){handleError(response,error);}});
+    server.Post("/speech/transcribe",[&](const auto& incoming,auto& response){try{Settings configuration;{std::lock_guard<std::mutex> guard(stateMutex);configuration=settings;}httplib::Client client(configuration.sttUrl);configureClient(client);httplib::MultipartFormDataItems parts={{"file",incoming.body,"request.wav","audio/wav"},{"model",configuration.sttModel,"",""}};auto result=client.Post("/v1/audio/transcriptions",authorization("OPENATC_STT_KEY"),parts);if(!result||result->status!=200)throw std::runtime_error("STT request failed. Check endpoint, model and OPENATC_STT_KEY on the engine.");auto transcription=dropNulls(Json::parse(result->body));if(!transcription.value("text",Json()).is_string())transcription["text"]="";writeResult(response,transcription);}catch(const std::exception& error){handleError(response,error);}});
     server.Post("/speech/speak",[&](const auto& incoming,auto& response){try{auto request=Json::parse(incoming.body);std::string text=request.at("text").template get<std::string>();if(text.size()>4000)throw std::invalid_argument("Speech text too long");std::string speaker=request.value("speaker",std::string{});
         if(speaker.empty())speaker=request.value("copilot",false)?std::string("copilot"):std::string("atc");
         if(speaker!="atc"&&speaker!="copilot"&&speaker!="pilot"&&speaker!="cabin"&&speaker!="ground")throw std::invalid_argument("Unknown speaker");
@@ -241,6 +277,7 @@ int main(int argumentCount,char** arguments) {
         std::string lastPlan;std::time_t lastFetch=0;
         for(;;) {
             std::this_thread::sleep_for(std::chrono::seconds(30));
+            if(fileStamp(directory/"settings.json")!=settingsStamp){try{std::ifstream input(directory/"settings.json");if(input){Json saved;input>>saved;Settings fresh=saved.get<Settings>();validateSettings(fresh);{std::lock_guard<std::mutex> guard(stateMutex);settings=fresh;}std::cerr<<"Settings reloaded from disk\n";}settingsStamp=fileStamp(directory/"settings.json");}catch(const std::exception& error){std::cerr<<"Settings reload: "<<error.what()<<"\n";settingsStamp=fileStamp(directory/"settings.json");}}
             std::string callsign, departure, destination, alternate, unitsPreference;Phase phase=Phase::Parked;
             {std::lock_guard<std::mutex> guard(stateMutex);callsign=state.plan.callsign;departure=state.plan.departure;destination=state.plan.destination;alternate=state.plan.alternate;unitsPreference=settings.units;phase=state.phase;}
             if(departure.empty()&&destination.empty())continue;

@@ -3,9 +3,12 @@
 namespace openatc {
 struct Settings {
     std::string simbriefId, simulatorRoot;
-    std::string aiUrl="http://127.0.0.1:11434", aiModel, sttUrl="http://127.0.0.1:8000", sttModel="whisper-1", ttsUrl="http://127.0.0.1:8001", ttsModel="tts-1", voice="alloy", copilotVoice="alloy";
+    std::string aiUrl="http://127.0.0.1:11434", aiModel, sttUrl="http://127.0.0.1:8000", sttModel="whisper-1", ttsUrl="http://127.0.0.1:8001", ttsModel="tts-1", voice="alloy", copilotVoice="am_echo";
     std::string voicePool, controllerDelivery="brisk", copilotDelivery="brisk", pilotVoice="am_adam", copilotPersonality, congestion="quiet", units="imperial";
     std::string attendantVoice="af_sky", groundVoice="bm_george", attendantPersonality, groundPersonality;
+    std::string attendantRef, groundRef;
+    bool copilotButton=true;
+    bool devMode=true;
     float controllerSpeedMin=0.9f, controllerSpeedMax=1.15f, copilotSpeed=1.0f, pilotSpeed=1.0f, pilotVolume=0.8f;
     float radioHiss=0.12f, radioCrackle=0.08f, radioStatic=0.08f, attendantVolume=0.8f, groundVolume=0.8f;
     std::string inputDevice, outputDevice;
