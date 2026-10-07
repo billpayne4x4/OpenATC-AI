@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "asia"
+prefixes = ["V", "W"]
+variant = "icao"
+notes = "ICAO English baseline; no fabricated national procedures."

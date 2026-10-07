@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "central_america"
+prefixes = ["M"]
+variant = "icao"
+notes = "ICAO English baseline; national and airport differences apply."

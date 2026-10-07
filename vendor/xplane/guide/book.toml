@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2024 Julia DeMille <me@jdemille.com>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+[book]
+authors = ["Julia DeMille"]
+language = "en"
+multilingual = false
+src = "src"
+title = "rust-xplane"

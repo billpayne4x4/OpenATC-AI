@@ -1,0 +1,536 @@
+# OpenATC intent catalogue: every pilot request the system recognises.
+#
+# Policy (audit later):
+# - `atc` + `copilot` work the radio, so every ATC intent lists both roles.
+#   `emergency` and `conversation` are open to all four roles: anyone aboard
+#   can declare, and anyone can talk when nothing ATC-specific matches.
+# - `catalogue = true` mirrors the C++ `requestDefinitions` UI buttons
+#   exactly (title, group, parameter). `altimeter`/`weather` are parser-only:
+#   reachable by exact phrase, like C++ `interpretText`, with no button.
+# - `pattern` documents how the intent is recognised, mirroring C++ order:
+#   "exact" (exact phrases plus the lowercased title), "substring"
+#   (emergency scan), "altitude"/"direct" (slot regexes), "none".
+# - Examples come in three kinds. `request` examples are pilot utterances that
+#   stay exactly parseable (bare phrases, no callsign prefix; placeholders
+#   must render back to a parseable string). `say` examples are controller
+#   transmissions or callsign-bearing pilot calls: multi-sentence, free-form,
+#   the AI's style material and the AI-off fallback source. `readback`
+#   examples are pilot readbacks honouring the mandatory-items rule (route,
+#   runway, altitude, squawk, QNH, frequency must be read back).
+# - `variant` is icao (default) or faa (CRAFT-style delivery, "cleared for
+#   takeoff" phrasing, altimeter-inches).
+#
+# Placeholder grammar (renderer fills from the parsed request, voice-implicit:
+# no UI modal is shown, the slot arrives with the utterance):
+# - `{alt}` renders "5000 feet", or "" when empty. `{alt|3000}` falls back.
+# - `{wpt}` `{callsign}` `{dest}` `{rwy}` `{sq}` `{qnh}` `{sid}` `{freq}`
+#   `{via}` `{stand}` `{wind}` `{atis}` render literally, or "" when empty.
+# Substitution is literal: no whitespace collapsing, no quoting.
+
+[intent.clearance]
+title = "Request IFR clearance"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request clearance"]
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request ifr clearance", kind = "request" },
+  { text = "request clearance", kind = "request" },
+  { text = "{callsign} on stand {stand}, information {atis}, request clearance to {dest}", kind = "say" },
+  { text = "{callsign} with {atis}, request IFR clearance to {dest}", kind = "say" },
+  { text = "{callsign}, cleared to {dest} as filed via {sid} runway {rwy}. Initial climb {alt}, squawk {sq}.", kind = "say" },
+  { text = "{callsign}, cleared to {dest} via {sid}. Climb via SID, squawk {sq}. QNH {qnh}.", kind = "say" },
+  { text = "{callsign}, cleared to {dest} airport as filed. Climb and maintain {alt}, expect higher one zero minutes after departure. Departure frequency {freq}, squawk {sq}.", kind = "say", variant = "faa" },
+  { text = "Cleared to {dest} via {sid}, runway {rwy}, initial climb {alt}, squawk {sq}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, correct. Information {atis}, QNH {qnh}.", kind = "say" },
+]
+fallback = "{callsign}, cleared to {dest} as filed via {sid} runway {rwy}. Initial climb {alt}, squawk {sq}. Read back altitude, route and squawk."
+
+[intent.pushback]
+title = "Request pushback"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request pushback", kind = "request" },
+  { text = "{callsign}, stand {stand}, request pushback.", kind = "say" },
+  { text = "{callsign} requests push and start.", kind = "say" },
+  { text = "{callsign}, pushback approved, facing east.", kind = "say" },
+  { text = "{callsign}, stand {stand}, push and start approved, face east.", kind = "say" },
+  { text = "{callsign}, pushback approved. Behind the landing traffic crossing right to left, push at your discretion.", kind = "say" },
+  { text = "{callsign}, hold position. Expect a short delay, traffic pushing behind you.", kind = "say" },
+  { text = "Pushback approved, facing east, {callsign}.", kind = "readback" },
+]
+fallback = "{callsign}, pushback approved, facing east. Report ready for taxi."
+
+[intent.taxi]
+title = "Request taxi"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request taxi", kind = "request" },
+  { text = "{callsign}, ready to taxi.", kind = "say" },
+  { text = "{callsign} at {stand}, information {atis}, request taxi for departure.", kind = "say" },
+  { text = "{callsign}, taxi to holding point runway {rwy} via {via}. QNH {qnh}.", kind = "say" },
+  { text = "{callsign}, taxi to holding point {stand} runway {rwy} via {via}, hold short of runway {rwy}.", kind = "say" },
+  { text = "{callsign}, taxi via {via}, expect stand {stand}.", kind = "say" },
+  { text = "{callsign}, give way to the Airbus passing left to right, then continue taxi via {via}.", kind = "say" },
+  { text = "Taxi to holding point runway {rwy} via {via}, QNH {qnh}, {callsign}.", kind = "readback" },
+]
+fallback = "{callsign}, taxi to holding point runway {rwy} via {via}. QNH {qnh}. Read back the holding point and runway."
+
+[intent.ready]
+title = "Ready for departure"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "ready for departure", kind = "request" },
+  { text = "{callsign}, holding point runway {rwy}, ready for departure.", kind = "say" },
+  { text = "{callsign} at the hold, ready in turn.", kind = "say" },
+  { text = "{callsign} will report ready for departure.", kind = "say" },
+  { text = "{callsign}, surface wind {wind}, runway {rwy}, cleared for takeoff. Report airborne.", kind = "say" },
+  { text = "{callsign}, wind {wind}, runway {rwy}, cleared for takeoff.", kind = "say", variant = "faa" },
+  { text = "Runway {rwy}, cleared for takeoff, {callsign}.", kind = "readback" },
+  { text = "{callsign}, hold short of runway {rwy}. Traffic on short final.", kind = "say" },
+]
+fallback = "{callsign}, surface wind {wind}, runway {rwy}, cleared for takeoff. Report airborne."
+
+[intent.gate]
+title = "Taxi to parking"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "taxi to parking", kind = "request" },
+  { text = "{callsign}, request taxi to parking.", kind = "say" },
+  { text = "{callsign}, vacate left when able, taxi to stand {stand} via {via}.", kind = "say" },
+  { text = "{callsign}, taxi to stand {stand} via {via}, expect marshaller on arrival.", kind = "say" },
+  { text = "{callsign}, welcome in. Taxi to parking via {via}, monitor ground.", kind = "say", variant = "faa" },
+  { text = "{callsign}, stand {stand} is occupied, expect stand {stand}. Continue taxi via {via}.", kind = "say" },
+  { text = "{callsign}, taxi to the general aviation apron via {via}. Report marshaller in sight.", kind = "say" },
+  { text = "Stand {stand} via {via}, {callsign}.", kind = "readback" },
+]
+fallback = "{callsign}, taxi to stand {stand} via {via}. Report on stand."
+
+[intent.progressive]
+title = "Repeat taxi instructions"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "repeat taxi instructions", kind = "request" },
+  { text = "{callsign}, say again taxi instructions.", kind = "say" },
+  { text = "{callsign} missed that, request progressive taxi.", kind = "say" },
+  { text = "{callsign}, I say again: taxi to holding point runway {rwy} via {via}. Hold short of runway {rwy}.", kind = "say" },
+  { text = "{callsign}, affirmative. Continue taxi via {via}, you are cleared to cross runway {rwy}.", kind = "say" },
+  { text = "{callsign}, negative, hold short of runway {rwy}. Traffic departing.", kind = "say" },
+  { text = "Taxi to holding point runway {rwy} via {via}, {callsign}.", kind = "readback" },
+]
+fallback = "{callsign}, I say again: taxi via {via} to holding point runway {rwy}. Read back the route."
+
+[intent.radio_check]
+title = "Radio check"
+group = "Communication"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "radio check", kind = "request" },
+  { text = "{callsign}, radio check, how do you read?", kind = "say" },
+  { text = "{callsign} on {freq}, radio check.", kind = "say" },
+  { text = "{callsign}, reading you strength five. Loud and clear.", kind = "say" },
+  { text = "{callsign}, readability three, readable but with difficulty. Say again your last.", kind = "say" },
+  { text = "Reading you five as well, {callsign}.", kind = "readback" },
+]
+fallback = "Reading you five. Development controller online."
+
+[intent.readback]
+title = "Read back clearance"
+group = "Communication"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = ["clearance_sequence", "altitude_feet", "waypoint"]
+examples = [
+  { text = "read back clearance", kind = "request" },
+  { text = "Cleared to {dest} via {sid}, initial climb {alt}, squawk {sq}, {callsign}.", kind = "readback" },
+  { text = "Down to {alt}, direct {wpt}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, readback correct for recorded altitude and route.", kind = "say" },
+  { text = "{callsign}, negative. Readback mismatch. Check altitude and route, say again.", kind = "say" },
+  { text = "{callsign}, that was not your clearance. Stand by, I will call you with the correct one.", kind = "say" },
+]
+fallback = "Readback correct for recorded altitude and route."
+
+[intent.repeat]
+title = "Say again"
+group = "Communication"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["repeat"]
+pattern = "exact"
+slots = []
+examples = [
+  { text = "say again", kind = "request" },
+  { text = "repeat", kind = "request" },
+  { text = "{callsign}, say again your last.", kind = "say" },
+  { text = "{callsign} missed the last call, say again.", kind = "say" },
+  { text = "{callsign}, I say again: climb to {alt}.", kind = "say" },
+  { text = "{callsign} still missing parts of your transmission. Say again slowly.", kind = "say" },
+  { text = "Say again slowly, {callsign}.", kind = "readback" },
+]
+fallback = "Repeating last transmission, {callsign}."
+
+[intent.standby]
+title = "Stand by"
+group = "Communication"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "stand by", kind = "request" },
+  { text = "{callsign}, stand by.", kind = "say" },
+  { text = "{callsign}, standby, I will call you back with your clearance.", kind = "say" },
+  { text = "{callsign}, standby for release. Expect one zero minutes delay due to traffic.", kind = "say" },
+  { text = "Standing by, {callsign}.", kind = "readback" },
+  { text = "{callsign}, standby does not authorize you to move. Hold position.", kind = "say" },
+]
+fallback = "Standing by."
+
+[intent.unable]
+title = "Unable"
+group = "Communication"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "unable", kind = "request" },
+  { text = "{callsign}, unable due to performance.", kind = "say" },
+  { text = "{callsign} is unable that restriction, we need {alt} or higher for terrain.", kind = "say" },
+  { text = "{callsign}, roger unable. Existing clearance remains in force, say intentions.", kind = "say" },
+  { text = "{callsign}, unable approved. Maintain {alt}, advise when able.", kind = "say" },
+  { text = "Unable, {callsign}.", kind = "readback" },
+]
+fallback = "Roger unable, {callsign}. Existing clearance remains recorded; request an alternative."
+
+[intent.frequency]
+title = "Request frequency change"
+group = "Communication"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request frequency change", kind = "request" },
+  { text = "{callsign}, request frequency change to company.", kind = "say" },
+  { text = "{callsign}, contact departure on {freq}. Good day.", kind = "say" },
+  { text = "{callsign}, contact tower on {freq}.", kind = "say" },
+  { text = "{callsign}, monitor ground on {freq}, taxi to the ramp.", kind = "say", variant = "faa" },
+  { text = "{callsign}, frequency change approved. Remain on this frequency until further advised.", kind = "say" },
+  { text = "Over to {freq}, {callsign}. Good day.", kind = "readback" },
+]
+fallback = "Frequency change approved, {callsign}. Contact {freq}."
+
+[intent.position]
+title = "Confirm position"
+group = "Information"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "confirm position", kind = "request" },
+  { text = "{callsign}, confirm position.", kind = "say" },
+  { text = "{callsign} is overhead {wpt} at {alt}.", kind = "say" },
+  { text = "{callsign}, radar contact, position confirmed. Identified overhead {wpt}.", kind = "say" },
+  { text = "{callsign}, negative radar contact. Reset transponder, squawk {sq}, say position.", kind = "say" },
+  { text = "{callsign}, squawk ident. Say position and altitude.", kind = "say" },
+  { text = "Overhead {wpt} at {alt}, {callsign}.", kind = "readback" },
+]
+fallback = "Position confirmed, {callsign}. Radar contact."
+
+[intent.altitude]
+title = "Request altitude..."
+group = "Enroute"
+catalogue = true
+parameter = true
+roles = ["atc", "copilot"]
+exact = []
+pattern = "altitude"
+slots = ["altitude_feet"]
+examples = [
+  { text = "request altitude FL320", kind = "request", altitude_feet = 32000 },
+  { text = "climb to {alt}", kind = "request", altitude_feet = 5000 },
+  { text = "{callsign}, request climb to {alt}.", kind = "say" },
+  { text = "{callsign} requests higher, ride is rough down here.", kind = "say" },
+  { text = "{callsign}, climb to {alt}. Report leaving current level.", kind = "say" },
+  { text = "{callsign}, climb and maintain {alt}. Expect higher one zero minutes after departure.", kind = "say", variant = "faa" },
+  { text = "{callsign}, climb via SID except maintain {alt}.", kind = "say" },
+  { text = "Climbing to {alt}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, unable higher at this time due to traffic. Maintain {alt}, expect higher in one zero minutes.", kind = "say" },
+]
+fallback = "Climb and maintain {alt}, {callsign}. Report reaching."
+
+[intent.direct]
+title = "Request direct-to..."
+group = "Enroute"
+catalogue = true
+parameter = true
+roles = ["atc", "copilot"]
+exact = []
+pattern = "direct"
+slots = ["waypoint"]
+examples = [
+  { text = "request direct to {wpt}", kind = "request", waypoint = "PELIN" },
+  { text = "{callsign}, request direct {wpt} to cut the corner.", kind = "say" },
+  { text = "{callsign}, cleared direct {wpt}, rest of route unchanged.", kind = "say" },
+  { text = "{callsign}, cleared direct {dest} airport.", kind = "say", variant = "faa" },
+  { text = "Direct {wpt}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, recleared direct {wpt}. Rest of route unchanged.", kind = "say" },
+  { text = "{callsign}, unable direct at this time. Proceed as cleared, I will call you with a shortcut.", kind = "say" },
+]
+fallback = "Cleared direct {wpt}, {callsign}. Rest of route unchanged."
+
+[intent.descent]
+title = "Request descent..."
+group = "Enroute"
+catalogue = true
+parameter = true
+roles = ["atc", "copilot"]
+exact = []
+pattern = "altitude"
+slots = ["altitude_feet"]
+examples = [
+  { text = "request descent FL280", kind = "request", altitude_feet = 28000 },
+  { text = "descend to {alt|3000}", kind = "request", altitude_feet = 3000 },
+  { text = "{callsign}, request descent.", kind = "say" },
+  { text = "{callsign} is ready to leave the level.", kind = "say" },
+  { text = "{callsign}, descend to {alt}. Report reaching.", kind = "say" },
+  { text = "{callsign}, descend via the arrival, runway {rwy}.", kind = "say" },
+  { text = "Leaving current level for {alt}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, expect further descent in five minutes. Maintain {alt} for spacing.", kind = "say" },
+]
+fallback = "Descend to {alt}, {callsign}. Report reaching."
+
+[intent.cancel_ifr]
+title = "Cancel IFR"
+group = "Enroute"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "cancel ifr", kind = "request" },
+  { text = "{callsign}, cancel IFR, proceeding VFR.", kind = "say" },
+  { text = "{callsign} has the field in sight, request to cancel IFR.", kind = "say" },
+  { text = "{callsign}, IFR cancellation received. Squawk 2000, frequency change approved. Good day.", kind = "say" },
+  { text = "{callsign}, IFR flight plan cancelled at this time. Operate VFR, remain clear of controlled airspace.", kind = "say", variant = "faa" },
+  { text = "{callsign}, cancellation received. No traffic observed. Frequency change approved.", kind = "say" },
+  { text = "Cancelling IFR, squawking 2000, {callsign}.", kind = "readback" },
+]
+fallback = "IFR cancelled, {callsign}. Squawk 2000, frequency change approved."
+
+[intent.approach]
+title = "Brief arrival approach"
+group = "Arrival"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = []
+pattern = "exact"
+slots = []
+examples = [
+  { text = "brief arrival approach", kind = "request" },
+  { text = "{callsign}, request approach briefing.", kind = "say" },
+  { text = "{callsign}, expect ILS approach runway {rwy}. Radar vectors to final.", kind = "say" },
+  { text = "{callsign}, expect visual approach runway {rwy}. Report field in sight.", kind = "say" },
+  { text = "{callsign}, descend to {alt}. Cleared ILS runway {rwy} approach.", kind = "say" },
+  { text = "{callsign}, cross {wpt} at {alt}, cleared for the approach.", kind = "say", variant = "faa" },
+  { text = "Cleared ILS runway {rwy}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, glidepath from below. Check altitude, say intentions.", kind = "say" },
+]
+fallback = "Expect ILS approach runway {rwy}, {callsign}. Descend to {alt}."
+
+[intent.go_around]
+title = "Going around"
+group = "Arrival"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["go around"]
+pattern = "exact"
+slots = []
+examples = [
+  { text = "going around", kind = "request" },
+  { text = "go around", kind = "request" },
+  { text = "{callsign} going around.", kind = "say" },
+  { text = "{callsign}, roger. Climb to {alt}, fly runway heading. I will call you with vectors.", kind = "say" },
+  { text = "{callsign}, go around approved. Climb and maintain {alt}, turn left heading 270 for spacing.", kind = "say" },
+  { text = "Going around, climbing to {alt}, {callsign}.", kind = "readback" },
+  { text = "{callsign}, say reason for the missed approach and fuel remaining.", kind = "say" },
+]
+fallback = "Go around acknowledged, {callsign}. Climb to {alt}, fly runway heading."
+
+[intent.emergency]
+title = "Declare emergency"
+group = "Emergency"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot", "ground", "attendant"]
+exact = ["emergency", "declare emergency"]
+substring = ["mayday", "pan pan"]
+pattern = "substring"
+slots = []
+examples = [
+  { text = "mayday mayday engine failure", kind = "request" },
+  { text = "declare emergency", kind = "request" },
+  { text = "Mayday mayday mayday, {callsign}, engine failure. Passing {alt}, maintaining heading. Request vectors to {dest}.", kind = "say" },
+  { text = "Pan pan, pan pan, pan pan, {callsign}, medical emergency on board. Request priority landing at {dest}.", kind = "say" },
+  { text = "Mayday mayday mayday fuel, {callsign}. Calculated fuel on landing below final reserve. Request direct {dest}.", kind = "say" },
+  { text = "{callsign}, minimum fuel. We can accept no delay on arrival.", kind = "say" },
+  { text = "{callsign}, roger mayday. You are cleared direct {dest}. State fuel remaining in minutes and souls on board.", kind = "say" },
+  { text = "{callsign}, emergency acknowledged. Squawk 7700. Say position, altitude, intentions.", kind = "say" },
+  { text = "{callsign}, all stations, stop transmitting. Emergency in progress.", kind = "say" },
+  { text = "Mayday acknowledged, squawking 7700, {callsign}.", kind = "readback" },
+]
+fallback = "Emergency acknowledged, {callsign}. State position, altitude, fuel remaining and intentions."
+
+[intent.altimeter]
+title = "Request altimeter"
+group = "Communication"
+catalogue = false
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request altimeter"]
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request altimeter", kind = "request" },
+  { text = "{callsign}, request QNH.", kind = "say" },
+  { text = "{callsign}, QNH {qnh}.", kind = "say" },
+  { text = "{callsign}, altimeter 2992.", kind = "say", variant = "faa" },
+  { text = "{callsign}, QNH {qnh}, no change. Report if you need the trend.", kind = "say" },
+  { text = "QNH {qnh}, {callsign}.", kind = "readback" },
+]
+fallback = "QNH {qnh}, {callsign}."
+
+[intent.weather]
+title = "Request weather"
+group = "Communication"
+catalogue = false
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request weather"]
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request weather", kind = "request" },
+  { text = "{callsign}, request latest weather at {dest}.", kind = "say" },
+  { text = "{callsign}, information {atis} current. Wind {wind}, visibility good, QNH {qnh}.", kind = "say" },
+  { text = "{callsign}, weather below minimums at {dest}. Say intentions.", kind = "say" },
+  { text = "{callsign}, visibility dropping at {dest}. Expect holding at {wpt}. Say fuel remaining.", kind = "say" },
+  { text = "Copy weather, {callsign}.", kind = "readback" },
+]
+fallback = "Information {atis} current, {callsign}. Wind {wind}, QNH {qnh}."
+
+[intent.conversation]
+title = "Free speech"
+group = "Conversation"
+catalogue = false
+parameter = false
+roles = ["atc", "copilot", "ground", "attendant"]
+exact = []
+pattern = "none"
+slots = []
+examples = [
+  { text = "thanks for the smooth flight", kind = "request" },
+  { text = "{callsign}, thanks for the help today. Good day.", kind = "say" },
+  { text = "Frequency is very busy this morning, {callsign}. Keep it short.", kind = "say" },
+  { text = "{callsign}, monitor ground on {freq}. Good day.", kind = "say" },
+  { text = "{callsign}, contact centre on {freq}. Good night.", kind = "say" },
+  { text = "Thanks, switching now. {callsign}.", kind = "say" },
+]
+fallback = ""
+
+# Rust departure workflow additions. Permissions do not operate aircraft controls.
+[intent.start]
+title = "Request start-up"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request start", "request startup", "request start up"]
+pattern = "exact"
+slots = []
+examples = [{text = "request start-up", kind = "request"}, {text = "{callsign}, request start-up", kind = "say"}]
+fallback = "{callsign}, start-up approved. Report ready for pushback or taxi."
+
+[intent.start_pushback]
+title = "Request start-up and pushback"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request start and pushback", "request pushback and start", "request push and start"]
+pattern = "exact"
+slots = []
+examples = [{text = "request start-up and pushback", kind = "request"}, {text = "{callsign}, request start-up and pushback", kind = "say"}]
+fallback = "{callsign}, start-up and pushback approved. Report ready to taxi."
+
+[intent.backtrack]
+title = "Request runway backtrack"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request runway backtrack", "request backtrack"]
+pattern = "exact"
+slots = []
+examples = [
+  { text = "request runway backtrack", kind = "request" },
+  { text = "{callsign}, request backtrack runway {rwy} to the departure end.", kind = "say" },
+  { text = "Backtrack runway {rwy}, stop and hold position at the departure end, {callsign}.", kind = "readback" },
+]
+fallback = ""

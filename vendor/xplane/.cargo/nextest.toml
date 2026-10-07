@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: 2024 Julia DeMille <me@jdemille.com>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+[profile.default]
+test-threads = 1
+
+[profile.ci.junit]
+path = "junit.xml"
+store-success-output = true
+store-failure-output = true

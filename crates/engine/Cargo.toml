@@ -1,0 +1,22 @@
+[package]
+name = "openatc-engine"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "open-atc-engine"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+rand = "0.9"
+openatc-core = { path = "../core" }
+openatc-settings = { path = "../settings" }
+
+[lints]
+workspace = true

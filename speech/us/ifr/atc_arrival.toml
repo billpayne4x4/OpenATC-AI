@@ -1,0 +1,14 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[arrival.lahso]
+service = ["Approach"]
+role = "atc"
+phase = ["approach", "landed"]
+variant = "faa"
+situation = ["lahso_accepted_and_distance_verified"]
+slots = ["callsign", "holding_point", "landing_distance", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, cleared to land, hold short of {holding_point}. Available landing distance {landing_distance}.",
+  "{callsign}, cleared to land runway {rwy} and hold short of {holding_point}. Landing distance available {landing_distance}.",
+  "{callsign}, landing distance {landing_distance}. Runway {rwy}, cleared to land, hold short of {holding_point}.",
+]

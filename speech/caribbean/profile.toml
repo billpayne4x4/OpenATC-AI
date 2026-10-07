@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "caribbean"
+prefixes = ["T"]
+variant = "icao"
+notes = "ICAO English baseline; not automatically FAA merely because of prefix T."

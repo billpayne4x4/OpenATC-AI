@@ -1,0 +1,40 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[australia_services.zone_entry]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["zone_entry"]
+slots = ["alt", "callsign", "via"]
+say = [
+  "{callsign}, cleared into the control zone via {via}, not above {alt}.",
+  "{callsign}, control-zone entry cleared via {via}, maximum altitude {alt}.",
+  "{callsign}, cleared zone entry via {via}, at or below {alt}.",
+]
+
+[australia_services.report_downwind]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["report_downwind"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, report downwind runway {rwy}.",
+  "{callsign}, call downwind for runway {rwy}.",
+  "{callsign}, advise when downwind runway {rwy}.",
+]
+
+[australia_services.qnh]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["qnh"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, QNH {qnh}.",
+  "{callsign}, current QNH {qnh}.",
+  "{callsign}, pressure setting QNH {qnh}.",
+]

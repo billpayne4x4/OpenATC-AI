@@ -1,0 +1,27 @@
+[package]
+name = "openatc-plugin"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "openatc_plugin"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+xplane = { version = "0.1.0-alpha.1", features = ["XPLM400"] }
+xplane-sys = { version = "4.0", features = ["XPLM400"] }
+imgui = { version = "0.12", features = ["tables-api"] }
+imgui-glow-renderer = "0.13"
+glow = "0.14"
+libc = "0.2"
+libloading = "0.8"
+serde_json = "1"
+openatc-ui = { path = "../ui" }
+openatc-core = { path = "../core" }
+openatc-settings = { path = "../settings" }
+openatc-http = { path = "../http" }
+
+[lints]
+workspace = true

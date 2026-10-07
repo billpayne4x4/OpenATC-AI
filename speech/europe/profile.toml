@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "europe"
+prefixes = ["E", "L"]
+variant = "icao"
+notes = "ICAO baseline; each state AIP and airport procedure overrides regional assumptions."

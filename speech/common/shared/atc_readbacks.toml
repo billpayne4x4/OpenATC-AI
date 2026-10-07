@@ -1,0 +1,222 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[readback.altitude]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["altitude"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, read back assigned altitude {alt}.",
+  "{callsign}, confirm altitude {alt} in your readback.",
+  "{callsign}, altitude readback required, {alt}.",
+]
+
+[readback.heading]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["heading"]
+slots = ["callsign", "heading"]
+say = [
+  "{callsign}, read back heading {heading}.",
+  "{callsign}, confirm assigned heading {heading}.",
+  "{callsign}, heading readback required, {heading}.",
+]
+
+[readback.runway]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["runway"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, read back runway {rwy}.",
+  "{callsign}, confirm assigned runway {rwy}.",
+  "{callsign}, runway readback required, {rwy}.",
+]
+
+[readback.hold_short]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["hold_short"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, read back hold short runway {rwy}.",
+  "{callsign}, confirm holding short of runway {rwy}.",
+  "{callsign}, hold-short readback required for runway {rwy}.",
+]
+
+[readback.crossing]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["crossing"]
+slots = ["callsign", "rwy", "via"]
+say = [
+  "{callsign}, read back cross runway {rwy} at {via}.",
+  "{callsign}, confirm runway {rwy} crossing at {via}.",
+  "{callsign}, crossing readback required: runway {rwy} at {via}.",
+]
+
+[readback.squawk]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["squawk"]
+slots = ["callsign", "sq"]
+say = [
+  "{callsign}, read back squawk {sq}.",
+  "{callsign}, confirm code {sq}.",
+  "{callsign}, transponder-code readback required, {sq}.",
+]
+
+[readback.pressure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "icao"
+situation = ["pressure"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, read back QNH {qnh}.",
+  "{callsign}, confirm QNH {qnh}.",
+  "{callsign}, pressure-setting readback required, QNH {qnh}.",
+]
+
+[readback.speed]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["speed"]
+slots = ["callsign", "speed"]
+say = [
+  "{callsign}, read back speed {speed}.",
+  "{callsign}, confirm assigned speed {speed}.",
+  "{callsign}, speed readback required, {speed}.",
+]
+
+[readback.frequency]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["frequency"]
+slots = ["callsign", "freq"]
+say = [
+  "{callsign}, read back frequency {freq}.",
+  "{callsign}, confirm assigned frequency {freq}.",
+  "{callsign}, frequency readback required, {freq}.",
+]
+
+[readback.route]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["route"]
+slots = ["callsign", "via"]
+say = [
+  "{callsign}, read back route via {via}.",
+  "{callsign}, confirm the route {via}.",
+  "{callsign}, route readback required, via {via}.",
+]
+
+[readback.incorrect_heading]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["incorrect_heading"]
+slots = ["callsign", "heading"]
+say = [
+  "{callsign}, negative, heading {heading}. Read back.",
+  "{callsign}, correction, assigned heading {heading}. Read back.",
+  "{callsign}, correct heading is {heading}. Say corrected readback.",
+]
+
+[readback.incorrect_runway]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["incorrect_runway"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, negative, runway {rwy}. Read back.",
+  "{callsign}, correction, runway {rwy}. Read back the runway.",
+  "{callsign}, correct runway {rwy}. Confirm in your readback.",
+]
+
+[readback.incorrect_altitude]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["incorrect_altitude"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, negative, altitude {alt}. Read back.",
+  "{callsign}, correction, assigned altitude {alt}. Read back.",
+  "{callsign}, correct altitude {alt}. Say corrected readback.",
+]
+
+[readback.incorrect_squawk]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["incorrect_squawk"]
+slots = ["callsign", "sq"]
+say = [
+  "{callsign}, negative, squawk {sq}. Read back.",
+  "{callsign}, correction, code {sq}. Confirm.",
+  "{callsign}, correct transponder code {sq}. Read back.",
+]
+
+[readback.incorrect_pressure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "icao"
+situation = ["incorrect_pressure"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, negative, QNH {qnh}. Read back.",
+  "{callsign}, correction, QNH {qnh}. Confirm.",
+  "{callsign}, correct pressure setting QNH {qnh}. Read back.",
+]
+
+[readback.missing_callsign]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["missing_callsign"]
+slots = []
+say = [
+  "Read back with your full callsign.",
+  "Include your full callsign in the readback.",
+  "Full callsign required with the readback.",
+]
+
+[readback.acknowledgement_not_readback]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["acknowledgement_not_readback"]
+slots = ["callsign"]
+say = [
+  "{callsign}, roger is not a clearance readback. Read back the instruction.",
+  "{callsign}, readback required; acknowledgement alone is insufficient.",
+  "{callsign}, acknowledge by reading back the clearance.",
+]

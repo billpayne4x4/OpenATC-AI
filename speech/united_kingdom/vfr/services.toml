@@ -1,0 +1,40 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[united_kingdom_services.basic_service]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["basic_service"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, basic service. QNH {qnh}.",
+  "{callsign}, basic service provided, QNH {qnh}.",
+  "{callsign}, QNH {qnh}, basic service.",
+]
+
+[united_kingdom_services.traffic_service]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["traffic_service"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, traffic service. QNH {qnh}.",
+  "{callsign}, traffic service provided, QNH {qnh}.",
+  "{callsign}, QNH {qnh}, traffic service.",
+]
+
+[united_kingdom_services.service_change]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["service_change"]
+slots = ["callsign"]
+say = [
+  "{callsign}, basic service only, traffic service unavailable.",
+  "{callsign}, traffic service unavailable; basic service only.",
+  "{callsign}, service changed to basic service; traffic service unavailable.",
+]

@@ -1,5 +1,0 @@
-FetchContent_Declare(glad URL https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz DOWNLOAD_EXTRACT_TIMESTAMP TRUE SOURCE_SUBDIR cmake)
-FetchContent_MakeAvailable(glad)
-glad_add_library(openatc_gl STATIC REPRODUCIBLE API gl:compatibility=2.1 EXTENSIONS NONE)
-set_target_properties(openatc_gl PROPERTIES C_VISIBILITY_PRESET hidden)
-set(OPENATC_GRAPHICS_TARGET openatc_gl)

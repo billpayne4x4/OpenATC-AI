@@ -1,0 +1,404 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[emergency.engine_failure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["engine_failure", "distress"]
+slots = ["callsign"]
+say = [
+  "{callsign}, engine failure acknowledged. Say intentions.",
+  "{callsign}, roger engine failure. Advise intentions.",
+  "{callsign}, received, engine failure. State your intentions.",
+]
+
+[emergency.medical]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["medical", "urgency"]
+slots = ["callsign"]
+say = [
+  "{callsign}, medical emergency acknowledged. Say intentions.",
+  "{callsign}, roger medical emergency. Advise intentions.",
+  "{callsign}, received, medical emergency. State your intentions.",
+]
+
+[emergency.fuel_mayday]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["fuel_emergency", "distress"]
+slots = ["callsign"]
+say = [
+  "{callsign}, MAYDAY FUEL acknowledged. Say intentions.",
+  "{callsign}, roger MAYDAY FUEL. Advise intentions.",
+  "{callsign}, received, MAYDAY FUEL. State your intentions.",
+]
+
+[emergency.minimum_fuel]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["minimum_fuel", "advisory"]
+slots = ["callsign"]
+say = [
+  "{callsign}, minimum fuel acknowledged. Say intentions.",
+  "{callsign}, roger minimum fuel. Advise intentions.",
+  "{callsign}, received, minimum fuel. State your intentions.",
+]
+
+[emergency.pressurization]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["pressurization", "distress"]
+slots = ["callsign"]
+say = [
+  "{callsign}, pressurization problem acknowledged. Say intentions.",
+  "{callsign}, roger pressurization problem. Advise intentions.",
+  "{callsign}, received, pressurization problem. State your intentions.",
+]
+
+[emergency.fire]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["fire", "distress"]
+slots = ["callsign"]
+say = [
+  "{callsign}, reported smoke or fire acknowledged. Say intentions.",
+  "{callsign}, roger reported smoke or fire. Advise intentions.",
+  "{callsign}, received, reported smoke or fire. State your intentions.",
+]
+
+[emergency.comm_failure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["nordo", "lost_comms"]
+slots = ["callsign"]
+say = [
+  "{callsign}, if receiving, squawk ident.",
+  "{callsign}, acknowledge with ident if you read.",
+  "{callsign}, if you hear me, operate ident.",
+]
+
+[emergency.bird_strike]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "approach"]
+variant = "common"
+situation = ["bird_strike", "urgency"]
+slots = ["callsign"]
+say = [
+  "{callsign}, bird strike acknowledged. Say intentions.",
+  "{callsign}, roger bird strike. Advise intentions.",
+  "{callsign}, received, bird strike. State your intentions.",
+]
+
+[emergency.unruly]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["security", "urgency"]
+slots = ["callsign"]
+say = [
+  "{callsign}, security concern acknowledged. Say intentions.",
+  "{callsign}, roger security concern. Advise intentions.",
+  "{callsign}, received, security concern. State your intentions.",
+]
+
+[emergency.downgrade]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["distress_cancelled"]
+slots = ["callsign"]
+say = [
+  "{callsign}, cancellation of distress acknowledged. Confirm intentions.",
+  "{callsign}, distress cancellation received. Say intentions.",
+  "{callsign}, roger, distress cancelled. Advise your intentions.",
+]
+
+[emergency.hydraulic_failure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["hydraulics", "urgency"]
+slots = ["callsign"]
+say = [
+  "{callsign}, hydraulic problem acknowledged. Say intentions.",
+  "{callsign}, roger hydraulic problem. Advise intentions.",
+  "{callsign}, received, hydraulic problem. State your intentions.",
+]
+
+[emergency.total_electrics]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["electrics", "distress"]
+slots = ["callsign"]
+say = [
+  "{callsign}, electrical failure acknowledged. Say intentions.",
+  "{callsign}, roger electrical failure. Advise intentions.",
+  "{callsign}, received, electrical failure. State your intentions.",
+]
+
+[emergency.fuel_leak]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["fuel_leak", "urgency"]
+slots = ["callsign"]
+say = [
+  "{callsign}, suspected fuel leak acknowledged. Say intentions.",
+  "{callsign}, roger suspected fuel leak. Advise intentions.",
+  "{callsign}, received, suspected fuel leak. State your intentions.",
+]
+
+[emergency.icing_descent]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["icing", "urgency"]
+slots = ["callsign"]
+say = [
+  "{callsign}, severe icing acknowledged. Say intentions.",
+  "{callsign}, roger severe icing. Advise intentions.",
+  "{callsign}, received, severe icing. State your intentions.",
+]
+
+[emergency.bomb_equalize]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["security", "bomb_threat"]
+slots = ["callsign"]
+say = [
+  "{callsign}, reported bomb threat acknowledged. Say intentions.",
+  "{callsign}, roger reported bomb threat. Advise intentions.",
+  "{callsign}, received, reported bomb threat. State your intentions.",
+]
+
+[emergency.elt_relay]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["elt", "relay"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report any ELT received, with your position and signal strength.",
+  "{callsign}, advise position and signal strength if receiving an ELT.",
+  "{callsign}, if you hear an emergency locator signal, report position and strength.",
+]
+
+[emergency.mayday_ack]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["mayday_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, roger MAYDAY. Say intentions.",
+  "{callsign}, MAYDAY acknowledged. Advise intentions.",
+  "{callsign}, distress received. State your intentions.",
+]
+
+[emergency.pan_ack]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["pan_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, roger PAN PAN. Say intentions.",
+  "{callsign}, urgency acknowledged. Advise intentions.",
+  "{callsign}, PAN PAN received. State your intentions.",
+]
+
+[emergency.souls_fuel]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["souls_fuel"]
+slots = ["callsign"]
+say = [
+  "{callsign}, when able, say persons on board and fuel remaining in minutes.",
+  "{callsign}, advise persons on board and fuel endurance when able.",
+  "{callsign}, when workload permits, report persons on board and fuel remaining.",
+]
+
+[emergency.priority_requested]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["priority_requested"]
+slots = ["callsign"]
+say = [
+  "{callsign}, priority request received. Stand by for clearance.",
+  "{callsign}, priority noted. Clearance to follow.",
+  "{callsign}, request for priority acknowledged; stand by.",
+]
+
+[emergency.emergency_descent_traffic]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["emergency_descent_traffic"]
+slots = ["location"]
+say = [
+  "All stations, emergency descent in progress near {location}.",
+  "All stations, aircraft making an emergency descent in the vicinity of {location}.",
+  "All stations, emergency-descent traffic reported {location}.",
+]
+
+[emergency.ra_ack]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["ra_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, roger TCAS RA.",
+  "{callsign}, TCAS resolution advisory acknowledged.",
+  "{callsign}, roger your resolution advisory.",
+]
+
+[emergency.clear_of_conflict]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["clear_of_conflict"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, roger clear of conflict. Report returning to assigned {alt}.",
+  "{callsign}, clear of conflict received. Report return to assigned altitude {alt}.",
+  "{callsign}, conflict clear acknowledged. Advise when back at {alt}.",
+]
+
+[emergency.services_alerted]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["services_alerted"]
+slots = ["callsign"]
+say = [
+  "{callsign}, emergency services alerted.",
+  "{callsign}, emergency services have been notified.",
+  "{callsign}, response services alerted to your emergency.",
+]
+
+[emergency.services_not_confirmed]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["services_not_confirmed"]
+slots = ["callsign"]
+say = [
+  "{callsign}, emergency-services response not yet confirmed.",
+  "{callsign}, awaiting confirmation from emergency services.",
+  "{callsign}, service response confirmation is pending.",
+]
+
+[emergency.runway_stop_ack]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["runway_stop_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, stopped on runway received. Say assistance required.",
+  "{callsign}, roger, aircraft stopped on runway. Advise assistance needed.",
+  "{callsign}, runway stop report acknowledged. State assistance required.",
+]
+
+[emergency.evacuation_report_ack]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["evacuation_report_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, evacuation report received. Emergency services alerted.",
+  "{callsign}, roger evacuation. Emergency services notified.",
+  "{callsign}, evacuation acknowledged, response services alerted.",
+]
+
+[emergency.unable_altitude]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["unable_altitude"]
+slots = ["callsign"]
+say = [
+  "{callsign}, unable altitude received. Say altitude and intentions.",
+  "{callsign}, roger, unable assigned altitude. Report current level and intentions.",
+  "{callsign}, altitude unable report acknowledged. State present altitude and intentions.",
+]
+
+[emergency.divert_request_ack]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["divert_request_ack"]
+slots = ["callsign", "dest"]
+say = [
+  "{callsign}, diversion request to {dest} received. Stand by for clearance.",
+  "{callsign}, roger request to divert {dest}. Clearance to follow.",
+  "{callsign}, {dest} diversion request acknowledged. Stand by for revised clearance.",
+]
+
+[emergency.minimum_fuel_delay]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["minimum_fuel_delay"]
+slots = ["callsign", "mins"]
+say = [
+  "{callsign}, minimum fuel acknowledged. Expected delay {mins}. Say intentions.",
+  "{callsign}, roger minimum fuel. Delay estimate {mins}. Advise intentions.",
+  "{callsign}, minimum fuel received. Expected delay remains {mins}; state intentions.",
+]
+
+[emergency.distress_assistance]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach", "landed"]
+variant = "common"
+situation = ["distress_assistance"]
+slots = ["callsign"]
+say = [
+  "{callsign}, say assistance required when able.",
+  "{callsign}, when workload permits, advise assistance needed.",
+  "{callsign}, tell us what assistance you require when able.",
+]

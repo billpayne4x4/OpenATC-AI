@@ -1,9 +1,0 @@
-{
-  "version": 6,
-  "configurePresets": [
-    {"name": "dev", "displayName": "Standalone development", "generator": "Ninja", "binaryDir": "${sourceDir}/build/dev", "cacheVariables": {"CMAKE_BUILD_TYPE": "Debug"}},
-    {"name": "core-only", "displayName": "Offline core tests", "generator": "Ninja", "binaryDir": "${sourceDir}/build/core", "cacheVariables": {"CMAKE_BUILD_TYPE": "Debug", "OPENATC_BUILD_DESKTOP": "OFF", "OPENATC_BUILD_ENGINE": "OFF", "OPENATC_BUILD_PLUGIN": "OFF"}}
-  ],
-  "buildPresets": [{"name": "dev", "configurePreset": "dev"}, {"name": "core-only", "configurePreset": "core-only"}],
-  "testPresets": [{"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}}, {"name": "core-only", "configurePreset": "core-only", "output": {"outputOnFailure": true}}]
-}

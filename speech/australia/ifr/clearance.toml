@@ -1,0 +1,40 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[australia_clearance.readback_taxi]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "taxi", "departure", "arrival", "approach"]
+variant = "icao"
+situation = ["readback_taxi"]
+slots = ["callsign", "holding_point", "rwy", "via"]
+say = [
+  "{callsign}, read back runway {rwy}, taxi route {via}, holding point {holding_point}.",
+  "{callsign}, confirm runway {rwy}, route {via} and holding point {holding_point} in your readback.",
+  "{callsign}, full taxi readback required: runway {rwy}, via {via}, holding point {holding_point}.",
+]
+
+[australia_clearance.readback_frequency]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "taxi", "departure", "arrival", "approach"]
+variant = "icao"
+situation = ["readback_frequency"]
+slots = ["callsign", "freq"]
+say = [
+  "{callsign}, read back frequency {freq} before changing.",
+  "{callsign}, confirm {freq} in your readback before the frequency change.",
+  "{callsign}, frequency {freq} readback required before switching.",
+]
+
+[australia_clearance.qnh]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "taxi", "departure", "arrival", "approach"]
+variant = "icao"
+situation = ["qnh"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, QNH {qnh}.",
+  "{callsign}, current QNH {qnh}.",
+  "{callsign}, pressure setting QNH {qnh}.",
+]

@@ -1,0 +1,66 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[delivery.startup_separate]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["startup_required"]
+slots = ["callsign"]
+say = [
+  "{callsign}, start-up approved. Report ready for pushback.",
+  "{callsign}, start-up is approved; call when ready to push.",
+  "{callsign}, approved for start-up. Advise ready for pushback.",
+]
+
+[delivery.confirm_destination]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["confirm_destination"]
+slots = ["callsign"]
+say = [
+  "{callsign}, confirm destination.",
+  "{callsign}, say your destination.",
+  "{callsign}, advise destination airport.",
+]
+
+[delivery.confirm_flight_rules]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["confirm_flight_rules"]
+slots = ["callsign"]
+say = [
+  "{callsign}, confirm IFR or VFR.",
+  "{callsign}, say your flight rules.",
+  "{callsign}, advise whether your flight is IFR or VFR.",
+]
+
+[delivery.confirm_atis]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["confirm_atis"]
+slots = ["atis", "callsign"]
+say = [
+  "{callsign}, confirm information {atis} received.",
+  "{callsign}, do you have information {atis}?",
+  "{callsign}, report receipt of ATIS {atis}.",
+]
+
+[delivery.startup_delayed]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["startup_delayed"]
+slots = ["callsign", "mins"]
+say = [
+  "{callsign}, start-up delayed. Expect {mins}.",
+  "{callsign}, expect start-up in {mins}; not approved yet.",
+  "{callsign}, start-up is delayed approximately {mins}.",
+]

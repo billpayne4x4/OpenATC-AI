@@ -1,0 +1,40 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[enroute.climb_via]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "faa"
+situation = ["sid_climb"]
+slots = ["alt", "callsign", "sid"]
+say = [
+  "{callsign}, climb via {sid} except maintain {alt}.",
+  "{callsign}, {sid} departure, climb via except maintain {alt}.",
+  "{callsign}, climb via {sid}, except maintain {alt}.",
+]
+
+[enroute.climb_faa]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise"]
+variant = "faa"
+situation = ["climb_request"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, climb and maintain {alt}.",
+  "{callsign}, climb to and maintain {alt}.",
+  "{callsign}, assigned altitude {alt}, climb and maintain.",
+]
+
+[enroute.descend_via]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "faa"
+situation = ["star_descent"]
+slots = ["alt", "callsign", "star"]
+say = [
+  "{callsign}, descend via {star} except maintain {alt}.",
+  "{callsign}, {star} arrival, descend via except maintain {alt}.",
+  "{callsign}, descend via {star}, except maintain {alt}.",
+]

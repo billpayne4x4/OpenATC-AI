@@ -1,0 +1,131 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[departure.radar_identified]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["radar_identified"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, identified. Climb to {alt}.",
+  "{callsign}, radar contact, climb to {alt}.",
+  "{callsign}, radar identified. Continue climb to {alt}.",
+]
+
+[departure.runway_heading]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["runway_heading"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, fly runway heading, climb to {alt}.",
+  "{callsign}, runway heading, climb to {alt}.",
+  "{callsign}, maintain runway heading and climb to {alt}.",
+]
+
+[departure.heading_after_departure]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["heading_after_departure"]
+slots = ["alt", "callsign", "heading", "turn"]
+say = [
+  "{callsign}, turn {turn} heading {heading}, climb to {alt}.",
+  "{callsign}, climb to {alt}, turn {turn} heading {heading}.",
+  "{callsign}, {turn} turn to heading {heading} and climb to {alt}.",
+]
+
+[departure.resume_sid]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "icao"
+situation = ["resume_sid"]
+slots = ["alt", "callsign", "sid"]
+say = [
+  "{callsign}, resume {sid}, climb to {alt}.",
+  "{callsign}, rejoin {sid} departure and climb to {alt}.",
+  "{callsign}, resume the {sid} procedure, altitude {alt}.",
+]
+
+[departure.direct_fix]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["direct_fix"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, proceed direct {wpt}, climb to {alt}.",
+  "{callsign}, direct {wpt}, climb to {alt}.",
+  "{callsign}, climb to {alt} and proceed direct {wpt}.",
+]
+
+[departure.level_stop]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["level_stop"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, stop climb at {alt}.",
+  "{callsign}, climb only to {alt}, maintain.",
+  "{callsign}, level off at {alt}; stop climb there.",
+]
+
+[departure.report_passing]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["report_passing"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, report passing {alt}.",
+  "{callsign}, call when climbing through {alt}.",
+  "{callsign}, advise when passing {alt} in the climb.",
+]
+
+[departure.speed_cancelled]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["speed_cancelled"]
+slots = ["callsign"]
+say = [
+  "{callsign}, cancel speed restriction.",
+  "{callsign}, previous ATC speed restriction cancelled.",
+  "{callsign}, ATC speed restriction no longer applies.",
+]
+
+[departure.contact_control]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["contact_control"]
+slots = ["callsign", "freq", "station"]
+say = [
+  "{callsign}, contact {station} on {freq}.",
+  "{callsign}, change to {station}, {freq}.",
+  "{callsign}, continue with {station} on frequency {freq}.",
+]
+
+[departure.maintain_vmc]
+service = ["Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["maintain_vmc"]
+slots = ["callsign"]
+say = [
+  "{callsign}, maintain VMC.",
+  "{callsign}, remain in visual meteorological conditions.",
+  "{callsign}, maintain visual meteorological conditions.",
+]

@@ -1,0 +1,19 @@
+[package]
+name = "openatc-audio"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "openatc_audio"
+path = "src/lib.rs"
+
+[dependencies]
+openatc-http = { path = "../http" }
+serde_json = "1"
+
+[build-dependencies]
+cc = "1"
+
+[lints]
+workspace = true

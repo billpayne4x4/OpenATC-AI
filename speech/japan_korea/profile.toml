@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "japan_korea"
+prefixes = ["R"]
+variant = "icao"
+notes = "ICAO English baseline; no fabricated national procedures."

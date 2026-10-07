@@ -1,0 +1,40 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[canada_clearance.altimeter]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "departure", "cruise", "arrival"]
+variant = "icao"
+situation = ["altimeter"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, altimeter {qnh}.",
+  "{callsign}, altimeter setting {qnh}.",
+  "{callsign}, current altimeter {qnh}.",
+]
+
+[canada_clearance.maintain_altitude]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "departure", "cruise", "arrival"]
+variant = "icao"
+situation = ["maintain_altitude"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, climb and maintain {alt}.",
+  "{callsign}, climb to {alt} and maintain.",
+  "{callsign}, maintain {alt}, climb approved.",
+]
+
+[canada_clearance.descend_altitude]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "departure", "cruise", "arrival"]
+variant = "icao"
+situation = ["descend_altitude"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, descend and maintain {alt}.",
+  "{callsign}, descend to {alt} and maintain.",
+  "{callsign}, maintain {alt}, descent approved.",
+]

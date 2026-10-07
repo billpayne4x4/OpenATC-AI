@@ -2,7 +2,8 @@
 /stage-wayland/
 /dist/
 /packages/
-/vendor/
+/vendor/*
+!/vendor/xplane/
 /.idea/
 /.vscode/
 *.swp
@@ -55,18 +56,65 @@ core.*
 Thumbs.db
 desktop.ini
 # Rust build output (lockfile stays committed: reproducible service builds)
-rust/target/
+/target/
 # CMake leftovers outside build/
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 CMakeUserPresets.json
-# AI assistant / agent tooling (local-only state, never committed)
+# Local assistant configuration, history and generated plans
+.codex/
+.codex-*
 .opencode/
+.opencode-*
+opencode.json
+opencode.jsonc
 .agents/
+.agent/
 .claude/
+.claude-*
 .cursor/
+.cursorignore
+.cursorindexingignore
+.cursorrules
 .windsurf/
+.windsurfrules
+.continue/
+.cline/
+.clinerules*
+.roo/
+.roorules*
+.kiro/
+.trae/
+.amp/
+.junie/
+.amazonq/
+.gemini/
+.qwen/
+.copilot/
+.codeium/
+.tabnine/
+.openhands/
+.aider*
+.mcp.json
+.mcp/
+AGENTS.md
+AGENTS.override.md
+CLAUDE.md
 CLAUDE.local.md
+GEMINI.md
+QWEN.md
+COPILOT.md
+**/.github/copilot-instructions.md
+**/.github/instructions/
+**/.github/agents/
+**/.github/prompts/
+# Model downloads and local verification records
+/models/
+models.lock.toml
+# Local environment overrides
+.env.*
+!.env.example
+!.env.sample
 # Local notes and scratch
 scratch/

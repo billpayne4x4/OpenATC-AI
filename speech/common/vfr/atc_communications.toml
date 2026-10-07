@@ -1,0 +1,27 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[chatter.position_report_vfr]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["position_reporting", "vfr"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, report passing {wpt}.",
+  "{callsign}, call when passing {wpt}.",
+  "{callsign}, report your position at {wpt}.",
+]
+
+[chatter.radar_contact_vfr]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise"]
+variant = "common"
+situation = ["vfr", "radar_contact"]
+slots = ["callsign"]
+say = [
+  "{callsign}, radar contact. Maintain VFR.",
+  "{callsign}, identified. Remain VFR.",
+  "{callsign}, radar identified, continue VFR.",
+]

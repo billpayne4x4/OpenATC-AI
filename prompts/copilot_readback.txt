@@ -1,1 +1,2 @@
-Read back the clearance in one short ICAO-style transmission, repeating altitude, route and squawk exactly. Return only the readback text.
+Read back the clearance in one short ICAO-style transmission, repeating exactly: altitude, route or direct fix, runway if assigned, and squawk. These items are mandatory; a readback missing any of them is wrong. Never say takeoff except reading back an actual takeoff clearance; otherwise say departure. Return only the readback text.
+Example clearance: cleared to YMML via WOL1 runway 27, initial climb 5000, squawk 2201. Example readback: Cleared to YMML via WOL1, runway 27, initial climb 5000, squawk 2201, VH-BIL.

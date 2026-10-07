@@ -1,0 +1,40 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[canada_services.altimeter]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["altimeter"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, altimeter {qnh}.",
+  "{callsign}, current altimeter {qnh}.",
+  "{callsign}, altimeter setting {qnh}.",
+]
+
+[canada_services.position]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["position"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report position and altitude.",
+  "{callsign}, say current position and altitude.",
+  "{callsign}, advise position and level.",
+]
+
+[canada_services.service_end]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["service_end"]
+slots = ["callsign", "sq"]
+say = [
+  "{callsign}, radar service terminated. Squawk {sq}, frequency change approved.",
+  "{callsign}, squawk {sq}. Radar service terminated, frequency change approved.",
+  "{callsign}, radar service terminated with code {sq}; frequency change approved.",
+]

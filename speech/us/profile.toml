@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "us"
+prefixes = ["K", "PA", "PF", "PH", "PO"]
+variant = "faa"
+notes = "FAA English phraseology; excludes non-US Caribbean and Pacific airports."

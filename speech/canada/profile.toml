@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "canada"
+prefixes = ["C"]
+variant = "icao"
+notes = "Canadian English examples; consult TC AIM and NAV CANADA for national RNAV rules."

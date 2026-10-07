@@ -6,8 +6,9 @@ for binary in sys.argv[1:]:
     result = subprocess.run(["ldd", binary], capture_output=True, text=True, check=True)
     dependencies = result.stdout
     forbidden = re.findall(r"\blib(?:X[^\s/]*|xcb[^\s/]*|GLX[^\s/]*|GL\.so[^\s/]*)", dependencies)
-    if binary.endswith(".xpl"):
-        forbidden += re.findall(r"\blib(?:ssl|crypto|curl)[^\s/]*", dependencies)
+    # Both binaries run inside Steam's library environment. Host-only OpenSSL
+    # availability is insufficient; the engine uses Rust TLS for HTTPS.
+    forbidden += re.findall(r"\blib(?:ssl|crypto|curl)[^\s/]*", dependencies)
     if forbidden or "not found" in dependencies:
         raise SystemExit(f"Dependency audit failed for {binary}:\n{dependencies}")
     if binary.endswith(".xpl"):

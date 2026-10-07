@@ -1,0 +1,157 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[vfr.join_downwind]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["join_downwind"]
+slots = ["callsign", "rwy", "turn"]
+say = [
+  "{callsign}, join {turn}-hand downwind runway {rwy}. Report downwind.",
+  "{callsign}, runway {rwy}, join downwind {turn}-hand circuit. Report downwind.",
+  "{callsign}, join downwind for runway {rwy}, {turn}-hand. Call downwind.",
+]
+
+[vfr.join_base]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["join_base"]
+slots = ["callsign", "rwy", "turn"]
+say = [
+  "{callsign}, join {turn}-hand base runway {rwy}. Report base.",
+  "{callsign}, runway {rwy}, join {turn} base. Call base.",
+  "{callsign}, join base runway {rwy}, {turn}-hand. Report established on base.",
+]
+
+[vfr.join_final]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["join_final"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, join final runway {rwy}. Report final.",
+  "{callsign}, runway {rwy}, join final and report.",
+  "{callsign}, join the final approach for runway {rwy}. Call final.",
+]
+
+[vfr.report_position]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["report_position"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report position and altitude.",
+  "{callsign}, say your position and altitude.",
+  "{callsign}, advise current position and level.",
+]
+
+[vfr.remain_outside]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["remain_outside"]
+slots = ["callsign"]
+say = [
+  "{callsign}, remain outside controlled airspace.",
+  "{callsign}, do not enter controlled airspace.",
+  "{callsign}, remain clear of controlled airspace until cleared.",
+]
+
+[vfr.zone_transit]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["zone_transit"]
+slots = ["alt", "callsign", "via"]
+say = [
+  "{callsign}, cleared to transit the control zone via {via}, not above {alt}.",
+  "{callsign}, transit clearance via {via}, maximum altitude {alt}.",
+  "{callsign}, cleared control-zone transit via {via}, at or below {alt}.",
+]
+
+[vfr.zone_entry_delayed]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["zone_entry_delayed"]
+slots = ["callsign"]
+say = [
+  "{callsign}, control-zone entry not approved. Remain outside and stand by.",
+  "{callsign}, remain outside the control zone. Entry approval pending.",
+  "{callsign}, stand by outside controlled airspace, no entry clearance issued.",
+]
+
+[vfr.special_vfr]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["special_vfr"]
+slots = ["alt", "callsign", "via"]
+say = [
+  "{callsign}, cleared special VFR via {via}, not above {alt}.",
+  "{callsign}, special VFR clearance via {via}, maximum altitude {alt}.",
+  "{callsign}, cleared via {via} special VFR, at or below {alt}.",
+]
+
+[vfr.traffic_service_unavailable]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["traffic_service_unavailable"]
+slots = ["callsign"]
+say = [
+  "{callsign}, requested traffic service unavailable.",
+  "{callsign}, unable to provide the requested traffic service.",
+  "{callsign}, traffic service requested cannot be provided.",
+]
+
+[vfr.service_terminated]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["service_terminated"]
+slots = ["callsign", "sq"]
+say = [
+  "{callsign}, radar service terminated. Squawk {sq}, frequency change approved.",
+  "{callsign}, radar service ends here. Squawk {sq}, approved frequency change.",
+  "{callsign}, squawk {sq}. Radar service terminated, frequency change approved.",
+]
+
+[vfr.uncertain_position]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["uncertain_position"]
+slots = ["callsign"]
+say = [
+  "{callsign}, position uncertainty received. Say last known position and altitude.",
+  "{callsign}, roger, uncertain position. Report last known position and level.",
+  "{callsign}, say last known position and altitude for position assistance.",
+]
+
+[vfr.practice_approach_request]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["practice_approach_request"]
+slots = ["callsign"]
+say = [
+  "{callsign}, practice approach request received. Stand by for clearance.",
+  "{callsign}, roger practice approach requested. Clearance to follow.",
+  "{callsign}, practice approach noted, stand by.",
+]

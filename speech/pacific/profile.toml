@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "pacific"
+prefixes = ["N", "P"]
+variant = "icao"
+notes = "ICAO English baseline; longer US and NZ prefixes take precedence."

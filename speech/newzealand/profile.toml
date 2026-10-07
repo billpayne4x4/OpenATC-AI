@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "newzealand"
+prefixes = ["NZ"]
+variant = "icao"
+notes = "ICAO baseline pending detailed New Zealand AIP review."

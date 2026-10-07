@@ -2,10 +2,23 @@
 # pressure: "qnh" (hectopascals) or "altimeter" (inches of mercury).
 # altitude: "feet" or "meters" for clearances and advisories.
 # clearance: "initial" (US-style maintain/expect) or "sid" (ICAO climb-via-SID).
-# transition_feet: where flight levels take over; varies by airport, values are national defaults.
+# transition_feet: where flight levels take over. Values are national defaults;
+# real transition altitudes are per-airfield in Europe/Russia/China, so treat
+# these as fallbacks when no airport record overrides them.
+# center_khz: optional area-control fallback frequency. Absent means
+# uncontrolled enroute airspace — enroute coverage then comes only from
+# airports within range, and everywhere else nobody answers. No region sets
+# one yet; add published ACC fallbacks here when sourced.
 
 [regions.us]
 prefixes = ["K", "P", "T"]
+pressure = "altimeter"
+altitude = "feet"
+clearance = "initial"
+transition_feet = 18000
+
+[regions.canada]
+prefixes = ["C"]
 pressure = "altimeter"
 altitude = "feet"
 clearance = "initial"
@@ -18,8 +31,36 @@ altitude = "feet"
 clearance = "sid"
 transition_feet = 10000
 
+[regions.newzealand]
+prefixes = ["N"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 13000
+
 [regions.europe]
 prefixes = ["E", "L"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 5000
+
+[regions.japan]
+prefixes = ["R"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 14000
+
+[regions.middleeast]
+prefixes = ["O"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 13000
+
+[regions.southamerica]
+prefixes = ["S"]
 pressure = "qnh"
 altitude = "feet"
 clearance = "sid"
@@ -37,7 +78,14 @@ prefixes = ["U"]
 pressure = "qnh"
 altitude = "meters"
 clearance = "sid"
-transition_feet = 15000
+transition_feet = 10000
+
+[regions.asia]
+prefixes = ["V", "W"]
+pressure = "qnh"
+altitude = "feet"
+clearance = "sid"
+transition_feet = 11000
 
 [regions.icao]
 prefixes = []

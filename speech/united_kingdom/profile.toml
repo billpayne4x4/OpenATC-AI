@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "united_kingdom"
+prefixes = ["EG"]
+variant = "icao"
+notes = "Selected CAP 413 examples; local services require controller capability."

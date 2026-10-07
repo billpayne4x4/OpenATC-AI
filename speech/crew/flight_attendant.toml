@@ -1,0 +1,432 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[cabin.boarding]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["boarding"]
+slots = ["dest"]
+say = [
+  "Welcome aboard our flight to {dest}. Please take your seat and stow your baggage.",
+  "Welcome aboard for {dest}. Please be seated with your baggage safely stowed.",
+  "Welcome to this flight to {dest}. Please take your seat and secure your belongings.",
+]
+
+[cabin.safety_demo]
+role = "attendant"
+phase = ["parked", "taxi"]
+variant = "common"
+situation = ["safety_brief"]
+slots = []
+say = [
+  "Please pay attention to the safety demonstration and review the safety card for this aircraft.",
+  "Your crew will demonstrate the safety equipment. Please review your aircraft safety card.",
+  "Please give the crew your attention for the safety demonstration. The safety card contains aircraft-specific instructions.",
+]
+
+[cabin.turbulence_pax]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["turbulence_pax"]
+slots = []
+say = [
+  "Please return to your seat and fasten your seatbelt. Turbulence expected; cabin service is suspended.",
+  "Turbulence is expected. Service is paused; please stay seated with your belt fastened.",
+  "Please remain seated with seatbelts secured. We expect rough air and have suspended service.",
+]
+
+[cabin.interphone_turbulence]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["turbulence_crew"]
+slots = []
+say = [
+  "Flight deck, cabin. Turbulence experienced; service suspended. We will report when secure.",
+  "Cabin to flight deck: rough air in the cabin. Service stopped, secure report to follow.",
+  "Flight deck, we have suspended cabin service due to turbulence. We will confirm the cabin is secure.",
+]
+
+[cabin.descent]
+role = "attendant"
+phase = ["arrival"]
+variant = "common"
+situation = ["descent_prep"]
+slots = ["dest"]
+say = [
+  "We are beginning descent to {dest}. Please secure your belongings and fasten your seatbelt.",
+  "Descent to {dest} is starting. Please fasten your belt and stow loose items.",
+  "As we descend to {dest}, please remain seated with seatbelts secured and belongings stowed.",
+]
+
+[cabin.landing_stations]
+role = "attendant"
+phase = ["approach"]
+variant = "common"
+situation = ["landing_prep"]
+slots = []
+say = [
+  "Cabin crew, prepare for landing and take your assigned seats after securing the cabin.",
+  "Cabin crew to landing stations after the final cabin check.",
+  "Please complete the landing checks and take your assigned crew seats.",
+]
+
+[cabin.arrival_welcome]
+role = "attendant"
+phase = ["landed", "taxi_in"]
+variant = "common"
+situation = ["arrival"]
+slots = ["dest"]
+say = [
+  "Welcome to {dest}. Please remain seated with your belt fastened until the seatbelt sign is off.",
+  "We have arrived at {dest}. Stay seated with seatbelts fastened until the sign goes off.",
+  "Welcome to {dest}. For now, please keep your seatbelt fastened and remain seated.",
+]
+
+[cabin.medical_call]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["medical_pax"]
+slots = []
+say = [
+  "If a medical professional is on board, please identify yourself to a cabin crew member.",
+  "We request assistance from any medical professional aboard. Please speak to the cabin crew.",
+  "Would a qualified medical professional please contact a cabin crew member?",
+]
+
+[cabin.delay_pax]
+role = "attendant"
+phase = ["parked", "taxi", "arrival"]
+variant = "common"
+situation = ["delay"]
+slots = ["mins"]
+say = [
+  "We expect a delay of approximately {mins}. We will keep you informed.",
+  "The expected delay is {mins}. Thank you for your patience; updates will follow.",
+  "Our current delay estimate is {mins}. We will provide further information as it becomes available.",
+]
+
+[cabin.missed_approach_pax]
+role = "attendant"
+phase = ["approach"]
+variant = "common"
+situation = ["go_around_pax"]
+slots = []
+say = [
+  "We are going around for another approach. Please remain seated with your seatbelt fastened.",
+  "The flight deck is making another approach. Keep your seatbelt secured and remain seated.",
+  "Our aircraft is going around. Please stay seated with your belt fastened.",
+]
+
+[cabin.diversion_pax]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["diversion_pax"]
+slots = ["dest"]
+say = [
+  "We are diverting to {dest}. Please remain seated; we will provide further information.",
+  "Our flight is now diverting to {dest}. Please stay seated while we update the plan.",
+  "The flight deck has advised a diversion to {dest}. Further details will follow; please remain seated.",
+]
+
+[cabin.medical_diversion]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["medical_pax"]
+slots = ["dest"]
+say = [
+  "We are diverting to {dest} for a medical situation. Please remain seated and keep the aisles clear.",
+  "A medical situation requires diversion to {dest}. Stay seated and leave the aisles clear.",
+  "We will land at {dest} because medical assistance is needed. Please stay seated and keep aisles clear.",
+]
+
+[cabin.security_delay]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["security_pax"]
+slots = []
+say = [
+  "Additional security checks are underway. Please remain seated with your belongings stowed.",
+  "We are delayed for additional security checks. Please stay seated.",
+  "Please remain seated while security checks are completed.",
+]
+
+[cabin.arrival_gate]
+role = "attendant"
+phase = ["taxi_in", "parked"]
+variant = "common"
+situation = ["arrival_gate"]
+slots = ["dest"]
+say = [
+  "We have reached our stand at {dest}. Remain seated until the seatbelt sign is off.",
+  "At our {dest} stand, please wait seated for the seatbelt sign to go off.",
+  "We are now at the stand in {dest}. Keep your seatbelt fastened until the sign is off.",
+]
+
+[cabin.farewell_thanks]
+role = "attendant"
+phase = ["taxi_in", "parked"]
+variant = "common"
+situation = ["farewell"]
+slots = []
+say = [
+  "Ladies and gentlemen, thank you for flying with us today. We hope to see you again soon.",
+  "On behalf of the captain and the crew, thank you. Goodbye and take care.",
+]
+
+[cabin.turbulence_seated_check]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["turbulence_pax"]
+slots = []
+say = [
+  "Please remain seated with your seatbelt fastened during turbulence.",
+  "Turbulence continues. Stay seated with your belt secured.",
+  "Keep your seatbelt fastened and remain seated while the air is rough.",
+]
+
+[cabin.boarding_complete]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["boarding_complete"]
+slots = []
+say = [
+  "Flight deck, cabin. Boarding complete.",
+  "Cabin to flight deck, all boarding is complete.",
+  "Flight deck, boarding completion confirmed.",
+]
+
+[cabin.cabin_not_secure]
+role = "attendant"
+phase = ["parked", "pushback", "taxi"]
+variant = "common"
+situation = ["cabin_not_secure"]
+slots = []
+say = [
+  "Flight deck, cabin not yet secure. We will report when ready.",
+  "Cabin to flight deck, checks still in progress. Secure report to follow.",
+  "Flight deck, cabin preparations are incomplete. We will update you.",
+]
+
+[cabin.cabin_secure_departure]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["cabin_secure_departure"]
+slots = []
+say = [
+  "Flight deck, cabin secure for departure.",
+  "Cabin to flight deck, departure cabin checks complete and cabin secure.",
+  "Flight deck, departure-ready cabin report: secure.",
+]
+
+[cabin.cabin_secure_landing]
+role = "attendant"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["cabin_secure_landing"]
+slots = []
+say = [
+  "Flight deck, cabin secure for landing.",
+  "Cabin to flight deck, landing checks complete and cabin secure.",
+  "Flight deck, cabin is prepared and secure for landing.",
+]
+
+[cabin.door_status_query]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["door_status_query"]
+slots = []
+say = [
+  "Flight deck, please confirm the requested door mode.",
+  "Cabin to flight deck, confirm door-mode instruction.",
+  "Flight deck, advise the door mode required.",
+]
+
+[cabin.seatbelts_reminder]
+role = "attendant"
+phase = ["parked", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["seatbelts_reminder"]
+slots = []
+say = [
+  "Please keep your seatbelt fastened whenever seated.",
+  "We recommend keeping your belt fastened while in your seat.",
+  "For unexpected turbulence, keep your seatbelt secured whenever seated.",
+]
+
+[cabin.service_start]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["service_start"]
+slots = []
+say = [
+  "We will begin cabin service shortly.",
+  "Cabin service will start soon.",
+  "Your cabin crew will begin service shortly.",
+]
+
+[cabin.service_suspended]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["service_suspended"]
+slots = []
+say = [
+  "Cabin service is suspended. Please remain seated with seatbelts fastened.",
+  "We are pausing service. Please stay seated and keep your seatbelt fastened.",
+  "Service is temporarily stopped; remain seated with your belt secured.",
+]
+
+[cabin.service_resume]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["service_resume"]
+slots = []
+say = [
+  "Cabin service will resume. Please keep your seatbelt fastened when seated.",
+  "We will restart service. Keep your belt fastened whenever seated.",
+  "Service is resuming; please leave your seatbelt secured while seated.",
+]
+
+[cabin.medical_report]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["medical_report"]
+slots = []
+say = [
+  "Flight deck, cabin. Medical assistance required for a passenger.",
+  "Cabin to flight deck, a passenger needs medical assistance.",
+  "Flight deck, we have a passenger requiring medical attention.",
+]
+
+[cabin.medical_update]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["medical_update"]
+slots = ["status"]
+say = [
+  "Flight deck, medical situation update: {status}.",
+  "Cabin to flight deck, current passenger condition {status}.",
+  "Flight deck, passenger medical status is {status}.",
+]
+
+[cabin.smoke_report]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["smoke_report"]
+slots = ["location"]
+say = [
+  "Flight deck, smoke reported at {location}.",
+  "Cabin to flight deck, smoke indication in {location}.",
+  "Flight deck, cabin smoke report, location {location}.",
+]
+
+[cabin.smoke_update]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["smoke_update"]
+slots = ["status"]
+say = [
+  "Flight deck, smoke situation update: {status}.",
+  "Cabin to flight deck, smoke status {status}.",
+  "Flight deck, updated smoke report {status}.",
+]
+
+[cabin.security_report]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["security_report"]
+slots = ["location"]
+say = [
+  "Flight deck, cabin. Security concern at {location}.",
+  "Cabin to flight deck, security assistance required at {location}.",
+  "Flight deck, cabin security concern reported {location}.",
+]
+
+[cabin.crew_injury]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["crew_injury"]
+slots = []
+say = [
+  "Flight deck, a cabin crew member is injured. Assistance required.",
+  "Cabin to flight deck, crew injury reported. We need assistance.",
+  "Flight deck, injured crew member in the cabin; assistance requested.",
+]
+
+[cabin.diversion_ready]
+role = "attendant"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["diversion_ready"]
+slots = ["dest"]
+say = [
+  "Flight deck, cabin aware of diversion to {dest}. We will prepare.",
+  "Cabin to flight deck, diversion {dest} received, cabin preparations underway.",
+  "Flight deck, cabin preparing for the diversion to {dest}.",
+]
+
+[cabin.approach_delay]
+role = "attendant"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["approach_delay"]
+slots = []
+say = [
+  "We are awaiting our approach sequence. Please remain seated with seatbelts fastened.",
+  "Our arrival is delayed by the approach sequence. Stay seated with your belt secured.",
+  "We are waiting for the next approach instruction. Please keep your seatbelt fastened.",
+]
+
+[cabin.remain_seated_taxi]
+role = "attendant"
+phase = ["taxi_in"]
+variant = "common"
+situation = ["remain_seated_taxi"]
+slots = []
+say = [
+  "We are still taxiing. Please remain seated with seatbelts fastened.",
+  "Please stay seated; the aircraft is moving to the stand.",
+  "Taxiing continues. Keep your seatbelt fastened and remain seated.",
+]
+
+[cabin.disembark_ready]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["disembark_ready"]
+slots = []
+say = [
+  "Please check around your seat for belongings before leaving the aircraft.",
+  "Before disembarking, check your seat area for personal items.",
+  "As you leave, please ensure you have all your belongings.",
+]
+
+[cabin.connection_information]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["connection_information"]
+slots = ["dest"]
+say = [
+  "Ground staff can assist with onward-travel questions at {dest}.",
+  "Please ask the ground team at {dest} about onward travel.",
+  "For connection information at {dest}, speak to the ground staff.",
+]

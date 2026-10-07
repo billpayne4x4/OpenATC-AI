@@ -1,0 +1,15 @@
+[package]
+name = "openatc-http"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "openatc_http"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true

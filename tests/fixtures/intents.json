@@ -37,7 +37,7 @@
   ],
   "presets": [
     {"strictReadbacks": false, "requireFrequency": false, "requireCallsign": false, "strictPhraseology": false, "teachingCorrections": false, "practiceEmergencies": false, "congestion": "off", "expected": "relaxed"},
-    {"strictReadbacks": true, "requireFrequency": false, "requireCallsign": false, "strictPhraseology": true, "teachingCorrections": true, "practiceEmergencies": false, "congestion": "quiet", "expected": "standard"},
+    {"strictReadbacks": true, "requireFrequency": true, "requireCallsign": false, "strictPhraseology": true, "teachingCorrections": true, "practiceEmergencies": false, "congestion": "quiet", "expected": "standard"},
     {"strictReadbacks": true, "requireFrequency": true, "requireCallsign": true, "strictPhraseology": true, "teachingCorrections": false, "practiceEmergencies": true, "congestion": "busy", "expected": "real"},
     {"strictReadbacks": true, "requireFrequency": false, "requireCallsign": false, "strictPhraseology": true, "teachingCorrections": true, "practiceEmergencies": false, "congestion": "busy", "expected": "custom"}
   ],

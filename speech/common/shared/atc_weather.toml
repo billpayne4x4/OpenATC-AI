@@ -1,0 +1,183 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[weather.wind]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["wind"]
+slots = ["callsign", "wind"]
+say = [
+  "{callsign}, surface wind {wind}.",
+  "{callsign}, current surface wind is {wind}.",
+  "{callsign}, wind report: {wind}.",
+]
+
+[weather.visibility]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["visibility"]
+slots = ["callsign", "visibility"]
+say = [
+  "{callsign}, reported visibility {visibility}.",
+  "{callsign}, visibility report {visibility}.",
+  "{callsign}, current reported visibility is {visibility}.",
+]
+
+[weather.pressure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "icao"
+situation = ["pressure"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, QNH {qnh}.",
+  "{callsign}, current QNH {qnh}.",
+  "{callsign}, pressure setting QNH {qnh}.",
+]
+
+[weather.weather_report]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["weather_report"]
+slots = ["callsign", "dest", "weather"]
+say = [
+  "{callsign}, weather report for {dest}: {weather}.",
+  "{callsign}, latest reported weather at {dest}: {weather}.",
+  "{callsign}, {dest} weather information: {weather}.",
+]
+
+[weather.weather_unavailable]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["weather_unavailable"]
+slots = ["callsign"]
+say = [
+  "{callsign}, current weather unavailable.",
+  "{callsign}, no current weather report available.",
+  "{callsign}, latest weather information is unavailable.",
+]
+
+[weather.weather_stale]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["weather_stale"]
+slots = ["callsign", "time"]
+say = [
+  "{callsign}, last available weather report was at {time}. Current conditions not confirmed.",
+  "{callsign}, weather observation time {time}; current conditions unavailable.",
+  "{callsign}, available weather is from {time}. It is not a current observation.",
+]
+
+[weather.turbulence]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["turbulence"]
+slots = ["callsign", "location", "weather"]
+say = [
+  "{callsign}, turbulence reported {location}, {weather}.",
+  "{callsign}, turbulence advisory at {location}: {weather}.",
+  "{callsign}, pilot turbulence report for {location}, {weather}.",
+]
+
+[weather.icing]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["icing"]
+slots = ["callsign", "location", "weather"]
+say = [
+  "{callsign}, icing reported {location}, {weather}.",
+  "{callsign}, icing advisory at {location}: {weather}.",
+  "{callsign}, reported icing conditions {location}, {weather}.",
+]
+
+[weather.wind_shear]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["wind_shear"]
+slots = ["callsign", "rwy", "weather"]
+say = [
+  "{callsign}, windshear reported runway {rwy}, {weather}.",
+  "{callsign}, runway {rwy} windshear report: {weather}.",
+  "{callsign}, windshear information for runway {rwy}: {weather}.",
+]
+
+[weather.runway_condition]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["runway_condition"]
+slots = ["callsign", "rwy", "surface"]
+say = [
+  "{callsign}, runway {rwy} condition report: {surface}.",
+  "{callsign}, reported runway surface {surface}, runway {rwy}.",
+  "{callsign}, runway {rwy}, reported condition {surface}.",
+]
+
+[weather.braking_report]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["braking_report"]
+slots = ["callsign", "rwy", "surface"]
+say = [
+  "{callsign}, reported braking action runway {rwy}: {surface}.",
+  "{callsign}, runway {rwy} braking-action report {surface}.",
+  "{callsign}, braking action reported {surface} on runway {rwy}.",
+]
+
+[weather.volcanic_ash]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["volcanic_ash"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, volcanic ash reported {location}. Say intentions.",
+  "{callsign}, reported volcanic ash near {location}. Advise intentions.",
+  "{callsign}, ash advisory at {location}. State your intentions.",
+]
+
+[weather.thunderstorm]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["thunderstorm"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, thunderstorm reported {location}. Say intentions.",
+  "{callsign}, reported thunderstorm near {location}. Advise intentions.",
+  "{callsign}, thunderstorm information for {location}. State intentions.",
+]
+
+[weather.weather_pirep_request]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["weather_pirep_request"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report flight conditions.",
+  "{callsign}, say current weather conditions at your position.",
+  "{callsign}, pilot weather report requested for your position.",
+]

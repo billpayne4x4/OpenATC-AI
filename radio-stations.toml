@@ -1,0 +1,12 @@
+# Optional local combined controller overrides.
+# Defaults: Delivery -> Ground -> Tower for clearance; Tower handles ground
+# duties when no Ground frequency is published. Overrides replace inferred
+# extra capabilities for the matching station.
+# Configure only where you know that one frequency also provides another service.
+# This never creates stations or invents frequencies. kHz is an integer channel.
+# "Clearance" means Delivery in X-Plane apt.dat. Ground crew is not Ground ATC.
+# Example (disabled):
+# [[combined]]
+# airport = "YOUR"
+# khz = 121900
+# services = ["Ground", "Clearance"]

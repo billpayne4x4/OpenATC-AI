@@ -1,0 +1,27 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[united_kingdom_clearance.qnh]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "arrival", "approach"]
+variant = "icao"
+situation = ["qnh"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, QNH {qnh}.",
+  "{callsign}, current QNH {qnh}.",
+  "{callsign}, pressure setting QNH {qnh}.",
+]
+
+[united_kingdom_clearance.report_established]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "arrival", "approach"]
+variant = "icao"
+situation = ["report_established"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report localizer established.",
+  "{callsign}, advise established on the localizer.",
+  "{callsign}, call when localizer established.",
+]

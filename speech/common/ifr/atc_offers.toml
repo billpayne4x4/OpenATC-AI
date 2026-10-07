@@ -1,0 +1,401 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[offer.shortcut]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["ahead_of_schedule", "direct_available"]
+slots = ["callsign", "nm", "wpt"]
+say = [
+  "{callsign}, can you accept direct {wpt}, saving approximately {nm}?",
+  "{callsign}, would you like direct {wpt}, saving approximately {nm}? Advise able.",
+  "{callsign}, direct {wpt}, saving approximately {nm} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept direct {wpt}, saving approximately {nm}."
+decline = "{callsign}, unable to accept direct {wpt}, saving approximately {nm}."
+effect = "amend_route"
+
+[offer.smoother_altitude]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["turbulence", "ride_reports_bad"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept a level change to {alt}, where a smoother ride has been reported?",
+  "{callsign}, would you like a level change to {alt}, where a smoother ride has been reported? Advise able.",
+  "{callsign}, a level change to {alt}, where a smoother ride has been reported is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a level change to {alt}, where a smoother ride has been reported."
+decline = "{callsign}, unable to accept a level change to {alt}, where a smoother ride has been reported."
+effect = "amend_altitude"
+
+[offer.higher_for_tops]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["turbulence", "weather_tops"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept a climb to {alt} to try to get above the reported weather?",
+  "{callsign}, would you like a climb to {alt} to try to get above the reported weather? Advise able.",
+  "{callsign}, a climb to {alt} to try to get above the reported weather is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a climb to {alt} to try to get above the reported weather."
+decline = "{callsign}, unable to accept a climb to {alt} to try to get above the reported weather."
+effect = "amend_altitude"
+
+[offer.below_minimums_diversion]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["destination_below_minimums", "weather_deteriorating"]
+slots = ["callsign", "dest"]
+say = [
+  "{callsign}, can you accept a diversion to {dest} because of the reported destination weather?",
+  "{callsign}, would you like a diversion to {dest} because of the reported destination weather? Advise able.",
+  "{callsign}, a diversion to {dest} because of the reported destination weather is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a diversion to {dest} because of the reported destination weather."
+decline = "{callsign}, unable to accept a diversion to {dest} because of the reported destination weather."
+effect = "amend_destination"
+
+[offer.early_descent]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["light_traffic", "high_and_fast"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept an early descent to {alt}?",
+  "{callsign}, would you like an early descent to {alt}? Advise able.",
+  "{callsign}, an early descent to {alt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept an early descent to {alt}."
+decline = "{callsign}, unable to accept an early descent to {alt}."
+effect = "amend_altitude"
+
+[offer.weather_deviation]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["weather_ahead", "cells_on_route"]
+slots = ["callsign", "direction", "wpt"]
+say = [
+  "{callsign}, can you accept a weather deviation {direction} of track, rejoining at {wpt}?",
+  "{callsign}, would you like a weather deviation {direction} of track, rejoining at {wpt}? Advise able.",
+  "{callsign}, a weather deviation {direction} of track, rejoining at {wpt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a weather deviation {direction} of track, rejoining at {wpt}."
+decline = "{callsign}, unable to accept a weather deviation {direction} of track, rejoining at {wpt}."
+effect = "amend_route"
+
+[offer.speed_for_spacing]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["sequencing", "spacing"]
+slots = ["callsign", "speed", "wpt"]
+say = [
+  "{callsign}, can you accept speed {speed} until {wpt} for spacing?",
+  "{callsign}, would you like speed {speed} until {wpt} for spacing? Advise able.",
+  "{callsign}, speed {speed} until {wpt} for spacing is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept speed {speed} until {wpt} for spacing."
+decline = "{callsign}, unable to accept speed {speed} until {wpt} for spacing."
+effect = "amend_speed"
+
+[offer.short_approach]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["light_traffic", "visual_conditions"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, can you accept a short approach to runway {rwy}?",
+  "{callsign}, would you like a short approach to runway {rwy}? Advise able.",
+  "{callsign}, a short approach to runway {rwy} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a short approach to runway {rwy}."
+decline = "{callsign}, unable to accept a short approach to runway {rwy}."
+effect = "amend_arrival"
+
+[offer.runway_change]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["wind_shift", "runway_change_in_progress"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, can you accept a change to runway {rwy}?",
+  "{callsign}, would you like a change to runway {rwy}? Advise able.",
+  "{callsign}, a change to runway {rwy} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a change to runway {rwy}."
+decline = "{callsign}, unable to accept a change to runway {rwy}."
+effect = "amend_arrival"
+
+[offer.visual_approach]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["visual_conditions", "field_in_sight_likely"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, can you accept a visual approach to runway {rwy}, if you have the airport in sight?",
+  "{callsign}, would you like a visual approach to runway {rwy}, if you have the airport in sight? Advise able.",
+  "{callsign}, a visual approach to runway {rwy}, if you have the airport in sight is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a visual approach to runway {rwy}, if you have the airport in sight."
+decline = "{callsign}, unable to accept a visual approach to runway {rwy}, if you have the airport in sight."
+effect = "amend_arrival"
+
+[offer.hold_vs_vectors]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["delay_expected", "sequencing"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, can you accept delay vectors instead of the published hold at {wpt}?",
+  "{callsign}, would you like delay vectors instead of the published hold at {wpt}? Advise able.",
+  "{callsign}, delay vectors instead of the published hold at {wpt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept delay vectors instead of the published hold at {wpt}."
+decline = "{callsign}, unable to accept delay vectors instead of the published hold at {wpt}."
+effect = "none"
+
+[offer.cruise_climb]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["light_aircraft", "step_climb_available"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept a climb to {alt}?",
+  "{callsign}, would you like a climb to {alt}? Advise able.",
+  "{callsign}, a climb to {alt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a climb to {alt}."
+decline = "{callsign}, unable to accept a climb to {alt}."
+effect = "amend_altitude"
+
+[offer.fuel_check]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["delay_expected", "holding"]
+slots = ["callsign", "mins"]
+say = [
+  "{callsign}, can you accept a delay of {mins}, considering your fuel remaining?",
+  "{callsign}, would you like a delay of {mins}, considering your fuel remaining? Advise able.",
+  "{callsign}, a delay of {mins}, considering your fuel remaining is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a delay of {mins}, considering your fuel remaining."
+decline = "{callsign}, unable to accept a delay of {mins}, considering your fuel remaining."
+effect = "none"
+
+[offer.speed_high_descent]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["high_and_fast", "slam_dunk"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, can you accept a crossing restriction of {alt} at {wpt}?",
+  "{callsign}, would you like a crossing restriction of {alt} at {wpt}? Advise able.",
+  "{callsign}, a crossing restriction of {alt} at {wpt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a crossing restriction of {alt} at {wpt}."
+decline = "{callsign}, unable to accept a crossing restriction of {alt} at {wpt}."
+effect = "amend_altitude"
+
+[offer.ride_report_request]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["turbulence_reports", "pirep_needed"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept a level change to {alt} following the ride reports?",
+  "{callsign}, would you like a level change to {alt} following the ride reports? Advise able.",
+  "{callsign}, a level change to {alt} following the ride reports is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a level change to {alt} following the ride reports."
+decline = "{callsign}, unable to accept a level change to {alt} following the ride reports."
+effect = "amend_altitude"
+
+[offer.mach_for_spacing]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["sequencing", "overtake"]
+slots = ["callsign", "mach", "wpt"]
+say = [
+  "{callsign}, can you accept Mach {mach} until {wpt} for sequencing?",
+  "{callsign}, would you like Mach {mach} until {wpt} for sequencing? Advise able.",
+  "{callsign}, Mach {mach} until {wpt} for sequencing is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept Mach {mach} until {wpt} for sequencing."
+decline = "{callsign}, unable to accept Mach {mach} until {wpt} for sequencing."
+effect = "amend_speed"
+
+[offer.early_handoff]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["light_traffic", "vfr_tower"]
+slots = ["callsign", "freq", "station"]
+say = [
+  "{callsign}, can you accept an early transfer to {station} on {freq}?",
+  "{callsign}, would you like an early transfer to {station} on {freq}? Advise able.",
+  "{callsign}, an early transfer to {station} on {freq} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept an early transfer to {station} on {freq}."
+decline = "{callsign}, unable to accept an early transfer to {station} on {freq}."
+effect = "none"
+
+[offer.hold_cut_short]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["holding", "delay_easing"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, can you accept an earlier exit from the hold at {wpt}?",
+  "{callsign}, would you like an earlier exit from the hold at {wpt}? Advise able.",
+  "{callsign}, an earlier exit from the hold at {wpt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept an earlier exit from the hold at {wpt}."
+decline = "{callsign}, unable to accept an earlier exit from the hold at {wpt}."
+effect = "none"
+
+[offer.direct_to_field]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["visual_conditions", "light_traffic"]
+slots = ["callsign", "dest"]
+say = [
+  "{callsign}, can you accept direct {dest}?",
+  "{callsign}, would you like direct {dest}? Advise able.",
+  "{callsign}, direct {dest} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept direct {dest}."
+decline = "{callsign}, unable to accept direct {dest}."
+effect = "amend_route"
+
+[offer.lower_for_restriction]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["high_and_fast", "crossing_restriction"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, can you accept a descent to {alt}, level by {wpt}?",
+  "{callsign}, would you like a descent to {alt}, level by {wpt}? Advise able.",
+  "{callsign}, a descent to {alt}, level by {wpt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a descent to {alt}, level by {wpt}."
+decline = "{callsign}, unable to accept a descent to {alt}, level by {wpt}."
+effect = "amend_altitude"
+
+[offer.higher_for_fuel]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["fuel_burn", "step_climb_available"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept a climb to {alt} for your fuel planning?",
+  "{callsign}, would you like a climb to {alt} for your fuel planning? Advise able.",
+  "{callsign}, a climb to {alt} for your fuel planning is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a climb to {alt} for your fuel planning."
+decline = "{callsign}, unable to accept a climb to {alt} for your fuel planning."
+effect = "amend_altitude"
+
+[offer.parallel_offset]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["traffic_conflict", "offset"]
+slots = ["callsign", "direction", "nm", "wpt"]
+say = [
+  "{callsign}, can you accept a parallel offset of {nm} to the {direction}, rejoining at {wpt}?",
+  "{callsign}, would you like a parallel offset of {nm} to the {direction}, rejoining at {wpt}? Advise able.",
+  "{callsign}, a parallel offset of {nm} to the {direction}, rejoining at {wpt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a parallel offset of {nm} to the {direction}, rejoining at {wpt}."
+decline = "{callsign}, unable to accept a parallel offset of {nm} to the {direction}, rejoining at {wpt}."
+effect = "amend_route"
+
+[offer.arrival_switch]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "icao"
+situation = ["flow_change", "better_arrival"]
+slots = ["callsign", "star"]
+say = [
+  "{callsign}, can you accept a change to the {star} arrival?",
+  "{callsign}, would you like a change to the {star} arrival? Advise able.",
+  "{callsign}, a change to the {star} arrival is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a change to the {star} arrival."
+decline = "{callsign}, unable to accept a change to the {star} arrival."
+effect = "amend_arrival"
+
+[offer.delay_absorb]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["delay_expected", "speed_control"]
+slots = ["callsign", "mins", "speed"]
+say = [
+  "{callsign}, can you accept speed {speed} to absorb the expected delay of {mins}?",
+  "{callsign}, would you like speed {speed} to absorb the expected delay of {mins}? Advise able.",
+  "{callsign}, speed {speed} to absorb the expected delay of {mins} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept speed {speed} to absorb the expected delay of {mins}."
+decline = "{callsign}, unable to accept speed {speed} to absorb the expected delay of {mins}."
+effect = "amend_speed"
+
+[offer.climb_on_course]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["light_traffic", "unrestricted_climb"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, can you accept a climb on your cleared route to {alt}?",
+  "{callsign}, would you like a climb on your cleared route to {alt}? Advise able.",
+  "{callsign}, a climb on your cleared route to {alt} is available. Say if you can accept.",
+]
+accept = "{callsign}, able to accept a climb on your cleared route to {alt}."
+decline = "{callsign}, unable to accept a climb on your cleared route to {alt}."
+effect = "amend_altitude"

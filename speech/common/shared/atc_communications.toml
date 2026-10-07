@@ -1,0 +1,417 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[chatter.check_in]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["initial_contact"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, radar contact. Maintain {alt}.",
+  "{callsign}, identified, maintain {alt}.",
+  "{callsign}, radar identified. Remain at {alt}.",
+]
+
+[chatter.atis_update]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "arrival"]
+variant = "icao"
+situation = ["atis_change"]
+slots = ["atis", "qnh"]
+say = [
+  "All stations, information {atis} now current, QNH {qnh}.",
+  "All stations, updated ATIS {atis}, QNH {qnh}.",
+  "All stations, current information {atis}. Pressure setting QNH {qnh}.",
+]
+
+[chatter.acknowledgements]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, roger.",
+  "{callsign}, message received.",
+  "{callsign}, copied.",
+]
+
+[chatter.pilot_thanks]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "taxi_in"]
+variant = "common"
+situation = ["signoff"]
+slots = ["callsign"]
+say = [
+  "{callsign}, you are welcome.",
+  "{callsign}, happy to help.",
+  "{callsign}, thank you.",
+]
+
+[chatter.report_points]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "arrival", "approach"]
+variant = "common"
+situation = ["position_reporting"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, report passing {wpt}.",
+  "{callsign}, advise when passing {wpt}.",
+  "{callsign}, position report at {wpt}.",
+]
+
+[chatter.correction]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["correction"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, correction, climb to {alt}.",
+  "{callsign}, altitude correction: climb to {alt}.",
+  "{callsign}, corrected instruction, climb to {alt}.",
+]
+
+[chatter.standby_workload]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["busy"]
+slots = ["callsign"]
+say = [
+  "{callsign}, stand by. I will call you.",
+  "{callsign}, request noted. Stand by for my call.",
+  "{callsign}, remain on frequency and stand by.",
+]
+
+[chatter.squawk_ops]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "cruise"]
+variant = "common"
+situation = ["transponder"]
+slots = ["callsign", "sq"]
+say = [
+  "{callsign}, squawk {sq}.",
+  "{callsign}, set transponder code {sq}.",
+  "{callsign}, assigned squawk {sq}.",
+]
+
+[chatter.good_morning_first_contact]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "departure", "cruise", "arrival"]
+variant = "common"
+situation = ["morning_radar_check_in"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, good morning, radar contact. Maintain {alt}.",
+  "{callsign}, good morning, identified. Maintain {alt}.",
+  "{callsign}, good morning. Radar identified, remain at {alt}.",
+]
+
+[chatter.student_pilot]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure"]
+variant = "common"
+situation = ["student", "initial_contact"]
+slots = ["callsign"]
+say = [
+  "{callsign}, student pilot acknowledged. Ask for clarification whenever needed.",
+  "{callsign}, roger student pilot. Advise if you need any instruction repeated.",
+  "{callsign}, student pilot noted. Request a repeat if anything is unclear.",
+]
+
+[chatter.monitor_ground]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["landed", "taxi_in"]
+variant = "common"
+situation = ["signoff", "monitor"]
+slots = ["callsign", "freq"]
+say = [
+  "{callsign}, monitor ground on {freq}.",
+  "{callsign}, monitor ground frequency {freq}.",
+  "{callsign}, change to {freq} and monitor ground.",
+]
+
+[chatter.change_to_my_frequency]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["frequency_change", "same_controller"]
+slots = ["callsign", "freq"]
+say = [
+  "{callsign}, change to my frequency {freq}.",
+  "{callsign}, switch to my other frequency {freq}.",
+  "{callsign}, continue with me on {freq}.",
+]
+
+[chatter.abbreviated_checkin]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["checkin", "same_controller"]
+slots = ["callsign"]
+say = [
+  "{callsign}, pass your message.",
+  "{callsign}, go ahead with your message.",
+  "{callsign}, receiving you, pass your message.",
+]
+
+[chatter.congestion_plea]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["congestion", "busy"]
+slots = []
+say = [
+  "All stations, listen before transmitting. Keep calls brief.",
+  "All stations, frequency congested. Listen first and keep transmissions short.",
+  "All stations, avoid simultaneous transmissions and keep calls concise.",
+]
+
+[chatter.guard_elt]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["elt", "guard"]
+slots = []
+say = [
+  "All stations, emergency locator signal reported in this area. Report position if receiving it.",
+  "All stations, report your position if you hear the emergency locator signal.",
+  "All stations receiving an ELT, report your position.",
+]
+
+[chatter.lost_comms_procedure]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["nordo", "lost_comms"]
+slots = ["callsign"]
+say = [
+  "{callsign}, if receiving, squawk ident.",
+  "{callsign}, if you read this transmission, operate ident.",
+  "{callsign}, acknowledge by squawking ident if receiving.",
+]
+
+[chatter.good_day_signoff]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "taxi_in"]
+variant = "common"
+situation = ["signoff", "good_day"]
+slots = ["callsign"]
+say = [
+  "{callsign}, frequency change approved. Good day.",
+  "{callsign}, approved to change frequency. Good day.",
+  "{callsign}, frequency change is approved, goodbye.",
+]
+
+[communications.radio_check_good]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["radio_check_good"]
+slots = ["callsign"]
+say = [
+  "{callsign}, readability five.",
+  "{callsign}, reading you five.",
+  "{callsign}, readability five, clear signal.",
+]
+
+[communications.radio_check_poor]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["radio_check_poor"]
+slots = ["callsign", "readability"]
+say = [
+  "{callsign}, readability {readability}. Say again.",
+  "{callsign}, reading you {readability}, repeat your message.",
+  "{callsign}, readability {readability}. Please repeat.",
+]
+
+[communications.say_again]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["say_again"]
+slots = ["callsign"]
+say = [
+  "{callsign}, say again your last transmission.",
+  "{callsign}, repeat your last message.",
+  "{callsign}, last transmission not received. Say again.",
+]
+
+[communications.speak_slowly]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["speak_slowly"]
+slots = ["callsign"]
+say = [
+  "{callsign}, speak slower.",
+  "{callsign}, repeat more slowly.",
+  "{callsign}, say your message again slowly.",
+]
+
+[communications.blocked_transmission]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["blocked_transmission"]
+slots = []
+say = [
+  "Station calling, transmission blocked. Say again.",
+  "Calling station, your message was blocked. Repeat.",
+  "Transmission blocked. Station calling, repeat your message.",
+]
+
+[communications.confirm_callsign]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["confirm_callsign"]
+slots = []
+say = [
+  "Station calling, say full callsign.",
+  "Calling station, confirm your full callsign.",
+  "Station transmitting, full callsign please.",
+]
+
+[communications.wrong_frequency]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["wrong_frequency"]
+slots = ["callsign", "station"]
+say = [
+  "{callsign}, this is {station}. Confirm intended station.",
+  "{callsign}, you are on {station}. Say intended station.",
+  "{callsign}, receiving you at {station}; confirm who you intended to call.",
+]
+
+[communications.contact_station]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["contact_station"]
+slots = ["callsign", "freq", "station"]
+say = [
+  "{callsign}, contact {station} on {freq}.",
+  "{callsign}, change to {station}, {freq}.",
+  "{callsign}, next station {station}, frequency {freq}. Contact them.",
+]
+
+[communications.monitor_station]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["monitor_station"]
+slots = ["callsign", "freq", "station"]
+say = [
+  "{callsign}, monitor {station} on {freq}.",
+  "{callsign}, change to {freq} and monitor {station}.",
+  "{callsign}, monitor frequency {freq}, {station}.",
+]
+
+[communications.frequency_change_denied]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["frequency_change_denied"]
+slots = ["callsign"]
+say = [
+  "{callsign}, remain this frequency.",
+  "{callsign}, stay on this frequency.",
+  "{callsign}, frequency change not approved; remain here.",
+]
+
+[communications.emergency_silence]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["emergency_silence"]
+slots = []
+say = [
+  "All stations, stop transmitting. Distress traffic in progress.",
+  "All stations, distress traffic. Stop transmitting.",
+  "All stations, maintain radio silence for distress traffic.",
+]
+
+[communications.resume_transmissions]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["resume_transmissions"]
+slots = []
+say = [
+  "All stations, distress radio silence ended. Normal transmissions may resume.",
+  "All stations, normal radio traffic may resume. Distress silence ended.",
+  "All stations, distress silence cancelled, resume normal radio traffic.",
+]
+
+[communications.message_received]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["message_received"]
+slots = ["callsign"]
+say = [
+  "{callsign}, message received.",
+  "{callsign}, roger your message.",
+  "{callsign}, received your transmission.",
+]
+
+[communications.request_repeat_numbers]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["request_repeat_numbers"]
+slots = ["callsign"]
+say = [
+  "{callsign}, say again the numbers.",
+  "{callsign}, repeat the numerical values.",
+  "{callsign}, numerical part of your message, say again.",
+]
+
+[communications.standby_not_approval]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["standby_not_approval"]
+slots = ["callsign"]
+say = [
+  "{callsign}, stand by. Your request is not yet approved.",
+  "{callsign}, no approval yet. Stand by for a decision.",
+  "{callsign}, request received, stand by. Approval has not been issued.",
+]

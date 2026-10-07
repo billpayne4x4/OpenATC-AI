@@ -1,0 +1,14 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[delivery.vfr_departure]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["vfr_flight"]
+slots = ["callsign", "rwy", "sq"]
+say = [
+  "{callsign}, VFR departure approved from runway {rwy}, squawk {sq}.",
+  "{callsign}, depart VFR from runway {rwy}, squawk {sq}.",
+  "{callsign}, runway {rwy} for your VFR departure. Squawk {sq}.",
+]

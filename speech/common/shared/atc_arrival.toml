@@ -1,0 +1,53 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[arrival.visual]
+service = ["Approach"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["visual_approach_field_in_sight"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, cleared visual approach runway {rwy}.",
+  "{callsign}, runway {rwy}, cleared visual approach.",
+  "{callsign}, visual approach clearance runway {rwy}.",
+]
+
+[arrival.weather_info]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "icao"
+situation = ["weather_advisory"]
+slots = ["atis", "callsign", "dest", "qnh", "visibility", "wind"]
+say = [
+  "{callsign}, {dest} information {atis}, wind {wind}, visibility {visibility}, QNH {qnh}.",
+  "{callsign}, weather for {dest}: information {atis}, wind {wind}, visibility {visibility}, QNH {qnh}.",
+  "{callsign}, current {dest} ATIS {atis}. Wind {wind}, visibility {visibility}, QNH {qnh}.",
+]
+
+[arrival.runway_assignment]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["runway_assign"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, expect runway {rwy}.",
+  "{callsign}, arrival runway assignment is {rwy}.",
+  "{callsign}, runway {rwy} is assigned for your arrival.",
+]
+
+[arrival.sidestep]
+service = ["Approach"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["sidestep_offer"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, expect sidestep to runway {rwy}. Advise able.",
+  "{callsign}, can you accept a sidestep to runway {rwy}?",
+  "{callsign}, advise if able to sidestep to runway {rwy}.",
+]

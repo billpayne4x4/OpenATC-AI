@@ -1,0 +1,365 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[arrival.top_of_descent]
+service = ["Approach"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["descent_planning"]
+slots = ["callsign", "mins"]
+say = [
+  "{callsign}, expect descent in {mins}. Maintain present level.",
+  "{callsign}, maintain present level, expect descent after {mins}.",
+  "{callsign}, descent expected in {mins}; remain at present level until cleared.",
+]
+
+[arrival.ils]
+service = ["Approach"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["approach_clearance"]
+slots = ["alt", "callsign", "rwy"]
+say = [
+  "{callsign}, maintain {alt} until established on the localizer. Cleared ILS runway {rwy} approach.",
+  "{callsign}, cleared ILS approach runway {rwy}, maintain {alt} until established on the localizer.",
+  "{callsign}, ILS runway {rwy} approach cleared. Maintain {alt} until localizer established.",
+]
+
+[arrival.expect_approach]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival"]
+variant = "icao"
+situation = ["approach_briefing"]
+slots = ["approach", "atis", "callsign", "qnh", "rwy"]
+say = [
+  "{callsign}, expect {approach} runway {rwy}. Information {atis}, QNH {qnh}.",
+  "{callsign}, runway {rwy}, expect {approach}. Current information {atis}, QNH {qnh}.",
+  "{callsign}, expected approach {approach}, runway {rwy}. ATIS {atis}, QNH {qnh}.",
+]
+
+[arrival.hold]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["holding"]
+slots = ["alt", "callsign", "time", "wpt"]
+say = [
+  "{callsign}, hold at {wpt} as published, maintain {alt}. Expected approach time {time}.",
+  "{callsign}, published hold at {wpt}, maintain {alt}. Expect approach at {time}.",
+  "{callsign}, enter the published hold at {wpt}, altitude {alt}. Expected approach time {time}.",
+]
+
+[arrival.hold_short]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["expected_approach_time_updated"]
+slots = ["callsign", "time"]
+say = [
+  "{callsign}, revised expected approach time {time}.",
+  "{callsign}, expected approach time now {time}.",
+  "{callsign}, your expected approach time is revised to {time}.",
+]
+
+[arrival.missed]
+service = ["Approach"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["missed_approach"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, roger go-around. Fly the published missed approach, climb to {alt}.",
+  "{callsign}, go-around acknowledged. Published missed approach, climb to {alt}.",
+  "{callsign}, missed approach acknowledged. Follow the published procedure and climb to {alt}.",
+]
+
+[arrival.speed_arrival]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival"]
+variant = "common"
+situation = ["sequencing"]
+slots = ["callsign"]
+say = [
+  "{callsign}, reduce to minimum clean speed.",
+  "{callsign}, minimum clean speed for spacing.",
+  "{callsign}, reduce speed to your minimum clean speed.",
+]
+
+[arrival.speed_180_marker]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["sequencing", "speed_control"]
+slots = ["callsign", "speed", "wpt"]
+say = [
+  "{callsign}, maintain {speed} until {wpt}.",
+  "{callsign}, speed {speed} to {wpt}.",
+  "{callsign}, maintain assigned speed {speed} until passing {wpt}.",
+]
+
+[arrival.ils_critical_area]
+service = ["Approach"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["ils_protection"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, ILS critical area protected, runway {rwy}.",
+  "{callsign}, runway {rwy}, critical area protection is in effect.",
+  "{callsign}, critical area protected for the ILS runway {rwy}.",
+]
+
+[arrival.circle_to_land]
+service = ["Approach"]
+role = "atc"
+phase = ["approach"]
+variant = "icao"
+situation = ["circling_approach_clearance"]
+slots = ["approach", "callsign", "rwy"]
+say = [
+  "{callsign}, cleared {approach}, circle to land runway {rwy}.",
+  "{callsign}, {approach} cleared, circling to runway {rwy}.",
+  "{callsign}, cleared for {approach}, circle for runway {rwy}.",
+]
+
+[arrival.star_expect]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "icao"
+situation = ["star_expect"]
+slots = ["callsign", "rwy", "star"]
+say = [
+  "{callsign}, expect {star} arrival, runway {rwy}.",
+  "{callsign}, expected arrival {star} for runway {rwy}.",
+  "{callsign}, plan on {star}, runway {rwy}.",
+]
+
+[arrival.star_cleared]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "icao"
+situation = ["star_cleared"]
+slots = ["alt", "callsign", "star"]
+say = [
+  "{callsign}, cleared {star} arrival, descend to {alt}.",
+  "{callsign}, {star} arrival cleared. Descend to {alt}.",
+  "{callsign}, descend to {alt} via the cleared {star} arrival.",
+]
+
+[arrival.transition_expect]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["transition_expect"]
+slots = ["approach", "callsign", "rwy", "wpt"]
+say = [
+  "{callsign}, expect {wpt} transition for {approach}, runway {rwy}.",
+  "{callsign}, {approach} runway {rwy}, expect transition {wpt}.",
+  "{callsign}, planned approach {approach} runway {rwy} via {wpt} transition.",
+]
+
+[arrival.descend_maintain]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["descend_maintain"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, descend to {alt}.",
+  "{callsign}, descend and maintain {alt}.",
+  "{callsign}, assigned descent altitude {alt}.",
+]
+
+[arrival.intercept_localizer]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["intercept_localizer"]
+slots = ["alt", "callsign", "heading", "rwy", "turn"]
+say = [
+  "{callsign}, turn {turn} heading {heading}, intercept localizer runway {rwy}. Maintain {alt}.",
+  "{callsign}, heading {heading}, turn {turn} to intercept runway {rwy} localizer. Maintain {alt}.",
+  "{callsign}, maintain {alt}, turn {turn} heading {heading} for localizer runway {rwy} intercept.",
+]
+
+[arrival.localizer_report]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["localizer_report"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, report established on localizer runway {rwy}.",
+  "{callsign}, advise localizer established, runway {rwy}.",
+  "{callsign}, call when established on runway {rwy} localizer.",
+]
+
+[arrival.rnav_approach]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["rnav_approach"]
+slots = ["approach", "callsign", "rwy"]
+say = [
+  "{callsign}, cleared {approach} runway {rwy} approach.",
+  "{callsign}, {approach} approach runway {rwy} cleared.",
+  "{callsign}, runway {rwy}, cleared for the {approach} approach.",
+]
+
+[arrival.approach_cancelled]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["approach_cancelled"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, cancel approach clearance. Maintain {alt}.",
+  "{callsign}, approach clearance cancelled, maintain {alt}.",
+  "{callsign}, maintain {alt}. Previous approach clearance cancelled.",
+]
+
+[arrival.field_in_sight_query]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["field_in_sight_query"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report airport in sight.",
+  "{callsign}, advise when you have the airport in sight.",
+  "{callsign}, call when airport visual.",
+]
+
+[arrival.traffic_in_sight_query]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["traffic_in_sight_query"]
+slots = ["callsign", "traffic"]
+say = [
+  "{callsign}, report {traffic} in sight.",
+  "{callsign}, advise visual contact with {traffic}.",
+  "{callsign}, call when you see {traffic}.",
+]
+
+[arrival.hold_leave]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["hold_leave"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, leave the hold, proceed direct {wpt}, maintain {alt}.",
+  "{callsign}, exit holding direct {wpt}, maintain {alt}.",
+  "{callsign}, holding cancelled, direct {wpt}, maintain {alt}.",
+]
+
+[arrival.hold_time_revision]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["hold_time_revision"]
+slots = ["callsign", "time"]
+say = [
+  "{callsign}, expected further clearance time {time}.",
+  "{callsign}, expect further clearance at {time}.",
+  "{callsign}, revised further-clearance time {time}.",
+]
+
+[arrival.long_final_request]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["long_final_request"]
+slots = ["callsign"]
+say = [
+  "{callsign}, long final request received. Stand by for vectors.",
+  "{callsign}, roger, extended final requested. Vectors to follow.",
+  "{callsign}, long final noted; stand by for vector instructions.",
+]
+
+[arrival.runway_change_accepted]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["runway_change_accepted"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy} now assigned. Stand by for revised approach clearance.",
+  "{callsign}, revised runway {rwy}. New approach clearance to follow.",
+  "{callsign}, arrival runway changed to {rwy}; stand by for approach clearance.",
+]
+
+[arrival.approach_unable_ack]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["approach_unable_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, unable approach received. Say preferred approach.",
+  "{callsign}, roger, unable that approach. Advise your preferred procedure.",
+  "{callsign}, approach unable acknowledged. State preferred approach.",
+]
+
+[arrival.not_established]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["not_established"]
+slots = ["callsign"]
+say = [
+  "{callsign}, confirm localizer established.",
+  "{callsign}, say whether established on the localizer.",
+  "{callsign}, advise localizer establishment status.",
+]
+
+[arrival.glideslope_unserviceable]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["glideslope_unserviceable"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy} glideslope unserviceable.",
+  "{callsign}, glideslope unavailable for runway {rwy}.",
+  "{callsign}, ILS glideslope runway {rwy} is out of service.",
+]
+
+[arrival.localizer_unserviceable]
+service = ["Approach"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["localizer_unserviceable"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy} localizer unserviceable.",
+  "{callsign}, localizer unavailable for runway {rwy}.",
+  "{callsign}, runway {rwy} localizer is out of service.",
+]

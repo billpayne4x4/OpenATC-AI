@@ -1,0 +1,85 @@
+{
+  "documents": [
+    {"name": "full-kgs",
+     "document": {
+       "origin": {"icao_code": "YMLT", "plan_rwy": "14", "pos_lat": "-41.1706", "pos_long": "146.5117", "elevation": "3"},
+       "destination": {"icao_code": "YMML", "plan_rwy": "16", "pos_lat": "-37.6690", "pos_long": "144.8412", "elevation": "434"},
+       "general": {"route": "YMLT DCT WOL YMML", "initial_altitude": "34000", "icao_airline": "JST", "flight_number": "610", "sid_ident": "WOL1", "star_ident": "WOL1A", "sid_trans": "", "star_trans": "", "appr_ident": "ILS16", "costindex": "25"},
+       "aircraft": {"reg": "VH-VQK", "icaocode": "A320"},
+       "params": {"airac": "2601", "units": "kgs"},
+       "alternate": {"icao_code": "YMHB"},
+       "fuel": {"plan_ramp": "8500", "enroute_burn": "2200", "reserve": "1200", "contingency": "300", "alternate_burn": "900", "taxi": "200"},
+       "weights": {"pax_count": "180", "payload": "18500", "cargo": "2500", "est_zfw": "60500", "est_tow": "71200", "est_ldw": "69000"},
+       "times": {"est_time_enroute": "5400"},
+       "navlog": {"fix": [
+         {"ident": "WOL", "pos_lat": "-39.0011", "pos_long": "145.5100", "altitude_feet": 20000},
+         {"ident": "TAY", "pos_lat": "-38.2000", "pos_long": "144.9000", "altitude_feet": 12000}
+       ]}
+     },
+     "expected": {"departure": "YMLT", "destination": "YMML", "runway": "14", "arrivalRunway": "16",
+       "route": "YMLT DCT WOL YMML", "cruiseFeet": 34000, "callsign": "JST610", "registration": "VH-VQK",
+       "aircraft": "A320", "sid": "WOL1", "star": "WOL1A", "approach": "ILS16", "costIndex": 25,
+       "alternate": "YMHB", "source": "SimBrief", "passengers": 180,
+       "blockFuelKg": 8500.0, "tripFuelKg": 2200.0, "reserveFuelKg": 1500.0,
+       "fixes": ["YMLT", "WOL", "TAY", "YMML"]}},
+    {"name": "lbs-units",
+     "document": {
+       "origin": {"icao_code": "KJFK", "plan_rwy": "04L", "pos_lat": "40.6398", "pos_long": "-73.7789", "elevation": "13"},
+       "destination": {"icao_code": "KLAX", "plan_rwy": "25L", "pos_lat": "33.9425", "pos_long": "-118.4081", "elevation": "126"},
+       "general": {"route": "KJFK DCT KLAX", "initial_altitude": "33000", "icao_airline": "AAL", "flight_number": "100", "costindex": "30"},
+       "aircraft": {"reg": "N123AA", "icaocode": "B738"},
+       "params": {"units": "lbs"},
+       "fuel": {"plan_ramp": "10000", "enroute_burn": "4000", "reserve": "1500", "contingency": "500", "alternate_burn": "800", "taxi": "400"},
+       "weights": {"pax_count": "150", "payload": "30000", "cargo": "5000", "est_zfw": "120000", "est_tow": "150000", "est_ldw": "140000"},
+       "times": {"est_time_enroute": "18000"}
+     },
+     "expected": {"departure": "KJFK", "destination": "KLAX", "callsign": "AAL100",
+       "cruiseFeet": 33000, "alternate": "",
+       "blockFuelKg": 4535.9237, "tripFuelKg": 1814.36948, "reserveFuelKg": 907.18474,
+       "fixes": ["KJFK", "KLAX"]}},
+    {"name": "callsign-from-reg",
+     "document": {
+       "origin": {"icao_code": "YMLT"}, "destination": {"icao_code": "YMML"},
+       "general": {"route": "DCT", "initial_altitude": "5000"},
+       "aircraft": {"reg": "VH-ABC"}
+     },
+     "expected": {"callsign": "VH-ABC", "registration": "VH-ABC", "aircraft": "A20N", "fixes": []}},
+    {"name": "callsign-openatc",
+     "document": {
+       "origin": {"icao_code": "YMLT"}, "destination": {"icao_code": "YMML"},
+       "general": {"route": "DCT", "initial_altitude": "5000"},
+       "aircraft": {}
+     },
+     "expected": {"callsign": "OPENATC", "fixes": []}},
+    {"name": "alternate-array",
+     "document": {
+       "origin": {"icao_code": "YMLT"}, "destination": {"icao_code": "YMML"},
+       "general": {"route": "DCT", "initial_altitude": "5000"},
+       "alternate": [{"icao_code": "YMHB"}, {"icao_code": "YSSY"}]
+     },
+     "expected": {"alternate": "YMHB"}},
+    {"name": "single-fix-object",
+     "document": {
+       "origin": {"icao_code": "YMLT", "pos_lat": "-41.17", "pos_long": "146.51", "elevation": "3"},
+       "destination": {"icao_code": "YMML", "pos_lat": "-37.66", "pos_long": "144.84", "elevation": "434"},
+       "general": {"route": "DCT", "initial_altitude": "5000"},
+       "navlog": {"fix": {"ident": "WOL", "pos_lat": "-39.0", "pos_long": "145.5", "altitude_feet": 20000}}
+     },
+     "expected": {"fixes": ["YMLT", "WOL", "YMML"]}},
+    {"name": "missing-plan",
+     "document": {"general": {}},
+     "error": "SimBrief did not return a flight plan. Generate an OFP first."},
+    {"name": "bad-number",
+     "document": {
+       "origin": {"icao_code": "YMLT"}, "destination": {"icao_code": "YMML"},
+       "general": {"route": "DCT", "initial_altitude": "abc"}
+     },
+     "error": "Invalid SimBrief field: initial_altitude"},
+    {"name": "invalid-plan",
+     "document": {
+       "origin": {"icao_code": "XX"}, "destination": {"icao_code": "YMML"},
+       "general": {"route": "DCT", "initial_altitude": "5000"}
+     },
+     "error": "Check ICAO codes, callsign and initial/cruise altitudes."}
+  ]
+}

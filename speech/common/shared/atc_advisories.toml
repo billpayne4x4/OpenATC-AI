@@ -1,0 +1,209 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[advisory.traffic]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["traffic"]
+slots = ["callsign", "traffic"]
+say = [
+  "{callsign}, traffic {traffic}. Report in sight.",
+  "{callsign}, traffic information: {traffic}. Advise when in sight.",
+  "{callsign}, reported traffic {traffic}. Report visual contact.",
+]
+
+[advisory.traffic_nofactor]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["traffic_resolved"]
+slots = ["callsign"]
+say = [
+  "{callsign}, traffic no longer a factor.",
+  "{callsign}, previously reported traffic is no factor.",
+  "{callsign}, traffic information cancelled; no longer a factor.",
+]
+
+[advisory.wake]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "approach"]
+variant = "common"
+situation = ["wake_turbulence"]
+slots = ["callsign", "traffic"]
+say = [
+  "{callsign}, caution wake turbulence from {traffic}.",
+  "{callsign}, wake turbulence caution, {traffic}.",
+  "{callsign}, caution, wake turbulence associated with {traffic}.",
+]
+
+[advisory.windshear]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["approach", "departure"]
+variant = "common"
+situation = ["windshear_alert"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, windshear reported {location}. Say intentions.",
+  "{callsign}, reported windshear at {location}. Advise intentions.",
+  "{callsign}, windshear report for {location}. What are your intentions?",
+]
+
+[advisory.fuel_dump]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["fuel_dumping"]
+slots = ["alt", "wpt"]
+say = [
+  "All stations, fuel dumping reported near {wpt} at {alt}.",
+  "All stations, reported fuel dumping at {alt}, vicinity {wpt}.",
+  "All stations, fuel dumping information: {wpt}, {alt}.",
+]
+
+[advisory.frequency_busy]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["congestion"]
+slots = []
+say = [
+  "All stations, frequency busy. Keep transmissions brief.",
+  "All stations, keep calls concise; frequency congestion.",
+  "All stations, listen before transmitting and keep transmissions short.",
+]
+
+[advisory.sigmet]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["sigmet", "weather_advisory"]
+slots = ["callsign", "weather"]
+say = [
+  "{callsign}, SIGMET information: {weather}. Say intentions.",
+  "{callsign}, active SIGMET reports {weather}. Advise intentions.",
+  "{callsign}, SIGMET advisory, {weather}. Report your intentions.",
+]
+
+[advisory.pirep_wind]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival", "approach"]
+variant = "common"
+situation = ["pirep", "wind"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, pilot report of windshear at {location}. Say intentions.",
+  "{callsign}, windshear pilot report, {location}. Advise intentions.",
+  "{callsign}, windshear reported by another aircraft at {location}. Say intentions.",
+]
+
+[advisory.wake_arrival]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["wake_turbulence", "arrival"]
+slots = ["callsign", "traffic"]
+say = [
+  "{callsign}, caution wake turbulence, {traffic} ahead on final.",
+  "{callsign}, {traffic} ahead on final. Caution wake turbulence.",
+  "{callsign}, wake turbulence caution from {traffic} on final ahead of you.",
+]
+
+[advisory.bird_activity]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "approach"]
+variant = "common"
+situation = ["birds", "wildlife"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, bird activity reported {location}.",
+  "{callsign}, caution birds at {location}.",
+  "{callsign}, reported birds in the vicinity of {location}.",
+]
+
+[complaint.altitude_bust]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["compliance_altitude"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, check your altitude. Assigned altitude {alt}. Confirm.",
+  "{callsign}, assigned {alt}. Check altitude and confirm.",
+  "{callsign}, confirm maintaining assigned altitude {alt}.",
+]
+
+[complaint.off_route]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["compliance_route"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, check navigation. Assigned direct {wpt}. Confirm.",
+  "{callsign}, confirm direct {wpt}; check your track.",
+  "{callsign}, your assigned route is direct {wpt}. Check navigation and confirm.",
+]
+
+[complaint.speed]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["compliance_speed"]
+slots = ["callsign", "speed"]
+say = [
+  "{callsign}, confirm maintaining assigned speed {speed}.",
+  "{callsign}, check speed. Assigned speed {speed}.",
+  "{callsign}, assigned {speed}. Confirm your speed.",
+]
+
+[complaint.runway]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["approach", "landed"]
+variant = "common"
+situation = ["compliance_runway"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, check runway alignment. Assigned runway {rwy}.",
+  "{callsign}, confirm aligned with runway {rwy}.",
+  "{callsign}, assigned runway {rwy}. Check your alignment and confirm.",
+]
+
+[complaint.readback_missing]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["parked", "taxi", "departure"]
+variant = "common"
+situation = ["readback_missing"]
+slots = ["callsign"]
+say = [
+  "{callsign}, read back the clearance.",
+  "{callsign}, full clearance readback required.",
+  "{callsign}, say your clearance readback.",
+]
+
+[complaint.frequency]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["compliance_frequency"]
+slots = ["callsign", "freq"]
+say = [
+  "{callsign}, change to frequency {freq}.",
+  "{callsign}, your assigned frequency is {freq}. Change now.",
+  "{callsign}, switch to the assigned frequency {freq}.",
+]

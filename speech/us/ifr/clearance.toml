@@ -1,0 +1,78 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[us_clearance.expect_higher]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "departure"]
+variant = "faa"
+situation = ["expect_higher"]
+slots = ["alt", "callsign", "level", "time"]
+say = [
+  "{callsign}, climb and maintain {alt}. Expect {level} at {time}.",
+  "{callsign}, maintain {alt}, expect {level} at {time}.",
+  "{callsign}, initial altitude {alt}. Expect {level} at {time}.",
+]
+
+[us_clearance.climb_via]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure"]
+variant = "faa"
+situation = ["climb_via"]
+slots = ["callsign"]
+say = [
+  "{callsign}, climb via SID.",
+  "{callsign}, climb via the SID.",
+]
+
+[us_clearance.descend_via]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["arrival"]
+variant = "faa"
+situation = ["descend_via"]
+slots = ["callsign", "star"]
+say = [
+  "{callsign}, descend via {star}.",
+  "{callsign}, descend via the {star} arrival.",
+  "{callsign}, {star}, descend via.",
+]
+
+[us_clearance.altimeter]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance", "departure", "arrival"]
+variant = "faa"
+situation = ["altimeter"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, altimeter {qnh}.",
+  "{callsign}, current altimeter {qnh}.",
+  "{callsign}, altimeter setting {qnh}.",
+]
+
+[us_clearance.hold_release]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance"]
+variant = "faa"
+situation = ["hold_release"]
+slots = ["callsign"]
+say = [
+  "{callsign}, hold for release.",
+  "{callsign}, departure release pending, hold for release.",
+  "{callsign}, hold for release; departure not released.",
+]
+
+[us_clearance.release]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["clearance"]
+variant = "faa"
+situation = ["release"]
+slots = ["callsign", "time"]
+say = [
+  "{callsign}, released for departure. Clearance void if not off by {time}.",
+  "{callsign}, departure released, clearance void if not airborne by {time}.",
+  "{callsign}, released for departure with clearance void time {time}.",
+]

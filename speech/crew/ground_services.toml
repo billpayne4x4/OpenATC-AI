@@ -1,0 +1,445 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[ramp.pushback_crew]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["pushback_coordination"]
+slots = []
+say = [
+  "Flight deck, ground crew ready for pushback. Confirm your readiness.",
+  "Ground to flight deck, ready to push. Confirm ready.",
+  "Flight deck, pushback crew ready. Awaiting your readiness confirmation.",
+]
+
+[ramp.startup_clearance]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["engine_start"]
+slots = []
+say = [
+  "Flight deck, ground crew confirm the engine-start area is clear. ATC approval is separate.",
+  "Ground crew to flight deck, engine-start area clear. Confirm ATC approval as required.",
+  "Flight deck, area clear for engine start from the ground crew perspective. Check the required ATC approval.",
+]
+
+[ramp.fuel_catering]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["turnaround"]
+slots = []
+say = [
+  "Flight deck, fuel uplift complete as ordered.",
+  "Ground to flight deck, ordered fuel uplift complete.",
+  "Flight deck, requested fuel service is complete.",
+]
+
+[ramp.marshaller]
+role = "ground"
+phase = ["taxi_in", "parked"]
+variant = "common"
+situation = ["parking"]
+slots = []
+say = [
+  "Stop. Stop. Stop.",
+  "Stop now. Stop.",
+  "Stop the aircraft. Stop.",
+]
+
+[ramp.deicing]
+role = "ground"
+phase = ["parked", "taxi"]
+variant = "common"
+situation = ["winter_ops"]
+slots = ["fluid", "time"]
+say = [
+  "Flight deck, treatment complete. Fluid {fluid}, start time {time}. Confirm receipt of the full treatment report.",
+  "Ground to flight deck, de-icing treatment completed. Fluid {fluid}, treatment start {time}. Acknowledge the treatment report.",
+  "Flight deck, de-icing report: fluid {fluid}, started {time}, treatment complete. Confirm the full report received.",
+]
+
+[ramp.after_landing_check]
+role = "ground"
+phase = ["taxi_in"]
+variant = "common"
+situation = ["arrival_check"]
+slots = []
+say = [
+  "Flight deck, any defects to report for the ground crew?",
+  "Welcome in. Please advise any ground-service defects.",
+  "Ground to flight deck, report any defects needing attention.",
+]
+
+[ramp.follow_me]
+role = "ground"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["follow_me"]
+slots = ["stand"]
+say = [
+  "Flight deck, follow the identified follow-me vehicle to stand {stand}.",
+  "Ground to flight deck, follow-me vehicle identified for stand {stand}. Follow its guidance.",
+  "Flight deck, follow the marked follow-me vehicle to stand {stand}.",
+]
+
+[ramp.tow_to_maintenance]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["tow"]
+slots = []
+say = [
+  "Flight deck, tow crew ready. Await our instruction before releasing brakes.",
+  "Ground to flight deck, ready to tow. Keep brakes set until instructed.",
+  "Flight deck, tow crew ready; do not release brakes until our call.",
+]
+
+[ramp.night_pushback]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["pushback_coordination", "night_ops"]
+slots = []
+say = [
+  "Flight deck, confirm our illuminated signals are visible.",
+  "Ground to flight deck, can you see our illuminated wands?",
+  "Flight deck, confirm visual contact with our night signals.",
+]
+
+[ramp.lav_water_service]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["turnaround"]
+slots = []
+say = [
+  "Flight deck, lavatory and potable water service complete, service panels secured.",
+  "Ground to flight deck, water and lavatory servicing finished. Service panels secured.",
+  "Flight deck, both water and lavatory service are complete with panels secured.",
+]
+
+[ramp.cargo_loading]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["turnaround"]
+slots = []
+say = [
+  "Flight deck, cargo loading in progress. Completion report to follow.",
+  "Ground to flight deck, loading continues. We will call when complete.",
+  "Flight deck, cargo loading is not yet complete. We will update you.",
+]
+
+[ramp.pre_departure_walkaround]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["walkaround"]
+slots = []
+say = [
+  "Flight deck, ground walkaround complete. No defects observed during this check.",
+  "Ground to flight deck, walkaround completed with no observed defects.",
+  "Flight deck, our walkaround found no visible defects. Check completed.",
+]
+
+[ramp.chocks_in]
+role = "ground"
+phase = ["parked", "pushback", "taxi_in"]
+variant = "common"
+situation = ["chocks_in"]
+slots = []
+say = [
+  "Flight deck, chocks are in place.",
+  "Ground to flight deck, chocks fitted.",
+  "Flight deck, aircraft chocks installed.",
+]
+
+[ramp.chocks_out]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["chocks_out"]
+slots = []
+say = [
+  "Flight deck, chocks removed.",
+  "Ground to flight deck, chocks are clear.",
+  "Flight deck, chocks have been removed.",
+]
+
+[ramp.gpu_connected]
+role = "ground"
+phase = ["parked", "pushback", "taxi_in"]
+variant = "common"
+situation = ["gpu_connected"]
+slots = []
+say = [
+  "Flight deck, ground power connected. Confirm availability on your panel.",
+  "Ground to flight deck, GPU connected; check the cockpit indication.",
+  "Flight deck, ground power is connected. Please verify on board.",
+]
+
+[ramp.gpu_disconnected]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["gpu_disconnected"]
+slots = []
+say = [
+  "Flight deck, ground power disconnected.",
+  "Ground to flight deck, GPU removed.",
+  "Flight deck, external power connection removed.",
+]
+
+[ramp.pushback_moving]
+role = "ground"
+phase = ["pushback"]
+variant = "common"
+situation = ["pushback_moving"]
+slots = []
+say = [
+  "Flight deck, pushback starting. Monitor our signals.",
+  "Ground to flight deck, commencing pushback.",
+  "Flight deck, pushback movement is beginning.",
+]
+
+[ramp.pushback_hold]
+role = "ground"
+phase = ["pushback"]
+variant = "common"
+situation = ["pushback_hold"]
+slots = []
+say = [
+  "Flight deck, stopping pushback. Hold position.",
+  "Ground to flight deck, pushback stopped. Hold.",
+  "Flight deck, pause pushback and hold position.",
+]
+
+[ramp.pushback_complete]
+role = "ground"
+phase = ["pushback"]
+variant = "common"
+situation = ["pushback_complete"]
+slots = []
+say = [
+  "Flight deck, pushback complete. Set parking brake and confirm.",
+  "Ground to flight deck, push complete. Confirm parking brake set.",
+  "Flight deck, pushback finished. Set brakes and advise.",
+]
+
+[ramp.pin_removed]
+role = "ground"
+phase = ["pushback"]
+variant = "common"
+situation = ["pin_removed"]
+slots = []
+say = [
+  "Flight deck, bypass pin removed and displayed. Confirm in sight.",
+  "Ground to flight deck, steering bypass pin removed. Confirm you see it.",
+  "Flight deck, pin removed; showing it now. Confirm visual.",
+]
+
+[ramp.tug_clear]
+role = "ground"
+phase = ["pushback"]
+variant = "common"
+situation = ["tug_clear"]
+slots = []
+say = [
+  "Flight deck, tug and crew clear of the aircraft.",
+  "Ground to flight deck, tug disconnected and crew clear.",
+  "Flight deck, tug clear, ground crew clear.",
+]
+
+[ramp.start_hold]
+role = "ground"
+phase = ["parked", "pushback", "taxi_in"]
+variant = "common"
+situation = ["start_hold"]
+slots = []
+say = [
+  "Flight deck, hold engine start. Area not clear.",
+  "Ground to flight deck, do not start; area obstructed.",
+  "Flight deck, engine-start area not clear. Hold the start.",
+]
+
+[ramp.fuel_in_progress]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["fuel_in_progress"]
+slots = []
+say = [
+  "Flight deck, fuel service still in progress.",
+  "Ground to flight deck, fuel uplift continuing.",
+  "Flight deck, fuelling not yet complete.",
+]
+
+[ramp.fuel_quantity_check]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["fuel_quantity_check"]
+slots = ["fuel_quantity"]
+say = [
+  "Flight deck, confirm requested uplift {fuel_quantity}.",
+  "Ground to flight deck, verify fuel order {fuel_quantity}.",
+  "Flight deck, requested fuel quantity {fuel_quantity}. Confirm.",
+]
+
+[ramp.catering_complete]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["catering_complete"]
+slots = []
+say = [
+  "Flight deck, catering service complete and equipment clear.",
+  "Ground to flight deck, catering finished, equipment removed.",
+  "Flight deck, catering equipment clear; service complete.",
+]
+
+[ramp.loading_complete]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["loading_complete"]
+slots = []
+say = [
+  "Flight deck, loading complete. Await final load-sheet confirmation.",
+  "Ground to flight deck, cargo loading finished; final load sheet to follow.",
+  "Flight deck, loading completed. Final load-sheet verification pending.",
+]
+
+[ramp.load_sheet_ready]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["load_sheet_ready"]
+slots = []
+say = [
+  "Flight deck, final load sheet available for your verification.",
+  "Ground to flight deck, load sheet ready. Please verify.",
+  "Flight deck, final loading document ready for flight-deck review.",
+]
+
+[ramp.service_vehicle_near]
+role = "ground"
+phase = ["parked", "pushback", "taxi_in"]
+variant = "common"
+situation = ["service_vehicle_near"]
+slots = ["location"]
+say = [
+  "Flight deck, service vehicle near {location}. Hold movement.",
+  "Ground to flight deck, vehicle at {location}. Do not move yet.",
+  "Flight deck, hold position for a service vehicle at {location}.",
+]
+
+[ramp.deice_ready]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["deice_ready"]
+slots = []
+say = [
+  "Flight deck, de-icing equipment in position. Confirm aircraft configured for treatment.",
+  "Ground to flight deck, ready for treatment. Confirm the aircraft de-icing configuration.",
+  "Flight deck, equipment ready. Confirm preparation for de-icing.",
+]
+
+[ramp.deice_hold]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["deice_hold"]
+slots = []
+say = [
+  "Flight deck, de-icing treatment paused. Completion report not yet available.",
+  "Ground to flight deck, treatment stopped temporarily. No completion report yet.",
+  "Flight deck, de-icing on hold; treatment is not complete.",
+]
+
+[ramp.deice_report_repeat]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["deice_report_repeat"]
+slots = []
+say = [
+  "Flight deck, confirm receipt of fluid details and treatment times.",
+  "Ground to flight deck, acknowledge fluid and timing information in the report.",
+  "Flight deck, please confirm the de-icing fluid and treatment-time report.",
+]
+
+[ramp.holdover_review]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["holdover_review"]
+slots = []
+say = [
+  "Flight deck, review holdover guidance for the reported fluid, conditions and treatment time.",
+  "Ground to flight deck, check the applicable holdover table using the treatment report.",
+  "Flight deck, use the current fluid and weather information to assess holdover limits.",
+]
+
+[ramp.walkaround_defect]
+role = "ground"
+phase = ["parked", "pushback", "taxi_in"]
+variant = "common"
+situation = ["walkaround_defect"]
+slots = ["location", "status"]
+say = [
+  "Flight deck, walkaround defect reported at {location}: {status}.",
+  "Ground to flight deck, defect observed {location}, {status}.",
+  "Flight deck, ground inspection finding {status} at {location}.",
+]
+
+[ramp.maintenance_requested]
+role = "ground"
+phase = ["parked", "pushback", "taxi_in"]
+variant = "common"
+situation = ["maintenance_requested"]
+slots = []
+say = [
+  "Flight deck, maintenance assistance requested. Response confirmation pending.",
+  "Ground to flight deck, maintenance request sent; awaiting confirmation.",
+  "Flight deck, requested maintenance support. We will confirm the response.",
+]
+
+[ramp.stand_obstructed]
+role = "ground"
+phase = ["taxi_in"]
+variant = "common"
+situation = ["stand_obstructed"]
+slots = ["stand"]
+say = [
+  "Flight deck, stand {stand} obstructed. Hold position.",
+  "Ground to flight deck, hold movement, stand {stand} not clear.",
+  "Flight deck, stand {stand} unavailable due obstruction. Hold.",
+]
+
+[ramp.marshaller_visual]
+role = "ground"
+phase = ["taxi_in"]
+variant = "common"
+situation = ["marshaller_visual"]
+slots = []
+say = [
+  "Flight deck, confirm marshaller in sight before moving.",
+  "Ground to flight deck, verify visual contact with your marshaller.",
+  "Flight deck, confirm you can see the marshalling signals.",
+]
+
+[ramp.all_services_clear]
+role = "ground"
+phase = ["parked"]
+variant = "common"
+situation = ["all_services_clear"]
+slots = []
+say = [
+  "Flight deck, ground-service equipment and personnel clear.",
+  "Ground to flight deck, all service equipment and crew clear of the aircraft.",
+  "Flight deck, service area cleared of our equipment and personnel.",
+]

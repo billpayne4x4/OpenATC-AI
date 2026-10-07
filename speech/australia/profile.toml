@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "australia"
+prefixes = ["Y"]
+variant = "icao"
+notes = "Selected Australian AIP readback and circuit examples."

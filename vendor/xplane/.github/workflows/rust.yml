@@ -1,0 +1,50 @@
+# SPDX-FileCopyrightText: 2024 Julia DeMille <me@jdemille.com>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+name: Rust
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - feature/**
+      - bugfix/**
+      - hotfix/**
+      - release/**
+  pull_request:
+    branches:
+      - main
+      - develop
+      - feature/**
+      - bugfix/**
+      - hotfix/**
+      - release/**
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build and Run Tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Rust is up to date.
+        run: rustup default stable && rustup update
+      - name: Build
+        run: cargo build --verbose -FXPLM400
+      - name: Run tests
+        run: cargo test --verbose -FXPLM400
+  least-features:
+    runs-on: ubuntu-latest
+    name: Build and Run Tests with XPLM210
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure Rust is up to date.
+        run: rustup default stable && rustup update
+      - name: Build
+        run: cargo build --verbose -FXPLM210
+      - name: Run tests
+        run: cargo test --verbose -FXPLM210

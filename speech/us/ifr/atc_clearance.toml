@@ -1,0 +1,27 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[delivery.ifr_faa]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "faa"
+situation = ["initial_clearance"]
+slots = ["alt", "callsign", "dest", "sq"]
+say = [
+  "{callsign}, cleared to {dest} airport as filed. Climb and maintain {alt}, squawk {sq}.",
+  "{callsign}, cleared as filed to {dest}. Maintain {alt}, squawk {sq}.",
+  "{callsign}, clearance to {dest} airport, filed route. Climb and maintain {alt}. Squawk {sq}.",
+]
+
+[delivery.void_time]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "faa"
+situation = ["void_time", "uncontrolled"]
+slots = ["callsign", "time"]
+say = [
+  "{callsign}, clearance void if not off by {time}. Advise intentions if unable.",
+  "{callsign}, your clearance is void if not airborne by {time}. Report if unable.",
+  "{callsign}, void time {time}. If unable to depart before then, advise intentions.",
+]

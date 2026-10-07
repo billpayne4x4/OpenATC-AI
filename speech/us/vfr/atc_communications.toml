@@ -1,0 +1,14 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[chatter.vfr_flight_following]
+service = ["Clearance", "Ground", "Tower", "Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise"]
+variant = "faa"
+situation = ["vfr", "flight_following"]
+slots = ["callsign", "sq"]
+say = [
+  "{callsign}, radar contact, maintain VFR. Squawk {sq}.",
+  "{callsign}, identified, remain VFR, squawk {sq}.",
+  "{callsign}, radar service established. Maintain VFR, code {sq}.",
+]

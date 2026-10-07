@@ -1,0 +1,5 @@
+# Regional routing, not an airport procedure database. Longest ICAO prefix wins.
+name = "china"
+prefixes = ["Z"]
+variant = "icao"
+notes = "Baseline only. Published metric clearances require explicit unit-bearing level data."

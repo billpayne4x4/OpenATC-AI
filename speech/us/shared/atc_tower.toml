@@ -1,0 +1,27 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[tower.takeoff_faa]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "faa"
+situation = ["takeoff"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, cleared for takeoff.",
+  "{callsign}, cleared for takeoff, runway {rwy}.",
+  "{callsign}, runway {rwy}, takeoff clearance issued; cleared for takeoff.",
+]
+
+[tower.landing_faa]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "faa"
+situation = ["landing"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, cleared to land.",
+  "{callsign}, cleared to land, runway {rwy}.",
+  "{callsign}, runway {rwy}, landing clearance issued; cleared to land.",
+]

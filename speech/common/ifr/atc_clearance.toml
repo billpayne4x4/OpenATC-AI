@@ -1,0 +1,247 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[delivery.ifr_sid]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "icao"
+situation = ["initial_clearance"]
+slots = ["alt", "callsign", "dest", "rwy", "sid", "sq"]
+say = [
+  "{callsign}, cleared to {dest} via {sid}, runway {rwy}. Climb to {alt}, squawk {sq}.",
+  "{callsign}, cleared to {dest}, {sid} departure, runway {rwy}. Initial altitude {alt}, squawk {sq}.",
+  "{callsign}, your clearance is to {dest} via {sid} from runway {rwy}, initial climb {alt}, squawk {sq}.",
+]
+
+[delivery.omnidirectional]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["no_sid", "vectors_departure"]
+slots = ["alt", "callsign", "dest", "sq"]
+say = [
+  "{callsign}, cleared to {dest} as filed. After departure fly runway heading, climb to {alt}, squawk {sq}.",
+  "{callsign}, cleared as filed to {dest}. Runway heading after departure, initial climb {alt}, squawk {sq}.",
+  "{callsign}, clearance to {dest}, filed route. Fly runway heading after departure and climb to {alt}. Squawk {sq}.",
+]
+
+[delivery.recleared]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance", "taxi"]
+variant = "icao"
+situation = ["amendment"]
+slots = ["alt", "callsign", "sid"]
+say = [
+  "{callsign}, recleared via {sid}, climb to {alt}. Rest of clearance unchanged.",
+  "{callsign}, amended clearance: {sid} departure, initial climb {alt}. All other instructions unchanged.",
+  "{callsign}, change departure to {sid} and climb to {alt}. Remainder of clearance unchanged.",
+]
+
+[delivery.readback_correct]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["readback"]
+slots = ["callsign"]
+say = [
+  "{callsign}, readback correct.",
+  "{callsign}, correct readback.",
+  "{callsign}, clearance readback correct.",
+]
+
+[delivery.readback_wrong]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "icao"
+situation = ["readback_mismatch"]
+slots = ["alt", "callsign", "dest", "sid", "sq"]
+say = [
+  "{callsign}, negative. Cleared to {dest} via {sid}, climb to {alt}, squawk {sq}. Read back the corrected clearance.",
+  "{callsign}, correction to your readback: destination {dest}, departure {sid}, altitude {alt}, squawk {sq}. Read back.",
+  "{callsign}, correct clearance is {dest} via {sid}, climb {alt}, squawk {sq}. Say your readback again.",
+]
+
+[delivery.slot_delay]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["flow_control"]
+slots = ["callsign", "mins"]
+say = [
+  "{callsign}, departure slot delay {mins}. Monitor this frequency; I will call you.",
+  "{callsign}, expect a slot delay of {mins}. Remain on this frequency for an update.",
+  "{callsign}, flow control delay is {mins}. Monitor here for further information.",
+]
+
+[delivery.hearback_correction]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["readback_mismatch"]
+slots = ["alt", "callsign", "sq"]
+say = [
+  "{callsign}, negative. Climb to {alt}, squawk {sq}. Read back altitude and squawk.",
+  "{callsign}, correction: altitude {alt}, squawk {sq}. Read back both items.",
+  "{callsign}, I say again, climb to {alt} and squawk {sq}. Read back.",
+]
+
+[delivery.pdc_digital]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["pdc", "digital_clearance"]
+slots = ["callsign"]
+say = [
+  "{callsign}, pre-departure clearance available on data link. Acknowledge receipt on data link.",
+  "{callsign}, your PDC is available. Acknowledge it through data link.",
+  "{callsign}, retrieve your pre-departure clearance and acknowledge on data link.",
+]
+
+[delivery.full_reroute]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["amendment", "reroute"]
+slots = ["alt", "callsign", "dest", "sq", "via"]
+say = [
+  "{callsign}, recleared to {dest} via {via}. Climb to {alt}, squawk {sq}.",
+  "{callsign}, amended clearance: destination {dest}, route {via}, initial altitude {alt}, squawk {sq}.",
+  "{callsign}, clearance amended to {dest} via {via}. Maintain {alt}, squawk {sq}.",
+]
+
+[delivery.oceanic_entry]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["oceanic"]
+slots = ["alt", "callsign", "dest", "wpt"]
+say = [
+  "{callsign}, oceanic clearance to {dest} via {wpt}, maintain {alt}. Report reaching {wpt}.",
+  "{callsign}, cleared to {dest} through oceanic entry {wpt}, maintain {alt}. Report at the entry.",
+  "{callsign}, clearance to {dest} via oceanic entry point {wpt}. Maintain {alt}, report entry.",
+]
+
+[delivery.clearance_not_ready]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["clearance_not_ready"]
+slots = ["callsign"]
+say = [
+  "{callsign}, clearance not yet available. Stand by.",
+  "{callsign}, stand by for clearance; it is not yet available.",
+  "{callsign}, your clearance is pending. I will call you.",
+]
+
+[delivery.request_cruise_level]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["request_cruise_level"]
+slots = ["callsign"]
+say = [
+  "{callsign}, say requested cruising level.",
+  "{callsign}, advise your requested cruise altitude.",
+  "{callsign}, confirm the level requested for cruise.",
+]
+
+[delivery.clearance_limit]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["clearance_limit"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, clearance limit {wpt}. Maintain {alt}.",
+  "{callsign}, cleared to {wpt}, maintain {alt}.",
+  "{callsign}, your clearance limit is {wpt}, assigned altitude {alt}.",
+]
+
+[delivery.sid_cancelled]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "icao"
+situation = ["sid_cancelled"]
+slots = ["alt", "callsign", "heading", "sid"]
+say = [
+  "{callsign}, cancel {sid}. Fly heading {heading} after departure, climb to {alt}.",
+  "{callsign}, {sid} cancelled. After departure heading {heading}, climb to {alt}.",
+  "{callsign}, departure procedure cancelled; fly heading {heading} after departure and climb to {alt}.",
+]
+
+[delivery.slot_update]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["slot_update"]
+slots = ["callsign", "time"]
+say = [
+  "{callsign}, revised departure time {time}.",
+  "{callsign}, departure time now {time}.",
+  "{callsign}, your departure slot time has changed to {time}.",
+]
+
+[delivery.route_confirmation]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["route_confirmation"]
+slots = ["callsign", "via"]
+say = [
+  "{callsign}, confirm cleared route via {via}.",
+  "{callsign}, read back route via {via}.",
+  "{callsign}, your route is via {via}. Confirm.",
+]
+
+[delivery.clearance_cancelled]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["clearance_cancelled"]
+slots = ["callsign"]
+say = [
+  "{callsign}, clearance cancelled. Stand by for a revised clearance.",
+  "{callsign}, cancel previous clearance. Revised clearance to follow.",
+  "{callsign}, previous clearance is cancelled; stand by.",
+]
+
+[delivery.capability_rnav]
+service = ["Clearance"]
+role = "atc"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["capability_rnav"]
+slots = ["callsign"]
+say = [
+  "{callsign}, advise RNAV capability.",
+  "{callsign}, confirm whether able RNAV.",
+  "{callsign}, say your RNAV capability.",
+]
+
+[delivery.ifr_route]
+role = "atc"
+service = ["Clearance"]
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["initial_route_clearance"]
+slots = ["callsign", "dest", "via", "alt", "sq", "rwy"]
+say = [
+ "{callsign}, cleared to {dest} via {via}. Initial altitude {alt}, squawk {sq}. Departure runway {rwy}.",
+ "{callsign}, cleared to {dest}, route {via}, initial altitude {alt}, squawk {sq}. Runway {rwy} for departure.",
+]

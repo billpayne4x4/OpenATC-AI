@@ -1,0 +1,849 @@
+{
+  "scenarios": [
+    {
+      "name": "freq-gate-no-airport",
+      "intent": "taxi",
+      "text": "request taxi",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 1
+      },
+      "realism": {
+        "requireFrequency": true,
+        "teachingCorrections": true
+      },
+      "freqSeq": 1,
+      "recommended": 121900,
+      "com1": 118100,
+      "expected": {
+        "accepted": false,
+        "message": "Contact the controller on 121.900 MHz. Tune COM1 to the assigned frequency before requesting service."
+      }
+    },
+    {
+      "name": "freq-gate-named",
+      "intent": "taxi",
+      "text": "request taxi",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 1
+      },
+      "realism": {
+        "requireFrequency": true,
+        "teachingCorrections": true
+      },
+      "freqSeq": 1,
+      "recommended": 121900,
+      "com1": 118100,
+      "airport": "demo",
+      "expected": {
+        "accepted": false,
+        "message": "Contact Demo Ground on 121.900 MHz. Tune COM1 to the assigned frequency before requesting service."
+      }
+    },
+    {
+      "name": "freq-gate-no-teaching",
+      "intent": "taxi",
+      "text": "request taxi",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 1
+      },
+      "realism": {
+        "requireFrequency": true,
+        "teachingCorrections": false
+      },
+      "freqSeq": 1,
+      "recommended": 121900,
+      "com1": 118100,
+      "airport": "demo",
+      "expected": {
+        "accepted": false,
+        "message": "Contact Demo Ground on 121.900 MHz."
+      }
+    },
+    {
+      "name": "freq-open-bypass",
+      "intent": "radio_check",
+      "text": "radio check",
+      "phase": 1,
+      "onGround": true,
+      "realism": {
+        "requireFrequency": true,
+        "teachingCorrections": true
+      },
+      "freqSeq": 1,
+      "recommended": 121900,
+      "com1": 118100,
+      "expected": {
+        "accepted": true,
+        "message": "Reading you five. Development controller online."
+      }
+    },
+    {
+      "name": "callsign-missing",
+      "intent": "taxi",
+      "text": "request taxi please",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 1
+      },
+      "realism": {
+        "requireCallsign": true,
+        "teachingCorrections": true
+      },
+      "expected": {
+        "accepted": false,
+        "message": "Say callsign. Include your callsign so the controller knows who is calling."
+      }
+    },
+    {
+      "name": "callsign-embedded",
+      "intent": "taxi",
+      "text": "VH-BIL request taxi",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 1
+      },
+      "realism": {
+        "requireCallsign": true,
+        "teachingCorrections": true
+      },
+      "airport": "demo",
+      "expected": {
+        "accepted": true,
+        "messagePrefix": "DEMO: Taxi via ",
+        "phaseAfter": 1
+      },
+      "plan": {
+        "runway": "27"
+      }
+    },
+    {
+      "name": "radio-check",
+      "intent": "radio_check",
+      "text": "radio check",
+      "phase": 0,
+      "onGround": true,
+      "expected": {
+        "accepted": true,
+        "message": "Reading you five. Development controller online."
+      }
+    },
+    {
+      "name": "repeat-empty",
+      "intent": "repeat",
+      "text": "say again",
+      "phase": 0,
+      "onGround": true,
+      "expected": {
+        "accepted": false,
+        "message": "No previous controller transmission."
+      }
+    },
+    {
+      "name": "repeat-after-atc",
+      "intent": "repeat",
+      "text": "say again",
+      "phase": 0,
+      "onGround": true,
+      "seedTranscript": [
+        {
+          "speaker": "ATC",
+          "text": "Climb to 5000 feet."
+        }
+      ],
+      "expected": {
+        "accepted": true,
+        "message": "Climb to 5000 feet."
+      }
+    },
+    {
+      "name": "standby",
+      "intent": "standby",
+      "text": "stand by",
+      "phase": 0,
+      "onGround": true,
+      "expected": {
+        "accepted": true,
+        "message": "Standing by."
+      }
+    },
+    {
+      "name": "unable",
+      "intent": "unable",
+      "text": "unable",
+      "phase": 4,
+      "onGround": false,
+      "expected": {
+        "accepted": true,
+        "message": "Roger unable. Existing clearance remains recorded; request an alternative."
+      }
+    },
+    {
+      "name": "readback-ok",
+      "intent": "readback",
+      "text": "read back clearance",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 7
+      },
+      "request": {
+        "seq": 7,
+        "alt": 5000,
+        "waypoint": "DCT"
+      },
+      "expected": {
+        "accepted": true,
+        "message": "Readback correct.",
+        "acknowledged": true
+      }
+    },
+    {
+      "name": "readback-mismatch",
+      "intent": "readback",
+      "text": "read back clearance",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 7
+      },
+      "request": {
+        "seq": 7,
+        "alt": 6000,
+        "waypoint": "DCT"
+      },
+      "expected": {
+        "accepted": false,
+        "message": "Say again your clearance readback. Check the assigned altitude and route; the clearance remains unacknowledged.",
+        "acknowledged": false
+      }
+    },
+    {
+      "name": "readback-lenient",
+      "intent": "readback",
+      "text": "read back clearance",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": false,
+        "seq": 7
+      },
+      "request": {
+        "seq": 7,
+        "alt": 6000,
+        "waypoint": "DCT"
+      },
+      "realism": {
+        "strictReadbacks": false
+      },
+      "expected": {
+        "accepted": true,
+        "message": "Readback correct.",
+        "acknowledged": true
+      }
+    },
+    {
+      "name": "readback-none",
+      "intent": "readback",
+      "text": "read back clearance",
+      "phase": 0,
+      "onGround": true,
+      "expected": {
+        "accepted": false,
+        "message": "No pending clearance to acknowledge."
+      }
+    },
+    {
+      "name": "readback-acked",
+      "intent": "readback",
+      "text": "read back clearance",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 7
+      },
+      "request": {
+        "seq": 7,
+        "alt": 5000,
+        "waypoint": "DCT"
+      },
+      "expected": {
+        "accepted": false,
+        "message": "No pending clearance to acknowledge."
+      }
+    },
+    {
+      "name": "clearance-initial",
+      "intent": "clearance",
+      "text": "request ifr clearance",
+      "phase": 0,
+      "onGround": true,
+      "plan": {
+        "initial": 5000,
+        "route": "DCT",
+        "runway": "32",
+        "destination": "YMML",
+        "sid": ""
+      },
+      "region": "initial",
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Cleared to YMML via DCT, initial altitude 5000 feet, squawk 2105. Departure runway 32.",
+        "phaseAfter": 1
+      }
+    },
+    {
+      "name": "clearance-sid",
+      "intent": "clearance",
+      "text": "request ifr clearance",
+      "phase": 0,
+      "onGround": true,
+      "plan": {
+        "initial": 5000,
+        "route": "DCT",
+        "runway": "32",
+        "destination": "YMML",
+        "sid": "WOL1"
+      },
+      "region": "sid",
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Cleared to YMML via WOL1 then DCT, climb via WOL1 to 5000 feet, squawk 2105. Departure runway 32.",
+        "phaseAfter": 1
+      }
+    },
+    {
+      "name": "clearance-unavailable-airborne",
+      "intent": "clearance",
+      "text": "request ifr clearance",
+      "phase": 0,
+      "onGround": false,
+      "speed": 0.0,
+      "expected": {
+        "accepted": false,
+        "message": "IFR departure clearance requires the aircraft to be on the ground."
+      }
+    },
+    {
+      "name": "pushback",
+      "intent": "pushback",
+      "text": "request pushback",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 1
+      },
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Pushback approved. Advise ready to taxi.",
+        "phaseAfter": 8
+      }
+    },
+    {
+      "name": "pushback-airborne",
+      "intent": "pushback",
+      "text": "request pushback",
+      "phase": 1,
+      "onGround": false,
+      "speed": 120.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 1
+      },
+      "expected": {
+        "accepted": false,
+        "message": "That request is not available during Clearance."
+      }
+    },
+    {
+      "name": "taxi-demo",
+      "intent": "taxi",
+      "text": "request taxi",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 1
+      },
+      "airport": "demo",
+      "expected": {
+        "accepted": true,
+        "messagePrefix": "DEMO: Taxi via ",
+        "phaseAfter": 1
+      },
+      "plan": {
+        "runway": "27"
+      }
+    },
+    {
+      "name": "taxi-no-airport",
+      "intent": "taxi",
+      "text": "request taxi",
+      "phase": 1,
+      "onGround": true,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 1
+      },
+      "expected": {
+        "accepted": false,
+        "message": "Load this airport's taxi network before requesting taxi."
+      }
+    },
+    {
+      "name": "gate-demo",
+      "intent": "gate",
+      "text": "taxi to parking",
+      "phase": 7,
+      "onGround": true,
+      "plan": {
+        "arrivalStand": "Gate 1"
+      },
+      "airport": "demo",
+      "expected": {
+        "accepted": true,
+        "messagePrefix": "DEMO: Taxi toward ",
+        "phaseAfter": 7
+      }
+    },
+    {
+      "name": "ready-demo",
+      "intent": "ready",
+      "text": "ready for departure",
+      "phase": 2,
+      "onGround": true,
+      "taxi": {
+        "approved": true,
+        "points": [
+          [
+            0,
+            200
+          ]
+        ]
+      },
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Runway 32, cleared for takeoff.",
+        "phaseAfter": 3
+      }
+    },
+    {
+      "name": "ready-no-clearance",
+      "intent": "ready",
+      "text": "ready for departure",
+      "phase": 2,
+      "onGround": true,
+      "expected": {
+        "accepted": false,
+        "message": "That request is not available during Taxi."
+      }
+    },
+    {
+      "name": "altitude-ok",
+      "intent": "altitude",
+      "text": "request altitude 8000",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      },
+      "request": {
+        "alt": 8000
+      },
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Maintain 8000 feet, route DCT.",
+        "clearanceAlt": 8000
+      }
+    },
+    {
+      "name": "altitude-range",
+      "intent": "altitude",
+      "text": "request altitude 500",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      },
+      "request": {
+        "alt": 500
+      },
+      "expected": {
+        "accepted": false,
+        "message": "Enter an altitude from 1000 feet to 45000 feet, in 100-foot increments."
+      }
+    },
+    {
+      "name": "descent-ok",
+      "intent": "descent",
+      "text": "request descent 3000",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      },
+      "request": {
+        "alt": 3000
+      },
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Maintain 3000 feet, route DCT.",
+        "phaseAfter": 5
+      }
+    },
+    {
+      "name": "descent-above",
+      "intent": "descent",
+      "text": "request descent 8000",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      },
+      "request": {
+        "alt": 8000
+      },
+      "expected": {
+        "accepted": false,
+        "message": "Descent altitude must be below your current altitude."
+      }
+    },
+    {
+      "name": "direct-ok",
+      "intent": "direct",
+      "text": "request direct PELIN",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      },
+      "request": {
+        "waypoint": "PELIN"
+      },
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Maintain 5000 feet, route PELIN."
+      }
+    },
+    {
+      "name": "direct-bad",
+      "intent": "direct",
+      "text": "request direct",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      },
+      "request": {
+        "waypoint": "p!"
+      },
+      "expected": {
+        "accepted": false,
+        "message": "Enter a waypoint identifier."
+      }
+    },
+    {
+      "name": "frequency-assign",
+      "intent": "frequency",
+      "text": "request frequency change",
+      "phase": 2,
+      "onGround": true,
+      "airport": "demo",
+      "expected": {
+        "accepted": true,
+        "message": "Contact Demo Tower on 118.100000 MHz.",
+        "recommendedKhz": 118100
+      }
+    },
+    {
+      "name": "frequency-cruise",
+      "intent": "frequency",
+      "text": "request frequency change",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "airport": "demo",
+      "expected": {
+        "accepted": false,
+        "message": "Enroute sector frequencies are not loaded. No frequency assigned."
+      }
+    },
+    {
+      "name": "go-around",
+      "intent": "go_around",
+      "text": "going around",
+      "phase": 6,
+      "onGround": false,
+      "alt": 1500.0,
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: Go-around recorded. Follow your published missed approach.",
+        "phaseAfter": 3,
+        "urgent": true
+      }
+    },
+    {
+      "name": "emergency-off",
+      "intent": "emergency",
+      "text": "mayday engine failure",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "expected": {
+        "accepted": false,
+        "message": "Emergency practice is off. Enable practice emergencies in Realism settings."
+      }
+    },
+    {
+      "name": "emergency-on",
+      "intent": "emergency",
+      "text": "mayday engine failure",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "realism": {
+        "practiceEmergencies": true
+      },
+      "expected": {
+        "accepted": true,
+        "message": "Roger mayday. Squawk 7700, state intentions and souls on board. Priority handling.",
+        "urgent": true
+      }
+    },
+    {
+      "name": "conversation-plain",
+      "intent": "conversation",
+      "text": "thanks",
+      "phase": 0,
+      "onGround": true,
+      "realism": {
+        "strictPhraseology": false,
+        "teachingCorrections": false
+      },
+      "expected": {
+        "accepted": false,
+        "message": "That request is not available during Parked."
+      }
+    },
+    {
+      "name": "conversation-teaching",
+      "intent": "conversation",
+      "text": "thanks",
+      "phase": 0,
+      "onGround": true,
+      "realism": {
+        "strictPhraseology": true,
+        "teachingCorrections": true
+      },
+      "expected": {
+        "accepted": false,
+        "message": "That request is not available during Parked."
+      }
+    },
+    {
+      "name": "conversation-strict",
+      "intent": "conversation",
+      "text": "thanks",
+      "phase": 0,
+      "onGround": true,
+      "realism": {
+        "strictPhraseology": true,
+        "teachingCorrections": false
+      },
+      "expected": {
+        "accepted": false,
+        "message": "That request is not available during Parked."
+      }
+    },
+    {
+      "name": "position-ok",
+      "intent": "position",
+      "text": "confirm position",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "positionValid": true,
+      "expected": {
+        "accepted": true,
+        "message": "Position 0.000000, 0.000000."
+      }
+    },
+    {
+      "name": "position-invalid",
+      "intent": "position",
+      "text": "confirm position",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "expected": {
+        "accepted": false,
+        "message": "Aircraft position unavailable."
+      }
+    },
+    {
+      "name": "approach-brief",
+      "intent": "approach",
+      "text": "brief arrival approach",
+      "phase": 5,
+      "onGround": false,
+      "alt": 4000.0,
+      "expected": {
+        "accepted": true,
+        "messagePrefix": "Approach briefing:",
+        "phaseAfter": 6
+      }
+    },
+    {
+      "name": "cancel-ifr",
+      "intent": "cancel_ifr",
+      "text": "cancel ifr",
+      "phase": 4,
+      "onGround": false,
+      "alt": 6000.0,
+      "expected": {
+        "accepted": true,
+        "message": "DEMO: IFR cancelled."
+      },
+      "clearance": {
+        "alt": 5000,
+        "route": "DCT",
+        "acked": true,
+        "seq": 2
+      }
+    },
+    {
+      "name": "progressive-empty",
+      "intent": "progressive",
+      "text": "repeat taxi instructions",
+      "phase": 2,
+      "onGround": true,
+      "expected": {
+        "accepted": true,
+        "message": ""
+      }
+    }
+  ],
+  "roster": [
+    {
+      "name": "sticky",
+      "pool": [
+        "a"
+      ],
+      "fallback": "z",
+      "recent": [],
+      "expected": {
+        "voice": "a",
+        "delivery": "brisk",
+        "speedMin": 0.9,
+        "speedMax": 1.15
+      },
+      "key": "sticky"
+    },
+    {
+      "name": "recall",
+      "pool": [
+        "a"
+      ],
+      "fallback": "z",
+      "recent": [],
+      "recall": true,
+      "expected": {
+        "voice": "a"
+      },
+      "key": "sticky"
+    },
+    {
+      "name": "exclusion",
+      "pool": [
+        "a",
+        "b",
+        "c"
+      ],
+      "fallback": "z",
+      "recent": [
+        "a",
+        "b"
+      ],
+      "expected": {
+        "voice": "c"
+      },
+      "key": "exclusion"
+    },
+    {
+      "name": "fallback",
+      "pool": [],
+      "fallback": "z",
+      "recent": [],
+      "expected": {
+        "voice": "z"
+      },
+      "key": "fallback"
+    }
+  ]
+}

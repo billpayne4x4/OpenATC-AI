@@ -1,0 +1,443 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[enroute.climb]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise"]
+variant = "common"
+situation = ["climb_request"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, climb to {alt}.",
+  "{callsign}, climb and maintain {alt}.",
+  "{callsign}, climb to altitude {alt}.",
+]
+
+[enroute.descent]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["descent_request"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, descend to {alt}.",
+  "{callsign}, descend and maintain {alt}.",
+  "{callsign}, descend to altitude {alt}.",
+]
+
+[enroute.direct]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["direct_request"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, cleared direct {wpt}, rest of route unchanged.",
+  "{callsign}, proceed direct {wpt}; remaining route unchanged.",
+  "{callsign}, direct {wpt} approved. Rest of clearance unchanged.",
+]
+
+[enroute.speed]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["speed_control"]
+slots = ["callsign", "speed"]
+say = [
+  "{callsign}, maintain {speed}.",
+  "{callsign}, assigned speed {speed}, maintain.",
+  "{callsign}, maintain speed {speed}.",
+]
+
+[enroute.vectors]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["vectoring"]
+slots = ["callsign", "heading", "turn"]
+say = [
+  "{callsign}, turn {turn} heading {heading}.",
+  "{callsign}, {turn} turn, heading {heading}.",
+  "{callsign}, heading {heading}, turn {turn}.",
+]
+
+[enroute.handoff]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["transfer"]
+slots = ["callsign", "freq", "station"]
+say = [
+  "{callsign}, contact {station} on {freq}.",
+  "{callsign}, contact {station}, frequency {freq}.",
+  "{callsign}, change to {station} on {freq}.",
+]
+
+[enroute.ident]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["identification"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, identified overhead {wpt}. Maintain {alt}.",
+  "{callsign}, radar contact at {wpt}, maintain {alt}.",
+  "{callsign}, identified at {wpt}. Continue maintaining {alt}.",
+]
+
+[enroute.ride]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["turbulence_reports"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report ride conditions.",
+  "{callsign}, say turbulence conditions at your level.",
+  "{callsign}, how is the ride at your present level?",
+]
+
+[enroute.level_change_restriction]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise"]
+variant = "common"
+situation = ["crossing_restriction"]
+slots = ["alt", "callsign", "wpt"]
+say = [
+  "{callsign}, cross {wpt} at or above {alt}.",
+  "{callsign}, at {wpt}, be at or above {alt}.",
+  "{callsign}, crossing restriction {wpt}, at or above {alt}.",
+]
+
+[enroute.resume_own_navigation]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["vectors_done"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, resume own navigation direct {wpt}.",
+  "{callsign}, vectors complete, proceed direct {wpt}.",
+  "{callsign}, proceed direct {wpt} and resume own navigation.",
+]
+
+[enroute.traffic_no_longer_factor]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["traffic_resolved"]
+slots = ["callsign"]
+say = [
+  "{callsign}, traffic no longer a factor.",
+  "{callsign}, previously reported traffic is no factor.",
+  "{callsign}, the traffic is no longer a factor.",
+]
+
+[enroute.adsb_ident]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["ident_requested"]
+slots = ["callsign"]
+say = [
+  "{callsign}, squawk ident.",
+  "{callsign}, operate ident.",
+  "{callsign}, ident, please.",
+]
+
+[enroute.maintain_level]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["maintain_level"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, maintain {alt}.",
+  "{callsign}, remain at {alt}.",
+  "{callsign}, assigned level remains {alt}.",
+]
+
+[enroute.stop_descent]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["stop_descent"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, stop descent at {alt}.",
+  "{callsign}, descend only to {alt}, maintain.",
+  "{callsign}, level off at {alt}, stop descent there.",
+]
+
+[enroute.expedite_climb]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["expedite_climb"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, expedite climb to {alt}.",
+  "{callsign}, expedite your climb, cleared altitude {alt}.",
+  "{callsign}, climb to {alt}, expedite.",
+]
+
+[enroute.expedite_descent]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["expedite_descent"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, expedite descent to {alt}.",
+  "{callsign}, descend to {alt}, expedite.",
+  "{callsign}, expedite your descent, assigned altitude {alt}.",
+]
+
+[enroute.rate_climb]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["rate_climb"]
+slots = ["alt", "callsign", "rate"]
+say = [
+  "{callsign}, climb at {rate} or greater until {alt}.",
+  "{callsign}, until {alt}, maintain climb rate at least {rate}.",
+  "{callsign}, minimum climb rate {rate} to {alt}.",
+]
+
+[enroute.rate_descent]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["rate_descent"]
+slots = ["alt", "callsign", "rate"]
+say = [
+  "{callsign}, descend at {rate} or less until {alt}.",
+  "{callsign}, maximum descent rate {rate} until {alt}.",
+  "{callsign}, until {alt}, do not exceed descent rate {rate}.",
+]
+
+[enroute.heading_maintain]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["heading_maintain"]
+slots = ["callsign", "heading"]
+say = [
+  "{callsign}, maintain heading {heading}.",
+  "{callsign}, continue heading {heading}.",
+  "{callsign}, remain on heading {heading}.",
+]
+
+[enroute.heading_cancelled]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["heading_cancelled"]
+slots = ["callsign", "via"]
+say = [
+  "{callsign}, resume own navigation via {via}.",
+  "{callsign}, vectors complete, resume navigation via {via}.",
+  "{callsign}, own navigation resumed, follow route {via}.",
+]
+
+[enroute.speed_increase]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["speed_increase"]
+slots = ["callsign", "speed"]
+say = [
+  "{callsign}, increase speed to {speed}.",
+  "{callsign}, accelerate to {speed}.",
+  "{callsign}, assigned increased speed {speed}.",
+]
+
+[enroute.speed_reduce]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["speed_reduce"]
+slots = ["callsign", "speed"]
+say = [
+  "{callsign}, reduce speed to {speed}.",
+  "{callsign}, slow to {speed}.",
+  "{callsign}, assigned reduced speed {speed}.",
+]
+
+[enroute.speed_no_restriction]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["speed_no_restriction"]
+slots = ["callsign"]
+say = [
+  "{callsign}, cancel ATC speed restriction.",
+  "{callsign}, ATC speed restriction cancelled.",
+  "{callsign}, previous ATC speed assignment no longer applies.",
+]
+
+[enroute.mach_assign]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["mach_assign"]
+slots = ["callsign", "mach"]
+say = [
+  "{callsign}, maintain Mach {mach}.",
+  "{callsign}, assigned Mach {mach}.",
+  "{callsign}, maintain assigned Mach number {mach}.",
+]
+
+[enroute.weather_deviation_approved]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["weather_deviation_approved"]
+slots = ["callsign", "direction"]
+say = [
+  "{callsign}, deviation {direction} of track approved. Report back on route.",
+  "{callsign}, approved to deviate {direction} of track; report rejoining.",
+  "{callsign}, {direction} deviation approved. Advise when back on route.",
+]
+
+[enroute.weather_deviation_unable]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["weather_deviation_unable"]
+slots = ["callsign"]
+say = [
+  "{callsign}, unable requested deviation due traffic. Say intentions.",
+  "{callsign}, traffic prevents that deviation. Advise intentions.",
+  "{callsign}, requested weather deviation not approved, conflicting traffic. State intentions.",
+]
+
+[enroute.block_altitude]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["block_altitude"]
+slots = ["block", "callsign"]
+say = [
+  "{callsign}, maintain block altitude {block}.",
+  "{callsign}, cleared to operate in altitude block {block}.",
+  "{callsign}, assigned altitude block {block}.",
+]
+
+[enroute.report_estimate]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["report_estimate"]
+slots = ["callsign", "wpt"]
+say = [
+  "{callsign}, say estimate for {wpt}.",
+  "{callsign}, report estimated time at {wpt}.",
+  "{callsign}, advise your estimate to {wpt}.",
+]
+
+[enroute.position_report]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["position_report"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report position, level and next estimate.",
+  "{callsign}, say present position, level and estimate for your next point.",
+  "{callsign}, position report required: position, level, next estimate.",
+]
+
+[enroute.rvsm_capability]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["rvsm_capability"]
+slots = ["callsign"]
+say = [
+  "{callsign}, confirm RVSM approval.",
+  "{callsign}, advise RVSM capability.",
+  "{callsign}, say whether RVSM approved.",
+]
+
+[enroute.rvsm_unable_ack]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["rvsm_unable_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, unable RVSM received. Stand by for revised clearance.",
+  "{callsign}, roger, unable RVSM. Revised clearance to follow.",
+  "{callsign}, RVSM unable report acknowledged. Stand by.",
+]
+
+[enroute.cpdlc_voice]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["cpdlc_voice"]
+slots = ["callsign"]
+say = [
+  "{callsign}, use voice for this clearance.",
+  "{callsign}, clearance will be issued on voice.",
+  "{callsign}, use this voice frequency for the clearance.",
+]
+
+[enroute.cpdlc_logon]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["cpdlc_logon"]
+slots = ["callsign", "station"]
+say = [
+  "{callsign}, log on to {station} for CPDLC.",
+  "{callsign}, CPDLC logon to {station}.",
+  "{callsign}, initiate CPDLC logon with {station}.",
+]
+
+[enroute.frequency_failed]
+service = ["Approach", "Departure"]
+role = "atc"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["frequency_failed"]
+slots = ["callsign"]
+say = [
+  "{callsign}, return to this frequency if unable to establish contact.",
+  "{callsign}, if no contact on the assigned frequency, return here.",
+  "{callsign}, unable to contact the next station, return to my frequency.",
+]

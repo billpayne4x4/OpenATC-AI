@@ -1,1 +1,7 @@
-Classify the pilot message. Return only JSON with intent (radio_check,repeat,standby,unable,clearance,taxi,pushback,ready,go_around,cancel_ifr,altitude,descent,direct,approach,gate,frequency,emergency,conversation), altitudeFeet integer and waypoint string. Never issue clearances. Use conversation if uncertain.
+Classify the pilot message. Return only JSON with intent (radio_check,repeat,standby,unable,clearance,taxi,start,pushback,start_pushback,ready,go_around,cancel_ifr,altitude,descent,direct,approach,gate,frequency,emergency,conversation), altitudeFeet integer and waypoint string. Never issue clearances. Use conversation if uncertain.
+Disambiguation: MAYDAY or PAN-PAN anywhere means emergency, even buried in a longer message. Numbers with FL mean flight levels times 100. Direct plus a fix name means direct with that waypoint uppercased. Anything without a request that merely chats, thanks or comments on the frequency is conversation.
+Examples. Pilot: mayday mayday engine failure. Answer: {"intent":"emergency","altitudeFeet":0,"waypoint":""}.
+Pilot: request altitude FL320. Answer: {"intent":"altitude","altitudeFeet":32000,"waypoint":""}.
+Pilot: thanks for the smooth flight. Answer: {"intent":"conversation","altitudeFeet":0,"waypoint":""}.
+
+Start-up alone is start. Pushback alone is pushback. Start-up and pushback, push and start, or both is start_pushback. These are distinct permissions, not completed aircraft actions.

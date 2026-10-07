@@ -1,0 +1,79 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[us_services.flight_following]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "faa"
+situation = ["flight_following"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, radar contact, maintain VFR. Altimeter {qnh}.",
+  "{callsign}, identified, maintain VFR, altimeter {qnh}.",
+  "{callsign}, radar identified. Remain VFR, altimeter {qnh}.",
+]
+
+[us_services.service_end]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "faa"
+situation = ["service_end"]
+slots = ["callsign"]
+say = [
+  "{callsign}, radar service terminated. Squawk VFR, frequency change approved.",
+  "{callsign}, squawk VFR. Radar service terminated, frequency change approved.",
+  "{callsign}, radar service terminated, frequency change approved, squawk VFR.",
+]
+
+[us_services.class_b]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "faa"
+situation = ["class_b"]
+slots = ["alt", "callsign", "via"]
+say = [
+  "{callsign}, cleared into Class Bravo airspace via {via}, maintain {alt}.",
+  "{callsign}, cleared into the Bravo via {via}, altitude {alt}.",
+  "{callsign}, Class Bravo entry cleared via {via}, maintain {alt}.",
+]
+
+[us_services.pattern_left]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "faa"
+situation = ["pattern_left"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, make left traffic runway {rwy}.",
+  "{callsign}, left traffic for runway {rwy}.",
+  "{callsign}, runway {rwy}, make left traffic.",
+]
+
+[us_services.pattern_right]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "faa"
+situation = ["pattern_right"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, make right traffic runway {rwy}.",
+  "{callsign}, right traffic for runway {rwy}.",
+  "{callsign}, runway {rwy}, make right traffic.",
+]
+
+[us_services.option]
+service = ["Tower", "Approach"]
+role = "atc"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "faa"
+situation = ["option"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, cleared for the option.",
+  "{callsign}, cleared for the option, runway {rwy}.",
+  "{callsign}, runway {rwy}, option cleared.",
+]

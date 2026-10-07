@@ -1,0 +1,448 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[ground.pushback_approved]
+service = ["Ground"]
+role = "atc"
+phase = ["parked"]
+variant = "common"
+situation = ["pushback_request"]
+slots = ["callsign", "direction"]
+say = [
+  "{callsign}, pushback approved, facing {direction}.",
+  "{callsign}, approved to push back, face {direction}.",
+  "{callsign}, pushback is approved with the aircraft facing {direction}.",
+]
+
+[ground.pushback_conditional]
+service = ["Ground"]
+role = "atc"
+phase = ["parked"]
+variant = "common"
+situation = ["pushback_conflict"]
+slots = ["callsign"]
+say = [
+  "{callsign}, hold position. Pushback not approved; conflicting movement behind you.",
+  "{callsign}, remain on stand. Pushback delayed for traffic behind.",
+  "{callsign}, hold position for conflicting traffic. Stand by for pushback approval.",
+]
+
+[ground.startup_only]
+service = ["Ground"]
+role = "atc"
+phase = ["parked", "clearance", "pushback"]
+variant = "common"
+situation = ["startup_request"]
+slots = ["callsign"]
+say = [
+  "{callsign}, start-up approved. Report ready for pushback.",
+  "{callsign}, approved for start-up. Call when ready to push.",
+  "{callsign}, start-up is approved; advise ready for pushback.",
+]
+
+[ground.taxi_out]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "icao"
+situation = ["taxi_request"]
+slots = ["callsign", "qnh", "rwy", "via"]
+say = [
+  "{callsign}, taxi to holding point runway {rwy} via {via}. QNH {qnh}.",
+  "{callsign}, runway {rwy}, taxi to the holding point via {via}, QNH {qnh}.",
+  "{callsign}, via {via}, taxi to holding point runway {rwy}. QNH {qnh}.",
+]
+
+[ground.taxi_hold_short]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["runway_crossing_ahead"]
+slots = ["callsign", "rwy", "via"]
+say = [
+  "{callsign}, taxi via {via}, hold short of runway {rwy}.",
+  "{callsign}, via {via}, taxi and hold short of runway {rwy}.",
+  "{callsign}, taxi route {via}. Hold short of runway {rwy}.",
+]
+
+[ground.cross_runway]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["crossing_cleared"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, cross runway {rwy}, report vacated.",
+  "{callsign}, runway {rwy}, crossing approved. Report when vacated.",
+  "{callsign}, cleared to cross runway {rwy}. Report clear of the runway.",
+]
+
+[ground.progressive]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["unfamiliar_crew", "complex_layout"]
+slots = ["callsign", "rwy", "turn", "via"]
+say = [
+  "{callsign}, turn {turn} onto {via}. Continue to holding point runway {rwy}.",
+  "{callsign}, {turn} turn onto {via}, then taxi to holding point runway {rwy}.",
+  "{callsign}, next turn {turn}, taxiway {via}. Continue to the holding point for runway {rwy}.",
+]
+
+[ground.apron_taxi]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["apron_movement"]
+slots = ["callsign", "holding_point"]
+say = [
+  "{callsign}, apron movement at your discretion. Hold at {holding_point} before entering the controlled taxiway.",
+  "{callsign}, move on the apron at your discretion, hold at {holding_point} for further taxi clearance.",
+  "{callsign}, apron is uncontrolled. Hold at {holding_point} before joining the controlled movement area.",
+]
+
+[ground.give_way]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["conflict"]
+slots = ["callsign", "traffic"]
+say = [
+  "{callsign}, give way to {traffic}, then continue as cleared.",
+  "{callsign}, allow {traffic} to pass before continuing your cleared taxi.",
+  "{callsign}, give way to the identified traffic, {traffic}. Continue as cleared after it passes.",
+]
+
+[ground.taxi_in]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi_in"]
+variant = "common"
+situation = ["arrival_taxi"]
+slots = ["callsign", "stand", "via"]
+say = [
+  "{callsign}, taxi to stand {stand} via {via}.",
+  "{callsign}, stand {stand}, taxi via {via}.",
+  "{callsign}, taxi via {via} to stand {stand}.",
+]
+
+[ground.hold_position]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi", "parked"]
+variant = "common"
+situation = ["stop"]
+slots = ["callsign"]
+say = [
+  "{callsign}, hold position.",
+  "{callsign}, hold your present position.",
+  "{callsign}, remain in position.",
+]
+
+[ground.qnh_passing]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "icao"
+situation = ["pressure_update"]
+slots = ["callsign", "qnh"]
+say = [
+  "{callsign}, QNH {qnh} now current.",
+  "{callsign}, updated QNH {qnh}.",
+  "{callsign}, current pressure setting, QNH {qnh}.",
+]
+
+[ground.runway_incursion_recovery]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["incursion", "recovery"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, stop immediately. Approaching runway {rwy} without clearance. Hold position.",
+  "{callsign}, stop immediately, hold position. You are approaching runway {rwy} without clearance.",
+  "{callsign}, stop now. No clearance to enter runway {rwy}. Hold position.",
+]
+
+[ground.taxi_with_follow_me]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["follow_me", "low_visibility"]
+slots = ["callsign", "stand"]
+say = [
+  "{callsign}, follow the follow-me vehicle to stand {stand}.",
+  "{callsign}, follow-me guidance to stand {stand} is approved. Follow the vehicle.",
+  "{callsign}, proceed to stand {stand} following the follow-me vehicle.",
+]
+
+[ground.taxi_into_position]
+service = ["Ground"]
+role = "atc"
+phase = ["taxi"]
+variant = "common"
+situation = ["lineup_via_ground"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, taxi to holding point runway {rwy}. Hold short and contact tower.",
+  "{callsign}, holding point runway {rwy}, taxi and hold short. Contact tower for further clearance.",
+  "{callsign}, taxi to the holding point for runway {rwy}, hold short. Tower will issue further instructions.",
+]
+
+[ground.pushback_cancelled]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["pushback_cancelled"]
+slots = ["callsign"]
+say = [
+  "{callsign}, cancel pushback approval. Hold position.",
+  "{callsign}, pushback approval cancelled; hold position.",
+  "{callsign}, hold position. Previous pushback approval is cancelled.",
+]
+
+[ground.pushback_complete_report]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["pushback_complete_report"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report pushback complete.",
+  "{callsign}, advise when pushback is complete.",
+  "{callsign}, call on completion of pushback.",
+]
+
+[ground.ready_taxi_report]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["ready_taxi_report"]
+slots = ["callsign"]
+say = [
+  "{callsign}, report ready to taxi.",
+  "{callsign}, advise when ready for taxi.",
+  "{callsign}, call when ready to taxi.",
+]
+
+[ground.taxi_reroute]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["taxi_reroute"]
+slots = ["callsign", "rwy", "via"]
+say = [
+  "{callsign}, revised taxi route via {via}, hold short of runway {rwy}.",
+  "{callsign}, amend taxi route to {via}. Hold short of runway {rwy}.",
+  "{callsign}, taxi route changed: via {via}, hold short runway {rwy}.",
+]
+
+[ground.taxiway_hold]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["taxiway_hold"]
+slots = ["callsign", "holding_point", "via"]
+say = [
+  "{callsign}, taxi via {via}, hold short of taxiway {holding_point}.",
+  "{callsign}, via {via}, hold short taxiway {holding_point}.",
+  "{callsign}, continue via {via} and hold before taxiway {holding_point}.",
+]
+
+[ground.cross_at_taxiway]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["cross_at_taxiway"]
+slots = ["callsign", "rwy", "via"]
+say = [
+  "{callsign}, cross runway {rwy} at {via}. Report vacated.",
+  "{callsign}, at {via}, cross runway {rwy}, report vacated.",
+  "{callsign}, runway {rwy} crossing approved at {via}. Report vacated.",
+]
+
+[ground.runway_crossing_unapproved]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["runway_crossing_unapproved"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, hold short of runway {rwy}. No crossing clearance issued.",
+  "{callsign}, runway {rwy}, hold short. Crossing is not approved.",
+  "{callsign}, no clearance to cross runway {rwy}. Hold short.",
+]
+
+[ground.position_uncertain]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["position_uncertain"]
+slots = ["callsign"]
+say = [
+  "{callsign}, hold position. Say your position.",
+  "{callsign}, stop taxi and report position.",
+  "{callsign}, hold where you are and confirm your location.",
+]
+
+[ground.progressive_available]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["progressive_available"]
+slots = ["callsign"]
+say = [
+  "{callsign}, progressive taxi available. Say your position.",
+  "{callsign}, I can provide progressive taxi. Confirm location.",
+  "{callsign}, for progressive taxi, report your present position.",
+]
+
+[ground.taxiway_closed]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["taxiway_closed"]
+slots = ["callsign", "via"]
+say = [
+  "{callsign}, taxiway {via} closed. Hold position for revised instructions.",
+  "{callsign}, hold position; {via} is closed. Revised taxi instructions to follow.",
+  "{callsign}, {via} unavailable. Hold position and stand by for a new route.",
+]
+
+[ground.stand_unavailable]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["stand_unavailable"]
+slots = ["callsign", "holding_point", "stand"]
+say = [
+  "{callsign}, stand {stand} unavailable. Hold at {holding_point}.",
+  "{callsign}, hold at {holding_point}; stand {stand} is not available.",
+  "{callsign}, your stand {stand} is unavailable. Hold at {holding_point}.",
+]
+
+[ground.stand_changed]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["stand_changed"]
+slots = ["callsign", "stand", "via"]
+say = [
+  "{callsign}, revised stand {stand}. Taxi via {via}.",
+  "{callsign}, stand changed to {stand}, taxi via {via}.",
+  "{callsign}, taxi via {via} to your revised stand {stand}.",
+]
+
+[ground.follow_traffic_hold]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["follow_traffic_hold"]
+slots = ["callsign", "rwy", "traffic", "via"]
+say = [
+  "{callsign}, follow {traffic} via {via}, hold short of runway {rwy}.",
+  "{callsign}, via {via}, follow {traffic}. Hold short runway {rwy}.",
+  "{callsign}, follow the identified {traffic} via {via} and hold short runway {rwy}.",
+]
+
+[ground.intersection_offer]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["intersection_offer"]
+slots = ["callsign", "landing_distance", "rwy", "via"]
+say = [
+  "{callsign}, can you accept runway {rwy} at {via}, available distance {landing_distance}?",
+  "{callsign}, runway {rwy} intersection {via}, distance available {landing_distance}. Advise able.",
+  "{callsign}, advise if able intersection {via} for runway {rwy}, available distance {landing_distance}.",
+]
+
+[ground.full_length_request_received]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["full_length_request_received"]
+slots = ["callsign"]
+say = [
+  "{callsign}, full-length departure request received. Stand by for taxi instructions.",
+  "{callsign}, roger, full length requested. Taxi instructions to follow.",
+  "{callsign}, full-length request noted. Stand by.",
+]
+
+[ground.vehicle_caution]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["vehicle_caution"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, caution vehicle at {location}.",
+  "{callsign}, vehicle reported {location}. Use caution.",
+  "{callsign}, caution, vehicle movement near {location}.",
+]
+
+[ground.slippery_taxiway]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["slippery_taxiway"]
+slots = ["callsign", "location"]
+say = [
+  "{callsign}, slippery taxiway reported at {location}.",
+  "{callsign}, caution, reduced traction reported {location}.",
+  "{callsign}, taxiway surface reported slippery at {location}.",
+]
+
+[ground.stop_bar_lit]
+service = ["Ground"]
+role = "atc"
+phase = ["pushback", "taxi", "taxi_in"]
+variant = "common"
+situation = ["stop_bar_lit"]
+slots = ["callsign", "holding_point"]
+say = [
+  "{callsign}, hold position. Stop bar illuminated at {holding_point}.",
+  "{callsign}, illuminated stop bar at {holding_point}. Hold position.",
+  "{callsign}, hold before the illuminated stop bar at {holding_point}.",
+]
+
+[ground.pushback_basic]
+role = "atc"
+service = ["Ground"]
+phase = ["clearance", "pushback"]
+variant = "common"
+situation = ["pushback_approved_no_direction"]
+slots = ["callsign"]
+say = ["{callsign}, pushback approved. Report ready to taxi.", "{callsign}, approved for pushback. Report ready to taxi."]
+
+[ground.start_and_pushback]
+role = "atc"
+service = ["Ground"]
+phase = ["clearance", "pushback"]
+variant = "common"
+situation = ["start_and_pushback_approved"]
+slots = ["callsign"]
+say = ["{callsign}, start-up and pushback approved. Report ready to taxi.", "{callsign}, approved for start-up and pushback. Report ready to taxi."]

@@ -1,0 +1,1276 @@
+# Operational speech. Every phrase must keep all declared placeholders.
+
+[then]
+slots = ["sid", "route"]
+say = [
+  "{sid} then {route}",
+]
+
+[cleared_to_via_initial_altitude_squawk_departure]
+slots = ["prefix", "destination", "via", "altitude", "runway", "squawk"]
+say = [
+  "{prefix}Cleared to {destination} via {via}, initial altitude {altitude}, squawk {squawk}. Departure runway {runway}.",
+  "{prefix}Cleared to {destination}, via {via}. Initial altitude {altitude}, squawk {squawk}. Departure runway {runway}.",
+  "{prefix}Cleared to {destination} via {via}. Departure runway {runway}, initial altitude {altitude}, squawk {squawk}.",
+  "{prefix}Your clearance is to {destination} via {via}, initial altitude {altitude}. Squawk {squawk}; departure runway {runway}.",
+]
+
+[climb_to]
+slots = ["altitude"]
+say = [
+  "climb to {altitude}",
+]
+
+[climb_via_to]
+slots = ["sid", "altitude"]
+say = [
+  "climb via {sid} to {altitude}",
+]
+
+[cleared_to_via_squawk_departure_runway]
+slots = ["prefix", "destination", "via", "climb", "runway", "squawk"]
+say = [
+  "{prefix}Cleared to {destination} via {via}, {climb}, squawk {squawk}. Departure runway {runway}.",
+  "{prefix}Cleared to {destination} via {via}. {climb}. Squawk {squawk}; departure runway {runway}.",
+  "{prefix}Cleared to {destination}, route {via}, {climb}. Departure runway {runway}, squawk {squawk}.",
+  "{prefix}Your clearance is to {destination} via {via}. {climb}, squawk {squawk}. Departure runway {runway}.",
+]
+
+[read_back_the_taxi_route_and_hold]
+slots = ["prefix", "instructions"]
+say = [
+  "{prefix}{instructions} Read back the taxi clearance.",
+  "{prefix}{instructions} Read back the taxi instruction.",
+  "{prefix}{instructions} Confirm your taxi clearance by readback.",
+  "{prefix}{instructions} Read back your taxi clearance.",
+  "{prefix}{instructions} Read back the taxi instructions.",
+  "{prefix}{instructions} Confirm the taxi instruction by readback.",
+]
+
+[runway_cleared_for_takeoff_openatc_ai_does]
+slots = ["prefix", "runway"]
+say = [
+  "{prefix}Runway {runway}, cleared for takeoff.",
+]
+
+[approved_advise_ready_to_taxi]
+slots = ["prefix", "permission"]
+say = [
+  "{prefix}{permission} approved. Advise ready to taxi.",
+  "{prefix}{permission} approved. Report ready to taxi.",
+  "{prefix}{permission} is approved. Call when ready to taxi.",
+  "{prefix}{permission} approved; advise when ready for taxi.",
+  "{prefix}Approved for {permission}. Report ready to taxi.",
+]
+
+[enter_an_altitude_from_to]
+slots = ["minimum_altitude", "maximum_altitude"]
+say = [
+  "Enter an altitude from {minimum_altitude} to {maximum_altitude}",
+]
+
+[maintain_route]
+slots = ["prefix", "altitude", "route"]
+say = [
+  "{prefix}Maintain {altitude}, route {route}.",
+  "{prefix}Maintain {altitude}; route {route}.",
+  "{prefix}Route {route}. Maintain {altitude}.",
+  "{prefix}Maintain {altitude} on route {route}.",
+]
+
+[load_before_requesting_its_frequency]
+slots = ["expected_airport"]
+say = [
+  "Load {expected_airport} before requesting its frequency.",
+]
+
+[contact_on_mhz]
+slots = ["station", "frequency"]
+say = [
+  "Contact {station} on {frequency} MHz.",
+  "Contact {station}, frequency {frequency} MHz.",
+  "Call {station} on {frequency} MHz.",
+  "Contact {station}. Frequency {frequency} MHz.",
+  "Change to {station} on {frequency} MHz.",
+]
+
+[no_frequency_is_present_in_the_loaded]
+slots = ["service"]
+say = [
+  "No {service} frequency is present in the loaded airport data.",
+  "The loaded airport data has no {service} frequency.",
+  "No published {service} frequency in this airport data.",
+  "A {service} frequency is not available in the loaded airport data.",
+]
+
+[ifr_cancelled]
+slots = ["prefix"]
+say = [
+  "{prefix}IFR cancelled.",
+  "{prefix}IFR cancellation recorded.",
+  "{prefix}IFR is cancelled.",
+  "{prefix}Your IFR flight is cancelled.",
+]
+
+[go_around_recorded_follow_your_published_missed]
+slots = ["prefix"]
+say = [
+  "{prefix}Go-around recorded. Follow your published missed approach.",
+  "{prefix}Go-around acknowledged. Follow the published missed approach.",
+  "{prefix}Roger go-around. Follow your published missed approach.",
+  "{prefix}Go-around recorded; fly the published missed approach.",
+]
+
+[approach_briefing_runway_no_vectors_or_procedure]
+slots = ["star", "approach", "arrival_runway"]
+say = [
+  "Approach briefing: {star} {approach}, runway {arrival_runway}. No vectors or procedure clearance issued.",
+]
+
+[position]
+slots = ["latitude", "longitude"]
+say = [
+  "Position {latitude}, {longitude}.",
+]
+
+[contact]
+slots = ["name"]
+say = [
+  "Contact {name}",
+]
+
+[on_mhz]
+slots = ["contact", "megahertz"]
+say = [
+  "{contact} on {megahertz} MHz.",
+  "{contact}, frequency {megahertz} MHz.",
+  "{contact}. Frequency {megahertz} MHz.",
+]
+
+[that_request_is_not_available_during]
+slots = ["phase"]
+say = [
+  "That request is not available during {phase}.",
+]
+
+[reading_you_five_development_controller_online]
+slots = []
+say = [
+  "Reading you five. Development controller online.",
+  "Reading you five. OpenATC development controller online.",
+  "Radio check, reading you five. Development controller online.",
+  "Reading you loud and clear. Development controller online.",
+  "Your transmission is clear. OpenATC development controller online.",
+]
+
+[no_previous_controller_transmission]
+slots = []
+say = [
+  "No previous controller transmission.",
+  "No earlier controller transmission is recorded.",
+  "There is no previous transmission to repeat.",
+  "Nothing recorded to repeat.",
+  "Unable to repeat; no prior controller message.",
+]
+
+[standing_by]
+slots = []
+say = [
+  "Standing by.",
+  "Roger, standing by.",
+  "Standing by for your next call.",
+  "Roger. Call when ready.",
+  "Roger, awaiting your call.",
+]
+
+[roger_unable_existing_clearance_remains_recorded_request]
+slots = []
+say = [
+  "Roger unable. Existing clearance remains recorded; request an alternative.",
+  "Roger, unable. Request an alternative; your existing clearance remains recorded.",
+  "Unable copied. Your current clearance remains recorded. State the alternative requested.",
+  "Roger unable. State your requested alternative. The existing clearance is still recorded.",
+  "Unable acknowledged. Request an amended clearance; the existing clearance remains recorded.",
+]
+
+[say_again_your_taxi_readback_including_the]
+slots = []
+say = [
+  "Say again your taxi readback, including the taxi instruction and runway hold-short restriction.",
+  "Say again the taxi instruction and runway hold-short restriction in your taxi readback.",
+  "Unable to confirm the taxi readback. Read back the taxi instruction and runway hold-short restriction.",
+  "Say again your taxi route and the runway hold-short instruction.",
+  "Taxi readback not confirmed. Repeat the taxi instruction and runway hold-short restriction.",
+]
+
+[taxi_readback_correct_follow_the_approved_route]
+slots = []
+say = [
+  "Readback correct.",
+  "Correct readback.",
+  "Readback correct, hold short as instructed.",
+  "Correct. Hold short as cleared.",
+  "Taxi readback correct.",
+  "Readback correct. Continue taxi as cleared.",
+]
+
+[no_pending_clearance_to_acknowledge]
+slots = []
+say = [
+  "No pending clearance to acknowledge.",
+  "There is no pending clearance awaiting readback.",
+  "No unacknowledged clearance is recorded.",
+  "There is no clearance readback pending.",
+  "No outstanding clearance to acknowledge.",
+]
+
+[readback_correct_for_recorded_altitude_and_route]
+slots = []
+say = [
+  "Readback correct.",
+  "Correct readback.",
+  "Your readback is correct.",
+  "Readback is correct.",
+  "Readback correct, stand by.",
+  "Correct readback, stand by.",
+]
+
+[say_again_your_clearance_readback_check_the]
+slots = []
+say = [
+  "Say again your clearance readback. Check the assigned altitude and route; the clearance remains unacknowledged.",
+  "Say again the assigned altitude and route. Your clearance remains unacknowledged.",
+  "Unable to confirm that clearance readback. Check altitude and route, then say again. The clearance remains unacknowledged.",
+  "Say again your clearance readback with the assigned altitude and route. It remains unacknowledged.",
+  "Altitude or route readback is not confirmed. Say again; the clearance remains unacknowledged.",
+  "Check the assigned altitude and route and read back again. Your clearance is still unacknowledged.",
+]
+
+[clearance_is_available_only_while_parked]
+slots = []
+say = [
+  "Clearance is available only while parked.",
+  "Request departure clearance while parked.",
+  "Departure clearance is available only while parked.",
+  "The aircraft must be parked to request departure clearance.",
+]
+
+[load_this_airport_s_taxi_network_before]
+slots = []
+say = [
+  "Load this airport's taxi network before requesting taxi.",
+  "Taxi unavailable until this airport's taxi network is loaded.",
+  "Load the airport taxi network before requesting a route.",
+  "This airport's taxi network must be loaded before taxi can be issued.",
+]
+
+[the_loaded_surface_airport_does_not_match]
+slots = []
+say = [
+  "The loaded surface airport does not match this flight.",
+]
+
+[a_taxi_clearance_is_required_before_departure]
+slots = []
+say = [
+  "A taxi clearance is required before departure.",
+  "Request and acknowledge a taxi clearance before departure.",
+  "Departure requires an acknowledged taxi clearance.",
+  "An approved taxi clearance is needed before reporting ready for departure.",
+]
+
+[continue_to_the_end_of_the_approved]
+slots = []
+say = [
+  "Continue to the end of the approved taxi route before reporting ready.",
+  "Continue along the approved taxi route to its end before reporting ready.",
+  "Report ready once at the end of the approved taxi route.",
+  "You have not reached the end of the approved taxi route. Continue before reporting ready.",
+]
+
+[start_up_approved_report_ready_for_pushback]
+slots = []
+say = [
+  "Start-up approved. Report ready for pushback or taxi.",
+  "Start-up is approved. Advise ready for pushback or taxi.",
+  "Start-up approved; call when ready for pushback or taxi.",
+  "Approved to start. Report ready for pushback or taxi.",
+  "Engine start approved. Advise ready for pushback or taxi.",
+]
+
+[pushback_unavailable_airborne]
+slots = []
+say = [
+  "Pushback unavailable airborne.",
+  "Pushback is unavailable while airborne.",
+  "The aircraft must be on the ground for pushback.",
+  "Unable pushback; aircraft is airborne.",
+]
+
+[an_airborne_flight_with_an_existing_clearance]
+slots = []
+say = [
+  "An airborne flight with an existing clearance is required.",
+  "An existing clearance and an airborne aircraft are required.",
+  "This request needs an airborne flight with a recorded clearance.",
+  "Unable; this service requires an airborne flight and existing clearance.",
+]
+
+[enter_a_waypoint_identifier]
+slots = []
+say = [
+  "Enter a waypoint identifier.",
+  "Provide a waypoint identifier.",
+  "Enter the waypoint identifier for the direct request.",
+  "Specify the waypoint identifier.",
+]
+
+[that_fix_is_not_in_the_imported]
+slots = []
+say = [
+  "That fix is not in the imported route. Import a georeferenced plan before requesting direct-to.",
+]
+
+[descent_altitude_must_be_below_your_current]
+slots = []
+say = [
+  "Descent altitude must be below your current altitude.",
+  "Request a descent altitude below your current altitude.",
+  "Your descent target must be lower than the current altitude.",
+  "Unable descent to that altitude; select a lower altitude.",
+]
+
+[load_the_airport_frequencies_first]
+slots = []
+say = [
+  "Load the airport frequencies first.",
+  "Load the airport frequency data before requesting a frequency.",
+  "Airport frequency data is required first.",
+  "Load the airport communications data first.",
+]
+
+[enroute_sector_frequencies_are_not_loaded_no]
+slots = []
+say = [
+  "Enroute sector frequencies are not loaded. No frequency assigned.",
+  "No enroute sector frequency assigned; sector data is not loaded.",
+  "Unable to assign a sector frequency. Enroute frequency data is not loaded.",
+  "Enroute sector data is unavailable; no frequency has been assigned.",
+]
+
+[aircraft_position_unavailable]
+slots = []
+say = [
+  "Aircraft position unavailable.",
+  "Aircraft position is not available.",
+  "Unable to report position; aircraft coordinates are unavailable.",
+  "No valid aircraft position is available.",
+]
+
+[emergency_practice_is_off_enable_practice_emergencies]
+slots = []
+say = [
+  "Emergency practice is off. Enable practice emergencies in Realism settings.",
+]
+
+[roger_mayday_squawk_state_intentions_and_souls]
+slots = []
+say = [
+  "Roger mayday. Squawk 7700, state intentions and souls on board. Priority handling.",
+]
+
+[didn_t_catch_that_try_request_taxi]
+slots = []
+say = [
+  "Didn't catch that — try 'request taxi', 'request takeoff', or pick a request button below.",
+]
+
+[say_again_with_a_standard_request_for]
+slots = []
+say = [
+  "Say again with a standard request. For example: 'request taxi' or 'request altitude FL320'.",
+]
+
+[say_again_with_a_standard_request]
+slots = []
+say = [
+  "Say again with a standard request.",
+  "Say again your request using standard phraseology.",
+  "Say again the request.",
+  "Repeat your request using standard phraseology.",
+]
+
+[contact_the_controller]
+slots = []
+say = [
+  "Contact the controller",
+  "Call the controller",
+  "Contact your assigned controller",
+]
+
+[say_callsign]
+slots = []
+say = [
+  "Say callsign.",
+  "Say your callsign.",
+  "State your callsign.",
+  "Please include your callsign.",
+  "Identify with your callsign.",
+]
+
+[read_back_your_ifr_clearance_first_destination]
+slots = []
+say = [
+  "Read back your IFR clearance first: destination, route, altitude, squawk and runway, with your callsign.",
+]
+
+[ifr_departure_clearance_requires_the_aircraft_to]
+slots = []
+say = [
+  "IFR departure clearance requires the aircraft to be on the ground.",
+]
+
+[stop_the_aircraft_before_requesting_ifr_departure]
+slots = []
+say = [
+  "Stop the aircraft before requesting IFR departure clearance.",
+]
+
+[departure_clearance_is_already_active_read_back]
+slots = []
+say = [
+  "Departure clearance is already active. Read back the clearance, or reset the flight plan to request a new one.",
+]
+
+[taxi_via_hold_short_of_runway_at]
+slots = ["via", "hold_short"]
+say = [
+  "Taxi via {via}, hold short of runway {hold_short}.",
+  "Taxi to the holding point for runway {hold_short} via {via}. Hold short of runway {hold_short}.",
+  "Via {via}, taxi to the holding point, hold short of runway {hold_short}.",
+  "Taxi via {via} to the holding point. Hold short of runway {hold_short}.",
+  "Taxi via {via}. Hold short of runway {hold_short}.",
+  "Taxi to runway {hold_short} holding point via {via}, hold short of runway {hold_short}.",
+]
+
+[taxi_via_toward_stop_at_the_end]
+slots = ["via", "destination"]
+say = [
+  "Taxi toward {destination} via {via}, then hold position. Stand by for further instructions.",
+  "Via {via}, taxi toward {destination} and hold position. Stand by.",
+  "Taxi via {via} toward {destination}. Hold position and await further instructions.",
+  "Taxi toward {destination} via {via}. Hold position; further taxi instructions to follow.",
+]
+
+[taxi_routing_needs_a_valid_ground_position]
+slots = []
+say = [
+  "Taxi routing needs a valid ground position.",
+]
+
+[no_taxi_network_is_available_for_this]
+slots = []
+say = [
+  "No taxi network is available for this airport.",
+]
+
+[vacate_the_runway_before_requesting_a_ground]
+slots = []
+say = [
+  "Vacate the runway before requesting a ground taxi route.",
+]
+
+[no_safe_taxi_network_start_within_m]
+slots = []
+say = [
+  "No safe taxi-network start within 350 m. Move onto the taxi network or check airport data.",
+]
+
+[no_connected_safe_taxi_route_or_identifiable]
+slots = []
+say = [
+  "No connected safe taxi route or identifiable runway hold point. Hold position.",
+  "Hold position. No connected safe taxi route or identifiable runway hold point is available.",
+  "Unable to issue a safe taxi route or identify a runway hold point. Hold position.",
+  "No safe connected taxi route or identifiable runway hold point. Remain in position.",
+  "Hold position; a connected safe route and identifiable runway hold point are unavailable.",
+]
+
+[airport_identifier_not_found_in_apt_dat]
+slots = []
+say = [
+  "Airport identifier not found in apt.dat",
+]
+
+[airport_has_no_supported_land_runways]
+slots = []
+say = [
+  "Airport has no supported land runways",
+]
+
+[set_your_x_plane_folder_in_settings]
+slots = []
+say = [
+  "Set your X-Plane folder in Settings.",
+]
+
+[airport_not_found_in_enabled_scenery_or]
+slots = []
+say = [
+  "Airport not found in enabled scenery or Global Airports.",
+]
+
+[readback_error_say_again_your_readback_i]
+slots = ["clearance_kind", "missing_items"]
+say = [
+  "Say again your {clearance_kind} readback. I could not confirm {missing_items}. Clearance remains unacknowledged.",
+  "Say again your {clearance_kind} readback. Unable to confirm {missing_items}. Clearance remains unacknowledged.",
+  "Say again the {clearance_kind} readback, including {missing_items}. The clearance is still unacknowledged.",
+  "Unable to confirm {missing_items} in your {clearance_kind} readback. Say again. Clearance remains unacknowledged.",
+  "Your {clearance_kind} readback is incomplete or unclear: {missing_items}. Say again; clearance remains unacknowledged.",
+  "Say again your {clearance_kind} readback. Please confirm {missing_items}. Your clearance remains unacknowledged.",
+]
+
+[planned_runway_confirm_with_controller]
+slots = ["runway"]
+say = [
+  "Planned runway {runway}. Confirm with controller.",
+  "Planned runway {runway}. Confirm the runway with the controller.",
+  "Runway {runway} is planned. Confirm with the controller.",
+  "Planned runway is {runway}; confirm with the controller.",
+]
+
+[automatic_terminal_information_information_simulator_observation_wind]
+slots = ["airport", "code", "wind_direction", "wind_speed", "visibility", "clouds", "temperature", "dewpoint", "pressure", "runway_text"]
+say = [
+  "{airport} automatic terminal information. Information {code}. Simulator observation. Wind {wind_direction} degrees, {wind_speed} knots. Visibility {visibility} metres. {clouds}. Temperature {temperature}, dew point {dewpoint}. QNH {pressure}. {runway_text} Advise information {code} on initial contact.",
+]
+
+[runway_information_unavailable]
+slots = []
+say = [
+  "Runway information unavailable.",
+  "Runway information is unavailable.",
+  "No runway information available.",
+  "Runway information is not available.",
+]
+
+[does_not_provide_that_service_no_published]
+slots = ["name", "wanted"]
+say = [
+  "{name} does not provide that service. No published {wanted} station available.",
+]
+
+[altimeter]
+slots = ["pressure"]
+say = [
+  "Altimeter {pressure}",
+]
+
+[qnh]
+slots = ["pressure"]
+say = [
+  "QNH {pressure}",
+]
+
+[surface_weather_wind_degrees_knots_visibility_metres]
+slots = ["airport", "wind_direction", "wind_speed", "visibility", "clouds", "temperature", "dewpoint", "pressure"]
+say = [
+  "{airport} surface weather. Wind {wind_direction} degrees {wind_speed} knots. Visibility {visibility} metres. {clouds}. Temperature {temperature}, dew point {dewpoint}. {pressure}.",
+]
+
+[you_are_tuned_to_at_your_flight]
+slots = ["name", "airport", "departure"]
+say = [
+  "You are tuned to {name} at {airport}. Your flight departs {departure}. Tune that airport’s Delivery, Ground or Tower clearance controller, or correct the flight plan departure.",
+]
+
+[maintaining_route_squawk]
+slots = ["altitude", "route", "squawk", "callsign"]
+say = [
+  "Maintaining {altitude}, route {route}, squawk {squawk}, {callsign}.",
+]
+
+[crew_chat_needs_ai_intent_classification_on]
+slots = []
+say = [
+  "Crew chat needs AI intent classification on.",
+  "Crew conversation requires AI intent classification to be enabled.",
+  "Enable AI intent classification for crew conversation.",
+  "Crew chat is unavailable with AI intent classification disabled.",
+]
+
+[crew_line_is_busy_try_again]
+slots = []
+say = [
+  "Crew line is busy. Try again.",
+  "Crew line busy. Please try again.",
+  "Unable to answer on the crew line. Try again.",
+  "The crew line is busy; call again.",
+]
+
+[copilot_chat_needs_ai_intent_classification_on]
+slots = []
+say = [
+  "Copilot chat needs AI intent classification on.",
+  "Enable AI intent classification for copilot conversation.",
+  "Copilot chat requires AI intent classification to be enabled.",
+  "Copilot conversation is unavailable with AI intent classification disabled.",
+]
+
+[copilot_line_is_busy_try_again]
+slots = []
+say = [
+  "Copilot line is busy. Try again.",
+  "Copilot line busy. Try again.",
+  "Unable to answer right now. Try the copilot again.",
+  "Copilot line unavailable; please try again.",
+]
+
+[read_back_the_clearance_including_destination_route]
+slots = []
+say = [
+  " Read back the clearance, including destination, route, altitude, squawk and runway.",
+  " Read back destination, route, altitude, squawk and runway.",
+  " Read back the clearance: destination, route, altitude, squawk and runway.",
+  " Confirm by readback the destination, route, altitude, squawk and runway.",
+  " Read back all clearance items, including destination, route, altitude, squawk and runway.",
+]
+
+[standby]
+slots = []
+say = [
+  "Standby.",
+  "Stand by.",
+  "Stand by, please.",
+  "Stand by for a response.",
+  "Roger, stand by.",
+]
+
+[qfa_request_taxi]
+slots = []
+say = [
+  "QFA456 request taxi",
+]
+
+[qantas_taxi_approved]
+slots = []
+say = [
+  "Qantas 456, taxi approved.",
+]
+
+[jst_ready_for_departure]
+slots = []
+say = [
+  "JST789 ready for departure",
+]
+
+[jetstar_hold_short_traffic_on_final]
+slots = []
+say = [
+  "Jetstar 789, hold short, traffic on final.",
+]
+
+[voz_request_altitude_fl]
+slots = []
+say = [
+  "VOZ123 request altitude FL350",
+]
+
+[velocity_maintain_flight_level]
+slots = []
+say = [
+  "Velocity 123, maintain flight level 350.",
+]
+
+[rxa_going_around]
+slots = []
+say = [
+  "RXA321 going around",
+]
+
+[rex_roger_go_around]
+slots = []
+say = [
+  "Rex 321, roger go-around.",
+]
+
+[fdx_on_the_gate_request_pushback]
+slots = []
+say = [
+  "FDX88 on the gate, request pushback",
+]
+
+[fedex_pushback_approved]
+slots = []
+say = [
+  "FedEx 88, pushback approved.",
+]
+
+[in_meter_steps]
+slots = []
+say = [
+  ", in 10-meter steps.",
+]
+
+[in_foot_increments]
+slots = []
+say = [
+  ", in 100-foot increments.",
+]
+
+[tune_com_to_the_assigned_frequency_before]
+slots = []
+say = [
+  " Tune COM1 to the assigned frequency before requesting service.",
+]
+
+[include_your_callsign_so_the_controller_knows]
+slots = []
+say = [
+  " Include your callsign so the controller knows who is calling.",
+]
+
+[start_up_and_pushback]
+slots = []
+say = [
+  "Start-up and pushback",
+]
+
+[pushback]
+slots = []
+say = [
+  "Pushback",
+]
+
+[plan_invalid_route_coordinate]
+slots = []
+say = [
+  "Invalid route coordinate.",
+]
+
+[plan_block_fuel_is_less_than_trip]
+slots = []
+say = [
+  "Block fuel is less than trip + reserve + alternate + taxi fuel.",
+]
+
+[plan_weights_fuel_and_time_must_be]
+slots = []
+say = [
+  "Weights, fuel and time must be finite, non-negative values.",
+]
+
+[plan_passengers_or_cost_index_is_outside]
+slots = []
+say = [
+  "Passengers or cost index is outside the supported range.",
+]
+
+[plan_check_icao_codes_callsign_and_initial]
+slots = []
+say = [
+  "Check ICAO codes, callsign and initial/cruise altitudes.",
+]
+
+[taxi_arrival_stand_missing]
+slots = []
+say = [
+  "Select an arrival parking location in Flight Plan or Taxi.",
+]
+
+[taxi_departure_runway_missing]
+slots = []
+say = [
+  "Departure runway not found in the loaded airport.",
+]
+
+[clearance_runway_missing]
+slots = []
+say = [
+  "Choose a departure runway published in the installed airport scenery",
+]
+
+[readback_field_callsign]
+slots = []
+say = [
+  "callsign",
+]
+
+[readback_field_assigned_runway_stand]
+slots = []
+say = [
+  "assigned runway/stand",
+]
+
+[readback_field_hold_short_instruction]
+slots = []
+say = [
+  "hold-short instruction",
+]
+
+[readback_field_taxiway_route]
+slots = []
+say = [
+  "taxiway route",
+]
+
+[readback_field_destination]
+slots = []
+say = [
+  "destination",
+]
+
+[readback_field_route]
+slots = []
+say = [
+  "route",
+]
+
+[readback_field_altitude]
+slots = []
+say = [
+  "altitude",
+]
+
+[readback_field_squawk]
+slots = []
+say = [
+  "squawk",
+]
+
+[readback_field_runway]
+slots = []
+say = [
+  "runway",
+]
+
+[weather_few_clouds]
+slots = []
+say = [
+  "Few clouds",
+]
+
+[weather_scattered_clouds]
+slots = []
+say = [
+  "Scattered clouds",
+]
+
+[weather_broken_cloud]
+slots = []
+say = [
+  "Broken cloud",
+]
+
+[weather_overcast]
+slots = []
+say = [
+  "Overcast",
+]
+
+[weather_no_significant_cloud]
+slots = []
+say = [
+  "No significant cloud",
+]
+
+[weather_cloud_report_unavailable]
+slots = []
+say = [
+  "Cloud report unavailable",
+]
+
+[taxi_unnamed_network]
+slots = []
+say = [
+  "the taxiway",
+]
+
+[weather_cloud_layer]
+slots = ["description", "altitude"]
+say = [
+  "{description} at {altitude} feet above airport",
+  "{description}, base {altitude} feet above airport",
+  "{description} with a base of {altitude} feet above airport",
+]
+
+[copilot_altitude_set]
+slots = ["altitude", "callsign"]
+say = [
+  "Altitude set {altitude}, {callsign}.",
+  "Set {altitude} on the altitude dial, {callsign}.",
+  "Altitude dial set to {altitude}, {callsign}.",
+]
+
+[copilot_repeat_instruction]
+slots = ["instruction", "callsign"]
+say = [
+  "{instruction} {callsign}.",
+  "{callsign}, {instruction}",
+]
+
+[units_foot_singular]
+slots = ["value"]
+say = [
+  "{value} foot",
+]
+
+[units_foot_plural]
+slots = ["value"]
+say = [
+  "{value} feet",
+]
+
+[units_meter_singular]
+slots = ["value"]
+say = [
+  "{value} meter",
+]
+
+[units_meter_plural]
+slots = ["value"]
+say = [
+  "{value} meters",
+]
+
+[units_knot_singular]
+slots = ["value"]
+say = [
+  "{value} knot",
+]
+
+[units_knot_plural]
+slots = ["value"]
+say = [
+  "{value} knots",
+]
+
+[units_kmh_singular]
+slots = ["value"]
+say = [
+  "{value} kilometer per hour",
+]
+
+[units_kmh_plural]
+slots = ["value"]
+say = [
+  "{value} kilometers per hour",
+]
+
+[units_mile_singular]
+slots = ["value"]
+say = [
+  "{value} mile",
+]
+
+[units_mile_plural]
+slots = ["value"]
+say = [
+  "{value} miles",
+]
+
+[units_kilometer_singular]
+slots = ["value"]
+say = [
+  "{value} kilometer",
+]
+
+[units_kilometer_plural]
+slots = ["value"]
+say = [
+  "{value} kilometers",
+]
+
+[units_fpm_singular]
+slots = ["value"]
+say = [
+  "{value} foot per minute",
+]
+
+[units_fpm_plural]
+slots = ["value"]
+say = [
+  "{value} feet per minute",
+]
+
+[units_ms_singular]
+slots = ["value"]
+say = [
+  "{value} meter per second",
+]
+
+[units_ms_plural]
+slots = ["value"]
+say = [
+  "{value} meters per second",
+]
+
+[atis_information_00]
+slots = []
+say = [
+  "Alpha",
+]
+
+[atis_information_01]
+slots = []
+say = [
+  "Bravo",
+]
+
+[atis_information_02]
+slots = []
+say = [
+  "Charlie",
+]
+
+[atis_information_03]
+slots = []
+say = [
+  "Delta",
+]
+
+[atis_information_04]
+slots = []
+say = [
+  "Echo",
+]
+
+[atis_information_05]
+slots = []
+say = [
+  "Foxtrot",
+]
+
+[atis_information_06]
+slots = []
+say = [
+  "Golf",
+]
+
+[atis_information_07]
+slots = []
+say = [
+  "Hotel",
+]
+
+[atis_information_08]
+slots = []
+say = [
+  "India",
+]
+
+[atis_information_09]
+slots = []
+say = [
+  "Juliett",
+]
+
+[atis_information_10]
+slots = []
+say = [
+  "Kilo",
+]
+
+[atis_information_11]
+slots = []
+say = [
+  "Lima",
+]
+
+[atis_information_12]
+slots = []
+say = [
+  "Mike",
+]
+
+[atis_information_13]
+slots = []
+say = [
+  "November",
+]
+
+[atis_information_14]
+slots = []
+say = [
+  "Oscar",
+]
+
+[atis_information_15]
+slots = []
+say = [
+  "Papa",
+]
+
+[atis_information_16]
+slots = []
+say = [
+  "Quebec",
+]
+
+[atis_information_17]
+slots = []
+say = [
+  "Romeo",
+]
+
+[atis_information_18]
+slots = []
+say = [
+  "Sierra",
+]
+
+[atis_information_19]
+slots = []
+say = [
+  "Tango",
+]
+
+[atis_information_20]
+slots = []
+say = [
+  "Uniform",
+]
+
+[atis_information_21]
+slots = []
+say = [
+  "Victor",
+]
+
+[atis_information_22]
+slots = []
+say = [
+  "Whiskey",
+]
+
+[atis_information_23]
+slots = []
+say = [
+  "X-ray",
+]
+
+[atis_information_24]
+slots = []
+say = [
+  "Yankee",
+]
+
+[atis_information_25]
+slots = []
+say = [
+  "Zulu",
+]
+
+# Pilot speech for the manual ATC Auto Reply button. Values come from the clearance.
+[pilot_ifr_readback]
+slots = ["destination", "route", "altitude", "squawk", "runway", "callsign"]
+say = [
+  "Cleared to {destination}, route {route}, initial altitude {altitude} feet, squawk {squawk}, runway {runway}, {callsign}.",
+  "{callsign}, cleared to {destination} via {route}, initial altitude {altitude} feet, squawk {squawk}, departure runway {runway}.",
+]
+
+[pilot_taxi_readback]
+slots = ["instructions", "callsign"]
+say = ["{instructions} {callsign}.", "{callsign}, {instructions}"]
+
+[pilot_start_ack]
+slots = ["callsign"]
+say = ["Start-up approved, will report ready for pushback, {callsign}.", "{callsign}, start-up approved; will report ready for pushback."]
+
+[pilot_pushback_ack]
+slots = ["callsign"]
+say = ["Pushback approved, will advise ready to taxi, {callsign}.", "{callsign}, pushback approved; will report ready to taxi."]
+
+[pilot_start_pushback_ack]
+slots = ["callsign"]
+say = ["Start-up and pushback approved, will advise ready to taxi, {callsign}.", "{callsign}, start-up and pushback approved; will report ready to taxi."]
+
+[pilot_reply_no_pending]
+slots = []
+say = ["That instruction is no longer awaiting your reply. Check the current clearance.", "No matching acknowledgment is pending; check your current clearance."]
+
+[taxi_inferred_start_missing]
+slots = []
+say = ["No connected painted taxi centerline within 35 meters on clear pavement. Automatic taxi guidance is unavailable from this position.", "Unable to join the scenery centerline safely from this position. Automatic taxi guidance is unavailable from this position."]
+
+[runway_taxi_backtrack]
+slots = ["runway"]
+say = [
+  "Taxi onto runway {runway}, backtrack to the departure end. Stop and hold position; report ready to Tower. This is not a takeoff clearance.",
+  "Backtrack runway {runway} to the departure end, stop and hold position. Report ready to Tower; takeoff clearance is required.",
+]
+
+[runway_taxi_contact_tower]
+slots = []
+say = [
+  "Runway taxi or backtracking requires Tower clearance. Hold position and contact this airport's Tower, then request runway backtrack.",
+  "Hold position. Contact the airport Tower for runway taxi or backtrack clearance before entering the runway.",
+]
+
+[runway_taxi_unavailable]
+slots = []
+say = [
+  "Unable to establish a connected runway taxi route from the installed pavement. Hold position; no runway entry is authorized.",
+  "No connected paved route to the assigned runway can be verified. Hold position; runway entry is not authorized.",
+]
+
+[readback_field_runway_taxi]
+slots = []
+say = ["runway backtrack and stop-and-hold-position instruction"]
+
+[taxi_hold_for_backtrack]
+slots = ["via", "runway"]
+say = [
+  "Taxi via {via} to the holding point, hold short of runway {runway}. Report at the holding point to Tower.",
+  "Taxi via {via}, hold short of runway {runway} at the marked holding point. Contact Tower at the holding point.",
+]
+
+[readback_scope_changed]
+slots = []
+say = ["That readback belongs to an earlier instruction. Read back the current clearance.", "The pending instruction has changed. Say again using your current clearance."]
+
+[pilot_taxi_hold_readback]
+slots = ["via", "runway", "callsign"]
+say = ["Taxi via {via}, hold short of runway {runway}, {callsign}.", "{callsign}, taxi via {via}, holding short of runway {runway}."]
+
+[taxi_via_runway_backtrack]
+slots = ["entry_runway", "runway"]
+say = ["Taxi via runway {entry_runway}, backtrack runway {runway} to the departure end. Stop and hold position; report ready to Tower.", "Taxi via runway {entry_runway}. Backtrack runway {runway} to the departure end, stop and hold position. Report ready to Tower."]
+
+[pilot_runway_taxi_readback]
+slots = ["entry_runway", "runway", "callsign"]
+say = ["Taxi via runway {entry_runway}, backtrack runway {runway}, stop and hold position at the departure end, {callsign}.", "{callsign}, taxi via runway {entry_runway}, backtrack runway {runway}, stop and hold position at the departure end."]
+
+[runway_taxi_readback_correct]
+slots = []
+say = ["Runway taxi readback correct. Backtrack as cleared, stop and hold position at the departure end.", "Correct runway taxi readback. Stop and hold position at the cleared departure end."]
+
+[taxi_to_holding_point]
+slots = ["runway"]
+say = ["Taxi to the holding point for runway {runway}. Hold short of runway {runway}.", "Taxi to runway {runway} holding point, hold short of runway {runway}."]
+
+[taxi_toward_parking_hold]
+slots = ["destination"]
+say = ["Taxi toward {destination}, then hold position. Stand by for further instructions.", "Taxi toward {destination} and hold position. Await further instructions."]
+
+[pilot_taxi_holding_point_readback]
+slots = ["runway", "callsign"]
+say = ["Taxi to the holding point, hold short of runway {runway}, {callsign}.", "Holding point for runway {runway}, hold short of runway {runway}, {callsign}."]
+
+[holding_standby]
+slots = ["runway"]
+say = ["Hold short of runway {runway}, stand by.", "Hold short of runway {runway}. Await further instructions."]
+[holding_runway_occupied]
+slots = ["runway"]
+say = ["Hold short of runway {runway}, runway occupied.", "Runway {runway} occupied. Hold short."]
+[holding_traffic_final]
+slots = ["runway"]
+say = ["Hold short of runway {runway}, traffic on final.", "Traffic on final, hold short of runway {runway}."]
+[holding_report_ready]
+slots = ["runway"]
+say = ["Hold short of runway {runway}. Report ready for further taxi clearance.", "Hold short of runway {runway}, report ready."]
+
+[pilot_holding_ready]
+slots = ["callsign"]
+say = ["{callsign}, holding point, ready for departure.", "{callsign}, ready for departure at the holding point."]

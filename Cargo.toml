@@ -1,0 +1,20 @@
+[workspace]
+members = ["vendor/xplane", "crates/settings", "crates/platform", "crates/ai-core", "crates/server", "crates/stt", "crates/tts", "crates/core", "crates/engine", "crates/ui", "crates/desktop", "crates/audio", "crates/plugin", "crates/http"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/openatc/openatc"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = { level = "allow", priority = 1 }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[patch.crates-io]
+xplane = { path = "vendor/xplane" }

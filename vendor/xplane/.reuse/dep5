@@ -1,0 +1,14 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: xplane.rs
+Upstream-Contact: Julia DeMille <me@jdemille.com>
+Source: https://git.sr.ht/~jdemille/xplane.rs
+
+# Sample paragraph, commented out:
+#
+# Files: src/*
+# Copyright: $YEAR $NAME <$CONTACT>
+# License: ...
+
+Files: DCO.txt
+License: LicenseRef-DCO
+Copyright: 2004, 2006 The Linux Foundation and its contributors

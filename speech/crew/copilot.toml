@@ -1,0 +1,622 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[copilot.takeoff_roll]
+role = "copilot"
+phase = ["departure"]
+variant = "common"
+situation = ["airspeed_check"]
+slots = []
+say = [
+  "Airspeed alive.",
+  "Airspeed indications are increasing.",
+  "Airspeed is alive.",
+]
+
+[copilot.after_takeoff]
+role = "copilot"
+phase = ["departure"]
+variant = "common"
+situation = ["positive_climb"]
+slots = []
+say = [
+  "Positive climb.",
+  "Positive rate of climb.",
+  "Climb confirmed.",
+]
+
+[copilot.altitude_capture]
+role = "copilot"
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["altitude_captured"]
+slots = ["alt"]
+say = [
+  "Level at {alt}.",
+  "Assigned altitude {alt} captured.",
+  "We are level at {alt}.",
+]
+
+[copilot.approach_calls]
+role = "copilot"
+phase = ["approach"]
+variant = "common"
+situation = ["approach_stable_verified"]
+slots = []
+say = [
+  "Approach stable.",
+  "Stable approach confirmed.",
+  "We are stable on the approach.",
+]
+
+[copilot.goaround_calls]
+role = "copilot"
+phase = ["approach"]
+variant = "common"
+situation = ["go_around_announced"]
+slots = []
+say = [
+  "Go-around. Monitor the aircraft procedure.",
+  "Go-around, follow the aircraft procedure.",
+  "Going around. Aircraft procedure applies.",
+]
+
+[copilot.checklist]
+role = "copilot"
+phase = ["parked", "taxi", "departure", "approach"]
+variant = "common"
+situation = ["checklist_requested"]
+slots = []
+say = [
+  "Which checklist would you like, Captain?",
+  "Captain, confirm the checklist to run.",
+  "Tell me which checklist you need.",
+]
+
+[copilot.interphone_cabin]
+role = "copilot"
+phase = ["departure", "arrival"]
+variant = "common"
+situation = ["prepare_cabin_departure"]
+slots = []
+say = [
+  "Cabin crew, prepare the cabin for departure.",
+  "Please prepare the cabin for departure.",
+  "Cabin crew, departure preparations please.",
+]
+
+[copilot.monitoring_challenge]
+role = "copilot"
+phase = ["cruise", "approach"]
+variant = "common"
+situation = ["speed_decreasing_verified"]
+slots = []
+say = [
+  "Captain, check speed. It is decreasing.",
+  "Speed is decreasing, Captain. Please check.",
+  "Captain, decreasing airspeed. Check speed.",
+]
+
+[copilot.fuel_state]
+role = "copilot"
+phase = ["arrival"]
+variant = "common"
+situation = ["fuel_endurance_verified"]
+slots = ["mins"]
+say = [
+  "Fuel check: estimated endurance {mins}. Review reserves for the remaining flight.",
+  "Estimated endurance is {mins}. Let us check the reserve calculation.",
+  "We have an estimated endurance of {mins}. Review the remaining flight and reserves.",
+]
+
+[copilot.rejected_takeoff]
+role = "copilot"
+phase = ["departure"]
+variant = "common"
+situation = ["rejected_takeoff_announced"]
+slots = []
+say = [
+  "Rejected takeoff. Follow the aircraft rejected-takeoff procedure.",
+  "Takeoff rejected. Aircraft stopping procedure applies.",
+  "Reject confirmed. Use the aircraft procedure.",
+]
+
+[copilot.engine_fail_after_v1]
+role = "copilot"
+phase = ["departure"]
+variant = "common"
+situation = ["engine_failure_detected"]
+slots = []
+say = [
+  "Engine failure indication. Follow the aircraft procedure.",
+  "Captain, engine failure indication. Aircraft procedure applies.",
+  "Engine failure indicated. Use the aircraft-specific procedure.",
+]
+
+[copilot.tcas_ra]
+role = "copilot"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["tcas_ra_active"]
+slots = []
+say = [
+  "TCAS resolution advisory. Follow the RA.",
+  "RA active. Follow the TCAS guidance.",
+  "TCAS RA. Follow the resolution advisory.",
+]
+
+[copilot.windshear_escape]
+role = "copilot"
+phase = ["departure", "approach"]
+variant = "common"
+situation = ["windshear_warning_active"]
+slots = []
+say = [
+  "Windshear warning. Follow the aircraft escape procedure.",
+  "Windshear indicated. Aircraft escape procedure applies.",
+  "Windshear warning active. Use the aircraft procedure.",
+]
+
+[copilot.cabin_secure_report]
+role = "copilot"
+phase = ["approach", "parked"]
+variant = "common"
+situation = ["cabin_secure_report_received"]
+slots = []
+say = [
+  "Cabin reports secure.",
+  "Cabin secure report received.",
+  "The cabin crew report the cabin is secure.",
+]
+
+[copilot.flap_extension]
+role = "copilot"
+phase = ["approach"]
+variant = "common"
+situation = ["flap_selection_requested"]
+slots = []
+say = [
+  "Check speed before selecting flaps.",
+  "Before changing flap configuration, check speed.",
+  "Confirm speed is within the aircraft flap limit.",
+]
+
+[copilot.shutdown_flows]
+role = "copilot"
+phase = ["parked"]
+variant = "common"
+situation = ["shutdown_checklist_requested"]
+slots = []
+say = [
+  "Ready for the aircraft shutdown checklist, Captain.",
+  "Captain, shall we run the shutdown checklist?",
+  "Aircraft shutdown checklist ready when you are.",
+]
+
+[copilot.conversation_ready]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["conversation_ready"]
+slots = []
+say = [
+  "Ready when you are, Captain.",
+  "I am here, Captain. What do you need?",
+  "Standing by beside you, Captain.",
+]
+
+[copilot.repeat_request]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["repeat_request"]
+slots = []
+say = [
+  "Could you repeat that, Captain?",
+  "I did not catch that. Please say it again.",
+  "Captain, could you say that once more?",
+]
+
+[copilot.radio_task_redirect]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["radio_task_redirect"]
+slots = []
+say = [
+  "Captain, send that request to ATC using Transmit.",
+  "That request needs ATC. Please transmit it on the radio.",
+  "Captain, use Transmit to ask the controller for that clearance.",
+]
+
+[copilot.no_clearance]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["no_clearance"]
+slots = []
+say = [
+  "We do not have that clearance yet, Captain.",
+  "Captain, that instruction has not been cleared.",
+  "Let us obtain the clearance before proceeding.",
+]
+
+[copilot.clearance_review]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["clearance_review"]
+slots = []
+say = [
+  "Let us review the clearance together, Captain.",
+  "Captain, we can cross-check the clearance before moving.",
+  "Ready to review the assigned clearance with you.",
+]
+
+[copilot.runway_crosscheck]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["runway_crosscheck"]
+slots = ["rwy"]
+say = [
+  "Assigned runway is {rwy}. Let us cross-check it.",
+  "Captain, runway assignment {rwy}. Check the selection.",
+  "Let us verify runway {rwy} matches the clearance.",
+]
+
+[copilot.taxi_review]
+role = "copilot"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["taxi_review"]
+slots = ["via"]
+say = [
+  "Our assigned taxi route is {via}.",
+  "Captain, the cleared taxi route is {via}.",
+  "Taxi route cross-check: {via}.",
+]
+
+[copilot.hold_short_reminder]
+role = "copilot"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["hold_short_reminder"]
+slots = ["rwy"]
+say = [
+  "Hold short of runway {rwy}, Captain.",
+  "Captain, our limit is holding short of runway {rwy}.",
+  "We must stop before runway {rwy}.",
+]
+
+[copilot.runway_crossing_check]
+role = "copilot"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["runway_crossing_check"]
+slots = ["rwy"]
+say = [
+  "We need an explicit crossing clearance for runway {rwy}.",
+  "Captain, confirm clearance before crossing runway {rwy}.",
+  "Check the runway {rwy} crossing clearance before moving.",
+]
+
+[copilot.heading_crosscheck]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["heading_crosscheck"]
+slots = ["heading"]
+say = [
+  "Assigned heading is {heading}.",
+  "Captain, heading assignment {heading}.",
+  "Cross-check the selected heading against {heading}.",
+]
+
+[copilot.altitude_crosscheck]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["altitude_crosscheck"]
+slots = ["alt"]
+say = [
+  "Assigned altitude is {alt}.",
+  "Captain, cross-check the selected altitude with {alt}.",
+  "Our clearance altitude is {alt}.",
+]
+
+[copilot.speed_crosscheck]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["speed_crosscheck"]
+slots = ["speed"]
+say = [
+  "Assigned speed is {speed}.",
+  "Captain, speed assignment {speed}.",
+  "Cross-check our selected speed against {speed}.",
+]
+
+[copilot.pressure_crosscheck]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["pressure_crosscheck"]
+slots = ["qnh"]
+say = [
+  "Pressure setting is {qnh}. Check both altimeters.",
+  "Captain, cross-check both altimeters against {qnh}.",
+  "Confirm the reported pressure setting {qnh} on both sides.",
+]
+
+[copilot.frequency_crosscheck]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["frequency_crosscheck"]
+slots = ["freq"]
+say = [
+  "Assigned next frequency is {freq}.",
+  "Captain, cross-check the radio against {freq}.",
+  "Frequency assignment {freq}. Check the selection.",
+]
+
+[copilot.preflight_review]
+role = "copilot"
+phase = ["parked"]
+variant = "common"
+situation = ["preflight_review"]
+slots = []
+say = [
+  "Shall we review the aircraft preparation checklist?",
+  "Captain, ready to review preflight items when you are.",
+  "Let us use the aircraft checklist for preparation.",
+]
+
+[copilot.brief_departure]
+role = "copilot"
+phase = ["parked", "clearance", "taxi"]
+variant = "common"
+situation = ["brief_departure"]
+slots = ["rwy", "sid"]
+say = [
+  "Let us brief runway {rwy} and the {sid} departure.",
+  "Captain, departure briefing: runway {rwy}, {sid}.",
+  "Ready to review our runway {rwy}, {sid} departure plan.",
+]
+
+[copilot.brief_arrival]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["brief_arrival"]
+slots = ["approach", "rwy"]
+say = [
+  "Let us brief {approach}, runway {rwy}.",
+  "Captain, approach briefing for {approach}, runway {rwy}.",
+  "Ready to review the {approach} to runway {rwy}.",
+]
+
+[copilot.terrain_gap]
+role = "copilot"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["terrain_gap"]
+slots = []
+say = [
+  "Terrain data is incomplete here, Captain. Use the published procedure and aircraft navigation displays.",
+  "Captain, this terrain preview has missing data. Cross-check the published procedure.",
+  "The terrain display is incomplete. Refer to the procedure and aircraft instruments.",
+]
+
+[copilot.high_profile]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["high_profile"]
+slots = []
+say = [
+  "Captain, we are above the planned descent profile. Review the arrival.",
+  "Above the planning profile, Captain. Let us reassess the descent.",
+  "Captain, check descent planning; we are high on the displayed profile.",
+]
+
+[copilot.low_profile]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["low_profile"]
+slots = []
+say = [
+  "Captain, below the planned descent profile. Check terrain and clearance.",
+  "We are low relative to the planning profile. Review clearance and terrain.",
+  "Captain, check the descent; the displayed profile places us below plan.",
+]
+
+[copilot.projected_long]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["projected_long"]
+slots = []
+say = [
+  "The current descent projection crosses runway elevation beyond the airport. Review the profile.",
+  "Captain, the current projection is long of the airport. Check the descent plan.",
+  "Current descent trend reaches runway elevation past the destination. Let us review it.",
+]
+
+[copilot.projected_short]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["projected_short"]
+slots = []
+say = [
+  "The current descent projection reaches runway elevation before the airport. Check the profile.",
+  "Captain, current projection is short of the airport. Review clearance and terrain.",
+  "Current descent trend reaches runway elevation before the destination. Check the descent plan.",
+]
+
+[copilot.v1_call]
+role = "copilot"
+phase = ["departure"]
+variant = "common"
+situation = ["v1_call"]
+slots = []
+say = [
+  "V1.",
+  "V one.",
+]
+
+[copilot.rotate_call]
+role = "copilot"
+phase = ["departure"]
+variant = "common"
+situation = ["rotate_call"]
+slots = []
+say = [
+  "Rotate.",
+]
+
+[copilot.thousand_remaining]
+role = "copilot"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["thousand_remaining"]
+slots = ["alt"]
+say = [
+  "One thousand feet to {alt}.",
+  "A thousand feet remaining to {alt}.",
+  "Approaching {alt}, one thousand to go.",
+]
+
+[copilot.localizer_captured]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["localizer_captured"]
+slots = []
+say = [
+  "Localizer captured.",
+  "Localizer capture confirmed.",
+  "We have captured the localizer.",
+]
+
+[copilot.glideslope_captured]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["glideslope_captured"]
+slots = []
+say = [
+  "Glideslope captured.",
+  "Glideslope capture confirmed.",
+  "We have captured the glideslope.",
+]
+
+[copilot.approach_unstable]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["approach_unstable"]
+slots = []
+say = [
+  "Unstable approach, Captain.",
+  "Captain, approach stability criteria are not met.",
+  "Approach unstable. Check the aircraft go-around policy.",
+]
+
+[copilot.minimums_call]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["minimums_call"]
+slots = []
+say = [
+  "Minimums.",
+  "At minimums.",
+  "Minimums reached.",
+]
+
+[copilot.no_visual_at_minimums]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["no_visual_at_minimums"]
+slots = []
+say = [
+  "No required visual reference at minimums.",
+  "Captain, minimums reached without the required visual reference.",
+  "Required visual reference is not acquired at minimums.",
+]
+
+[copilot.visual_reference]
+role = "copilot"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["visual_reference"]
+slots = []
+say = [
+  "Required visual reference acquired.",
+  "Captain, required visual reference is in sight.",
+  "Required visual reference confirmed.",
+]
+
+[copilot.ra_clear]
+role = "copilot"
+phase = ["departure", "cruise", "arrival", "approach"]
+variant = "common"
+situation = ["ra_clear"]
+slots = []
+say = [
+  "Clear of conflict. Check the return to our clearance.",
+  "TCAS clear of conflict. Review the assigned clearance.",
+  "Conflict clear. Cross-check our clearance before resuming.",
+]
+
+[copilot.checklist_not_verified]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["checklist_not_verified"]
+slots = []
+say = [
+  "I cannot confirm that item from the available aircraft data. Please verify it.",
+  "Captain, that checklist item needs your confirmation.",
+  "Aircraft data does not verify this item. Please check it manually.",
+]
+
+[copilot.control_authority]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["control_authority"]
+slots = []
+say = [
+  "Captain, I can advise; you have control of the aircraft.",
+  "You have control, Captain. I am monitoring.",
+  "Captain, aircraft control remains with you.",
+]
+
+[copilot.aircraft_procedure]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["aircraft_procedure"]
+slots = []
+say = [
+  "Use the checklist and procedure for this aircraft, Captain.",
+  "Captain, let us refer to the aircraft-specific procedure.",
+  "The aircraft checklist governs this situation.",
+]
+
+[copilot.parking_confirm]
+role = "copilot"
+phase = ["parked"]
+variant = "common"
+situation = ["parking_confirm"]
+slots = []
+say = [
+  "Confirm parking brake and stand position before shutdown.",
+  "Captain, check we are parked correctly with the parking brake set.",
+  "Verify stand position and parking brake before starting shutdown.",
+]

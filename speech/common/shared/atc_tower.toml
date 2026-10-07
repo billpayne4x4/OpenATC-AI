@@ -1,0 +1,365 @@
+# Editable examples: see speech/README.md. One entry describes one event.
+
+[tower.lineup]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["lineup"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, line up and wait.",
+  "{callsign}, line up and wait, runway {rwy}.",
+  "{callsign}, line up on runway {rwy} and wait.",
+]
+
+[tower.takeoff]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["takeoff"]
+slots = ["callsign", "rwy", "wind"]
+say = [
+  "{callsign}, wind {wind}, runway {rwy}, cleared for takeoff.",
+  "{callsign}, runway {rwy}, cleared for takeoff. Wind {wind}.",
+  "{callsign}, surface wind {wind}. Cleared for takeoff, runway {rwy}.",
+]
+
+[tower.takeoff_immediate]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["immediate_departure_readiness"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, are you ready for immediate departure from runway {rwy}?",
+  "{callsign}, advise ready for immediate departure, runway {rwy}.",
+  "{callsign}, confirm able to depart immediately from runway {rwy}.",
+]
+
+[tower.landing]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["landing"]
+slots = ["callsign", "rwy", "wind"]
+say = [
+  "{callsign}, wind {wind}, runway {rwy}, cleared to land.",
+  "{callsign}, runway {rwy}, cleared to land. Wind {wind}.",
+  "{callsign}, surface wind {wind}. Cleared to land, runway {rwy}.",
+]
+
+[tower.goaround_instruction]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["go_around"]
+slots = ["alt", "callsign"]
+say = [
+  "{callsign}, go around. Climb to {alt}, fly runway heading.",
+  "{callsign}, go around, runway heading. Climb to {alt}.",
+  "{callsign}, go around. Fly runway heading and climb to {alt}.",
+]
+
+[tower.vacate]
+service = ["Tower"]
+role = "atc"
+phase = ["landed", "taxi_in"]
+variant = "common"
+situation = ["vacate"]
+slots = ["callsign", "via"]
+say = [
+  "{callsign}, vacate via {via}. Report runway vacated.",
+  "{callsign}, exit the runway via {via}, report clear.",
+  "{callsign}, runway exit {via}, report vacated.",
+]
+
+[tower.circuit]
+service = ["Tower"]
+role = "atc"
+phase = ["departure", "approach"]
+variant = "icao"
+situation = ["circuit_training"]
+slots = ["callsign", "rwy", "turn"]
+say = [
+  "{callsign}, make {turn}-hand circuits runway {rwy}. Report downwind.",
+  "{callsign}, runway {rwy}, {turn}-hand circuit. Report downwind.",
+  "{callsign}, circuit direction {turn}, runway {rwy}. Report on downwind.",
+]
+
+[tower.low_approach]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["low_approach"]
+slots = ["alt", "callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, cleared low approach. Maintain {alt}.",
+  "{callsign}, cleared low approach runway {rwy}, maintain {alt}.",
+  "{callsign}, low approach clearance runway {rwy}, altitude {alt}.",
+]
+
+[tower.wake_spacing]
+service = ["Tower"]
+role = "atc"
+phase = ["departure", "approach"]
+variant = "common"
+situation = ["wake_turbulence"]
+slots = ["callsign", "mins", "rwy"]
+say = [
+  "{callsign}, hold short of runway {rwy}. Wake turbulence delay {mins}.",
+  "{callsign}, wake turbulence delay of {mins}. Hold short runway {rwy}.",
+  "{callsign}, remain short of runway {rwy} for a wake turbulence delay of {mins}.",
+]
+
+[tower.runway_incursion]
+service = ["Tower"]
+role = "atc"
+phase = ["taxi", "departure"]
+variant = "common"
+situation = ["incursion"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, stop immediately. Hold position, runway {rwy} incursion.",
+  "{callsign}, runway {rwy} incursion. Stop immediately and hold position.",
+  "{callsign}, stop now, hold position. You have entered runway {rwy}.",
+]
+
+[tower.lineup_behind]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "icao"
+situation = ["conditional_lineup_traffic_identified_and_in_sight"]
+slots = ["callsign", "rwy", "traffic"]
+say = [
+  "{callsign}, behind {traffic} on final, line up and wait runway {rwy}, behind.",
+  "{callsign}, behind the landing aircraft, {traffic}, line up and wait runway {rwy}, behind.",
+  "{callsign}, behind landing traffic {traffic}, runway {rwy}, line up and wait, behind.",
+]
+
+[tower.exit_when_able]
+service = ["Tower"]
+role = "atc"
+phase = ["landed", "taxi_in"]
+variant = "common"
+situation = ["vacate", "rollout"]
+slots = ["callsign", "via"]
+say = [
+  "{callsign}, vacate via {via} when able, report clear.",
+  "{callsign}, when able exit at {via} and report runway vacated.",
+  "{callsign}, exit via {via} when able. Report vacated.",
+]
+
+[tower.touch_and_go]
+service = ["Tower"]
+role = "atc"
+phase = ["approach", "departure"]
+variant = "common"
+situation = ["circuit_training", "touch_go"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy}, cleared touch and go.",
+  "{callsign}, cleared touch and go, runway {rwy}.",
+  "{callsign}, touch-and-go clearance runway {rwy}. Cleared touch and go.",
+]
+
+[tower.continue_approach]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["continue_approach"]
+slots = ["callsign"]
+say = [
+  "{callsign}, continue approach. Landing clearance not yet issued.",
+  "{callsign}, continue your approach, no landing clearance yet.",
+  "{callsign}, approach may continue. Stand by for landing clearance.",
+]
+
+[tower.landing_cancelled]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["landing_cancelled"]
+slots = ["callsign"]
+say = [
+  "{callsign}, cancel landing clearance. Go around.",
+  "{callsign}, go around, landing clearance cancelled.",
+  "{callsign}, landing clearance is cancelled. Go around.",
+]
+
+[tower.takeoff_cancelled]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["takeoff_cancelled"]
+slots = ["callsign"]
+say = [
+  "{callsign}, hold position. Cancel takeoff clearance.",
+  "{callsign}, takeoff clearance cancelled. Hold position.",
+  "{callsign}, cancel takeoff clearance and hold position.",
+]
+
+[tower.stop_departure_roll]
+service = ["Tower"]
+role = "atc"
+phase = ["departure"]
+variant = "common"
+situation = ["stop_departure_roll"]
+slots = ["callsign"]
+say = [
+  "{callsign}, stop immediately. Stop immediately.",
+  "{callsign}, stop immediately, stop immediately.",
+  "{callsign}, stop immediately. Stop now.",
+]
+
+[tower.report_final]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["report_final"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, report final runway {rwy}.",
+  "{callsign}, call on final for runway {rwy}.",
+  "{callsign}, advise when on final runway {rwy}.",
+]
+
+[tower.report_downwind]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["report_downwind"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, report downwind runway {rwy}.",
+  "{callsign}, call downwind for runway {rwy}.",
+  "{callsign}, advise downwind runway {rwy}.",
+]
+
+[tower.extend_downwind]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["extend_downwind"]
+slots = ["callsign"]
+say = [
+  "{callsign}, extend downwind. I will call your base turn.",
+  "{callsign}, continue downwind; base turn on my call.",
+  "{callsign}, extended downwind required. Wait for my base-turn instruction.",
+]
+
+[tower.base_turn]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["base_turn"]
+slots = ["callsign"]
+say = [
+  "{callsign}, turn base now.",
+  "{callsign}, base turn now.",
+  "{callsign}, commence your base turn.",
+]
+
+[tower.sequence_number]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["sequence_number"]
+slots = ["callsign", "sequence", "traffic"]
+say = [
+  "{callsign}, number {sequence}, traffic {traffic}.",
+  "{callsign}, your sequence is number {sequence}, following {traffic}.",
+  "{callsign}, number {sequence} in the sequence. Traffic ahead {traffic}.",
+]
+
+[tower.runway_occupied]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["runway_occupied"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy} occupied. Continue approach, be prepared to go around.",
+  "{callsign}, continue approach. Runway {rwy} occupied; prepare for possible go-around.",
+  "{callsign}, runway occupied, {rwy}. Continue approach and be ready to go around.",
+]
+
+[tower.runway_vacated_ack]
+service = ["Tower"]
+role = "atc"
+phase = ["landed", "taxi_in"]
+variant = "common"
+situation = ["runway_vacated_ack"]
+slots = ["callsign"]
+say = [
+  "{callsign}, runway vacated report received.",
+  "{callsign}, roger, runway vacated.",
+  "{callsign}, received, clear of the runway.",
+]
+
+[tower.remain_tower]
+service = ["Tower"]
+role = "atc"
+phase = ["departure", "approach", "landed"]
+variant = "common"
+situation = ["remain_tower"]
+slots = ["callsign"]
+say = [
+  "{callsign}, remain on tower frequency.",
+  "{callsign}, stay with tower on this frequency.",
+  "{callsign}, do not change frequency yet; remain with tower.",
+]
+
+[tower.landing_wind_update]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["landing_wind_update"]
+slots = ["callsign", "rwy", "wind"]
+say = [
+  "{callsign}, runway {rwy}, wind now {wind}.",
+  "{callsign}, updated wind {wind} for runway {rwy}.",
+  "{callsign}, wind update for runway {rwy}: {wind}.",
+]
+
+[tower.runway_closed]
+service = ["Tower"]
+role = "atc"
+phase = ["departure", "approach", "landed"]
+variant = "common"
+situation = ["runway_closed"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, runway {rwy} closed. Say intentions.",
+  "{callsign}, runway {rwy} unavailable, closure in effect. Advise intentions.",
+  "{callsign}, closure of runway {rwy}. State intentions.",
+]
+
+[tower.touch_go_cancelled]
+service = ["Tower"]
+role = "atc"
+phase = ["approach"]
+variant = "common"
+situation = ["touch_go_cancelled"]
+slots = ["callsign", "rwy"]
+say = [
+  "{callsign}, cancel touch-and-go clearance. Runway {rwy}, cleared to land.",
+  "{callsign}, runway {rwy}, cleared to land, touch-and-go clearance cancelled.",
+  "{callsign}, touch-and-go cancelled. Full-stop landing cleared runway {rwy}.",
+]
