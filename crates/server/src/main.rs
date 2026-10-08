@@ -229,6 +229,12 @@ fn tts_loop(
                 );
                 wav_bytes(&apply_fx(&samples, openatc_tts::SAMPLE_RATE, job.fx, &seed))
             });
+        if let Err(error) = &result {
+            eprintln!(
+                "openatc-ai: TTS failed: voice={} text={:?} error={error}",
+                job.voice, job.text
+            );
+        }
         let _ = job.reply.send(result);
     }
 }

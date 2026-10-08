@@ -141,6 +141,74 @@ pub fn assign_controller(
     controller
 }
 
+/// Describe position relative to the loaded receiving airport, never raw coordinates.
+fn position_report(state: &State, airport: Option<&Airport>) -> String {
+    let Some(airport) = airport.filter(|a| !a.icao.is_empty()) else {
+        return crate::dialogue::say("aircraft_position_unavailable", &[]);
+    };
+    let telemetry = &state.telemetry;
+    let name = if airport.name.is_empty() {
+        &airport.icao
+    } else {
+        &airport.name
+    };
+    let point = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    if telemetry.on_ground
+        && let Some(stand) = airport
+            .parking
+            .iter()
+            .filter(|p| !p.name.is_empty())
+            .map(|p| {
+                (
+                    p,
+                    (p.point.east - point.east).hypot(p.point.north - point.north),
+                )
+            })
+            .filter(|(_, distance)| *distance <= 75.0)
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+    {
+        return crate::dialogue::say(
+            "position_stand",
+            &[("airport", name.clone()), ("stand", stand.0.name.clone())],
+        );
+    }
+    let distance = super::ops::distance_nm(
+        airport.reference_latitude,
+        airport.reference_longitude,
+        telemetry.latitude,
+        telemetry.longitude,
+    );
+    if distance < 1.0 {
+        return crate::dialogue::say("position", &[("airport", name.clone())]);
+    }
+    let angle = point.east.atan2(point.north).to_degrees().rem_euclid(360.0);
+    let direction = if angle < 22.5 || angle >= 337.5 {
+        "north"
+    } else if angle < 67.5 {
+        "northeast"
+    } else if angle < 112.5 {
+        "east"
+    } else if angle < 157.5 {
+        "southeast"
+    } else if angle < 202.5 {
+        "south"
+    } else if angle < 247.5 {
+        "southwest"
+    } else if angle < 292.5 {
+        "west"
+    } else {
+        "northwest"
+    };
+    crate::dialogue::say(
+        "position_relative",
+        &[
+            ("airport", name.clone()),
+            ("distance", format!("{distance:.0}")),
+            ("direction", direction.to_owned()),
+        ],
+    )
+}
+
 /// Intents that bypass the frequency and callsign gates.
 #[must_use]
 pub fn open_intent(intent: &str) -> bool {
@@ -325,7 +393,9 @@ fn apply_readback(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome
             ctx,
             true,
             crate::dialogue::say(
-                if state.taxi_clearance.runway_taxi {
+                if !state.taxi_clearance.crossing_runway.is_empty() {
+                    "crossing_readback_correct"
+                } else if state.taxi_clearance.runway_taxi {
                     "runway_taxi_readback_correct"
                 } else {
                     "taxi_readback_correct_follow_the_approved_route"
@@ -503,6 +573,16 @@ fn apply_taxi(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             crate::dialogue::say("the_loaded_surface_airport_does_not_match", &[]),
         );
     }
+    if request.intent == "gate"
+        && state.plan.arrival_stand.is_empty()
+        && let Some(stand) = airport
+            .parking
+            .iter()
+            .find(|p| p.kind == "gate")
+            .or_else(|| airport.parking.first())
+    {
+        state.plan.arrival_stand.clone_from(&stand.name);
+    }
     let mut position = state.telemetry.clone();
     if state.demo && !position.position_valid && !airport.parking.is_empty() {
         position.latitude = airport.reference_latitude + airport.parking[0].point.north / 111_320.0;
@@ -632,6 +712,56 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
 /// Ground workflows: clearance, pushback, taxi, ready. `None` if not ours.
 fn apply_ground(state: &mut State, ctx: &RequestContext<'_>) -> Option<RequestOutcome> {
     let intent = ctx.request.intent.as_str();
+    if intent == "cross_runway" {
+        let runway = state.taxi_clearance.hold_short_runway.clone();
+        if !ctx.runway_taxi_authorized
+            || !state.taxi_clearance.guidance_complete
+            || runway.is_empty()
+            || !state.telemetry.on_ground
+            || state.telemetry.paused
+            || state.telemetry.ground_speed_knots > 2.0
+        {
+            return Some(reply(
+                state,
+                ctx,
+                false,
+                crate::dialogue::say("crossing_hold_required", &[]),
+            ));
+        }
+        let Some(airport) = ctx.airport else {
+            return Some(reply(
+                state,
+                ctx,
+                false,
+                crate::dialogue::say("crossing_route_unavailable", &[]),
+            ));
+        };
+        if let Some(blocked) = crate::holding::blocked(airport, &runway, &state.telemetry) {
+            state.taxi_clearance.waiting_for_traffic = true;
+            return Some(reply(
+                state,
+                ctx,
+                false,
+                crate::dialogue::say(blocked, &[("runway", runway)]),
+            ));
+        }
+        let result = super::airport::calculate_crossing_route(airport, &state.telemetry, &runway);
+        return Some(match result {
+            Ok(mut route) => {
+                route
+                    .destination
+                    .clone_from(&state.taxi_clearance.destination);
+                route.to_parking = state.taxi_clearance.to_parking;
+                route.destination_point = state.taxi_clearance.destination_point;
+                route.pending_readback = true;
+                route.sequence = state.next_sequence;
+                let text = route.instructions.clone();
+                state.taxi_clearance = route;
+                reply(state, ctx, true, text)
+            }
+            Err(error) => reply(state, ctx, false, error),
+        });
+    }
     if intent == "clearance" {
         return Some(apply_clearance(state, ctx));
     }
@@ -790,6 +920,7 @@ fn apply_airborne(state: &mut State, ctx: &RequestContext<'_>) -> Option<Request
             ("route", (proposed.route).clone()),
         ],
     );
+    state.clearance_cancelled = false;
     state.clearance = Some(proposed);
     Some(reply(state, ctx, true, message))
 }
@@ -932,7 +1063,12 @@ fn apply_service(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome 
         );
     }
     if intent == "position" {
-        if !state.telemetry.position_valid {
+        if !state.telemetry.position_valid
+            || !state.telemetry.latitude.is_finite()
+            || !state.telemetry.longitude.is_finite()
+            || state.telemetry.latitude.abs() > 90.0
+            || state.telemetry.longitude.abs() > 180.0
+        {
             return reply(
                 state,
                 ctx,
@@ -940,18 +1076,13 @@ fn apply_service(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome 
                 crate::dialogue::say("aircraft_position_unavailable", &[]),
             );
         }
-        return reply(
-            state,
-            ctx,
-            true,
-            crate::dialogue::say(
-                "position",
-                &[
-                    ("latitude", format!("{:.6}", state.telemetry.latitude)),
-                    ("longitude", format!("{:.6}", state.telemetry.longitude)),
-                ],
-            ),
-        );
+        let message = crate::places::report(
+            state.telemetry.latitude,
+            state.telemetry.longitude,
+            state.telemetry.on_ground,
+        )
+        .unwrap_or_else(|| position_report(state, ctx.airport));
+        return reply(state, ctx, true, message);
     }
     if intent == "emergency" {
         if !ctx.realism.practice_emergencies {
@@ -995,16 +1126,18 @@ fn apply_service(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome 
 
 /// Record a pilot request, check radio/callsign requirements and dispatch its intent.
 pub fn apply_request(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
-    add_transmission(
-        state,
-        &state.plan.callsign.clone(),
-        if ctx.request.text.is_empty() {
-            &ctx.request.intent
-        } else {
-            &ctx.request.text
-        },
-        ctx.pilot_tag,
-    );
+    if !ctx.request.controller_initiated {
+        add_transmission(
+            state,
+            &state.plan.callsign.clone(),
+            if ctx.request.text.is_empty() {
+                &ctx.request.intent
+            } else {
+                &ctx.request.text
+            },
+            ctx.pilot_tag,
+        );
+    }
     // Open requests skip the gates below.
     let gated = !open_intent(&ctx.request.intent);
     if gated

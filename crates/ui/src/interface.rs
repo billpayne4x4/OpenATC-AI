@@ -72,6 +72,8 @@ pub struct Interface {
     pub radio_notice: String,
     /// User-editable station search, initially the nearest airport.
     pub station_filter: String,
+    /// Search configured aircraft crew controls.
+    pub crew_control_filter: String,
     /// Preserve an intentionally cleared station search.
     pub station_filter_initialized: bool,
     /// Station index/discovery request is pending.
@@ -232,6 +234,10 @@ pub struct Interface {
     pub background_opacity: f32,
     /// Reset confirmation armed.
     pub confirm_reset: bool,
+    /// Session reset awaiting an engine response.
+    pub reset_pending: bool,
+    /// Notifies the simulator host to clear flight-local callbacks and guidance.
+    pub flight_reset_generation: u64,
     can_pop_out: bool,
     popped_out: bool,
     expanded_height: f32,
@@ -249,6 +255,7 @@ impl Interface {
             nearby_stations: Vec::new(),
             radio_notice: String::new(),
             station_filter: String::new(),
+            crew_control_filter: String::new(),
             station_filter_initialized: false,
             stations_loading: false,
             stations_checked: 0.0,
@@ -329,8 +336,10 @@ impl Interface {
             transcript_fraction: 0.57,
             requested_frequency_khz: None,
             simulator_host: false,
-            background_opacity: 0.94,
+            background_opacity: 0.96,
             confirm_reset: false,
+            reset_pending: false,
+            flight_reset_generation: 0,
             can_pop_out: false,
             popped_out: false,
             expanded_height: 760.0,
@@ -348,6 +357,9 @@ impl Interface {
 
     /// Send a request with power gating, logging one SYSTEM line per outage.
     pub fn send(&mut self, request: &openatc_core::state::Request) {
+        if self.reset_pending {
+            return;
+        }
         if request.role != "copilot"
             && !can_transmit(&request.role, self.radio_power, self.bus_power)
         {
@@ -478,6 +490,9 @@ impl Interface {
 
     /// Push-to-talk for the message box mic: record on press, transcribe on release.
     pub fn mic_push_to_talk(&mut self, down: bool) {
+        if self.reset_pending {
+            return;
+        }
         if down {
             self.expand();
         }
@@ -496,6 +511,9 @@ impl Interface {
 
     /// Push-to-talk for Talk/Transmit: record on press, transcribe on release.
     pub fn talk_push_to_talk(&mut self, down: bool, copilot: bool) {
+        if self.reset_pending {
+            return;
+        }
         if down {
             self.expand();
             if self.speech.busy() || self.speech.recording() || self.speech.monitoring() {
@@ -656,20 +674,26 @@ impl Interface {
         }
         if let Some(reply) = self.engine.take_reply("/session/reset") {
             if reply.success {
-                if let Some(plan) = reply.data.get("plan")
-                    && let Ok(draft) = serde_json::from_value::<FlightPlan>(plan.clone())
-                {
-                    self.draft = draft;
-                    self.plan_loaded = true;
-                }
-                self.last_speech_sequence = 0;
-                self.last_transcript_sequence = 0;
-                self.speech_queue.clear();
-                self.local_notices.clear();
-                self.last_power_refusal.clear();
-                "Flight reset.".clone_into(&mut self.plan_notice);
+                self.engine.accept_reset(&reply.data);
+                let mut fresh = Self::new(&self.engine.endpoint());
+                // Keep the existing transport, settings and window placement.
+                std::mem::swap(&mut fresh.engine, &mut self.engine);
+                fresh.settings = self.settings.clone();
+                fresh.settings_loaded = self.settings_loaded;
+                fresh.last_settings_json = self.last_settings_json.clone();
+                fresh.simulator_host = self.simulator_host;
+                fresh.window_offset = self.window_offset;
+                fresh.window_size = self.window_size;
+                fresh.can_pop_out = self.can_pop_out;
+                fresh.popped_out = self.popped_out;
+                fresh.current_airport = self.current_airport.clone();
+                fresh.flight_reset_generation = self.flight_reset_generation;
+                fresh.clipboard = self.clipboard.take();
+                fresh.plan_notice = "New flight ready.".into();
+                *self = fresh;
             } else {
-                reply.error.clone_into(&mut self.settings_notice);
+                self.reset_pending = false;
+                reply.error.clone_into(&mut self.notice);
             }
         }
         if let Some(reply) = self.engine.take_reply("/request/auto-reply") {
@@ -757,11 +781,12 @@ impl Interface {
                 let pilot = !controller
                     && entry.speaker != "COPILOT"
                     && entry.speaker != "CABIN"
+                    && entry.speaker != "ATTENDANT"
                     && entry.speaker != "GROUND";
                 if (controller && self.settings.controller_speech)
                     || (entry.speaker == "COPILOT" && self.settings.copilot_speech)
                     || (pilot && self.settings.pilot_speech)
-                    || entry.speaker == "CABIN"
+                    || matches!(entry.speaker.as_str(), "CABIN" | "ATTENDANT")
                     || entry.speaker == "GROUND"
                 {
                     self.speech_queue.push_back(entry.clone());
@@ -783,7 +808,7 @@ impl Interface {
     pub fn speak_entry(&mut self, entry: &openatc_core::state::Transmission) {
         let role = if entry.speaker == "GROUND" {
             4
-        } else if entry.speaker == "CABIN" {
+        } else if matches!(entry.speaker.as_str(), "CABIN" | "ATTENDANT") {
             3
         } else if entry.speaker == "COPILOT" {
             1
@@ -816,9 +841,12 @@ impl Interface {
         });
     }
 
-    /// Per-frame pump: replies, voice health, settings and plan mirrors.
+    /// Process replies and refresh voice, settings and flight data.
     pub fn tick(&mut self) {
         self.poll_replies();
+        if self.reset_pending {
+            return;
+        }
         let now = now_seconds();
         if self.engine.connected()
             && (self.last_voice_check == 0.0 || now - self.last_voice_check > 15.0)
@@ -1077,6 +1105,23 @@ impl Interface {
         }
     }
 
+    /// Start a clean flight without unloading the simulator plugin.
+    pub fn new_flight(&mut self) {
+        if self.reset_pending {
+            return;
+        }
+        self.speech.stop_monitoring();
+        self.speech.stop_speech();
+        self.speech_queue.clear();
+        self.ptt_armed = false;
+        self.pending_clearance = None;
+        self.requested_frequency_khz = None;
+        self.flight_reset_generation = self.flight_reset_generation.wrapping_add(1);
+        self.reset_pending = true;
+        self.confirm_reset = false;
+        self.engine.post("/session/reset", serde_json::Value::Null);
+    }
+
     /// Draw the panel, returning one-frame window requests for the host.
     pub fn draw(&mut self, ui: &imgui::Ui) -> WindowActions {
         self.update_visibility(ui);
@@ -1084,13 +1129,13 @@ impl Interface {
         let opacity = if self.compact {
             self.settings.faded_opacity.clamp(0.1, 0.85)
         } else {
-            0.94
+            0.96
         };
         self.background_opacity +=
             (opacity - self.background_opacity) * (ui.io().delta_time * 12.0).min(1.0);
         let _background = ui.push_style_color(
             imgui::StyleColor::WindowBg,
-            [0.09, 0.125, 0.165, self.background_opacity],
+            [0.205, 0.25, 0.29, self.background_opacity],
         );
         ui.window("OpenATC AI")
             .position(self.window_offset, imgui::Condition::Always)
@@ -1108,7 +1153,23 @@ impl Interface {
                 ui.child_window("##page")
                     .size([0.0, (ui.content_region_avail()[1] - 24.0).max(1.0)])
                     .scroll_bar(self.page != 0)
-                    .build(|| self.draw_body(ui, &state));
+                    .build(|| {
+                        if self.reset_pending { ui.text("Starting a new flight..."); }
+                        else { self.draw_body(ui, &state); }
+                    });
+                if self.confirm_reset { ui.open_popup("New flight?"); }
+                ui.modal_popup("New flight?", || {
+                    ui.text_wrapped("Clear the flight plan, conversation, clearances and pending crew actions? Settings and controller voices are kept. Aircraft controls stay as they are.");
+                    if ui.button("New flight") {
+                        self.new_flight();
+                        ui.close_current_popup();
+                    }
+                    ui.same_line();
+                    if ui.button("Cancel") {
+                        self.confirm_reset = false;
+                        ui.close_current_popup();
+                    }
+                });
                 self.resize_grip(ui);
             });
         let mut actions = std::mem::take(&mut self.window_actions);
@@ -1203,7 +1264,7 @@ impl Interface {
     /// Drag area with the centered title.
     fn toolbar_drag(&mut self, ui: &imgui::Ui, scale: f32) {
         ui.same_line();
-        let right_buttons = if self.can_pop_out { 3.0 } else { 2.0 };
+        let right_buttons = if self.can_pop_out { 4.0 } else { 3.0 };
         let drag_width = (ui.content_region_avail()[0] - right_buttons * 39.0 * scale).max(1.0);
         let position = ui.cursor_screen_pos();
         ui.invisible_button("##drag-window", [drag_width, 32.0 * scale]);
@@ -1224,9 +1285,16 @@ impl Interface {
         }
     }
 
-    /// Pin, compact and pop-out controls on the right.
+    /// New flight, pin, compact and pop-out controls on the right.
     fn toolbar_right(&mut self, ui: &imgui::Ui, _scale: f32) {
         use widgets::{ToolbarIcon, icon_button};
+        ui.same_line();
+        {
+            let _disabled = ui.begin_disabled(self.reset_pending);
+            if icon_button(ui, "New flight", ToolbarIcon::NewFile, false) {
+                self.confirm_reset = true;
+            }
+        }
         ui.same_line();
         if icon_button(
             ui,

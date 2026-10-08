@@ -1,5 +1,7 @@
 //! Companion engine for controller state, local HTTP requests and AI/STT/TTS services.
 
+mod crew;
+mod flight;
 mod lifecycle;
 mod radio;
 mod routes;
@@ -20,6 +22,14 @@ pub const VERSION: &str = "0.2.1";
 
 /// Everything the engine owns: session state plus configuration.
 pub struct EngineState {
+    /// Invalidates work started before a new-flight reset.
+    pub session_generation: u64,
+    /// Previous phrase choices and transmitted wording.
+    pub phrase_history: radio::PhraseHistory,
+    /// Aircraft crew controls, live readbacks and checklist progress.
+    pub crew: crew::CrewSession,
+    /// Automatic station transitions and arrival permissions.
+    pub flow: flight::FlightFlow,
     /// Live session (plan, telemetry, phase, transcript, ...).
     pub session: State,
     /// Operator settings.
@@ -221,6 +231,10 @@ async fn main() {
         load_regions(std::path::Path::new(&regions_path)).unwrap_or_default()
     };
     let speech_source = support::resolve_speech_dir(&config_dir, &exe_dir);
+    eprintln!(
+        "Speech library: {speech_source}; phrase variety: {}",
+        settings.llm_phrase_variety
+    );
     if !speech_source.is_empty()
         && let Err(error) = openatc_core::dialogue::load(
             &std::path::Path::new(&speech_source).join("runtime/responses.toml"),
@@ -241,6 +255,10 @@ async fn main() {
         }
     };
     let shared: Shared = Arc::new(RwLock::new(EngineState {
+        session_generation: 0,
+        phrase_history: radio::PhraseHistory::load(&config_dir),
+        crew: crew::CrewSession::default(),
+        flow: flight::FlightFlow::default(),
         session: State::default(),
         settings,
         stations: Vec::new(),
@@ -267,6 +285,8 @@ async fn main() {
         .route("/state", get(routes::full_state))
         .route("/settings", post(routes::post_settings))
         .route("/simulator/root", post(routes::post_simulator_root))
+        .route("/crew/observe", post(crew::observe))
+        .route("/crew/ack", post(crew::acknowledge))
         .route("/request", post(routes::post_request))
         .route("/request/auto-reply", post(routes::post_auto_reply))
         .route("/plan", post(routes::post_plan))

@@ -255,3 +255,72 @@ fn mid_runway_hold_requires_separate_backtrack_to_the_departure_end() {
     assert!(runway_route.runway_taxi);
     assert!(!runway_route.approved);
 }
+
+#[test]
+fn nearby_parallel_runway_is_the_hold_not_the_departure_runway() {
+    let text = "1 0 0 0 TEST Parallel runways\n100 45 1 1 0.25 0 3 0 25R 0 0 0 0 2 0 0 0 07L 0 0.02 0 0 2 0 0 0\n100 45 1 1 0.25 0 3 0 25L -0.002 0 0 0 2 0 0 0 07R -0.002 0.02 0 0 2 0 0 0\n1201 0.003 0.002 both 1\n1201 0.001 0.002 both 2\n1201 -0.001 0.002 both 3\n1201 -0.001 0 both 4\n1202 1 2 twoway taxiway_C Alpha\n1202 2 3 twoway taxiway_C Alpha\n1204 departure 25R,07L\n1202 3 4 twoway taxiway_C Bravo\n";
+    let airport = load_airport(text, "TEST").unwrap();
+    let telemetry = Telemetry {
+        latitude: 0.003,
+        longitude: 0.002,
+        on_ground: true,
+        position_valid: true,
+        ..Default::default()
+    };
+    let route = calculate_taxi_route(&airport, &telemetry, "25L", false, 'C').unwrap();
+    assert_eq!(route.destination, "25L");
+    assert_eq!(route.hold_short_runway, "25R");
+    assert!(!route.backtrack_required);
+    let holding = Telemetry {
+        latitude: 0.001,
+        ..telemetry
+    };
+    let crossing =
+        openatc_core::airport::calculate_crossing_route(&airport, &holding, "25R").unwrap();
+    assert_eq!(crossing.crossing_runway, "25R");
+    let clear = Telemetry {
+        latitude: -0.001,
+        ..holding
+    };
+    let onward = calculate_taxi_route(&airport, &clear, "25L", false, 'C').unwrap();
+    assert_eq!(onward.hold_short_runway, "25L");
+}
+
+#[test]
+#[ignore = "requires installed X-Plane scenery"]
+fn installed_parallel_runway_route_names_actual_first_hold() {
+    let root = std::env::var("OPENATC_SIM_ROOT").expect("OPENATC_SIM_ROOT");
+    let airport =
+        load_airport_from_simulator(&root, "KLAX", &|p| std::path::Path::new(p).exists(), &|p| {
+            std::fs::read_to_string(p).map_err(|e| e.to_string())
+        })
+        .unwrap();
+    let telemetry = Telemetry {
+        latitude: 33.940738,
+        longitude: -118.383234,
+        on_ground: true,
+        position_valid: true,
+        ..Default::default()
+    };
+    let route = calculate_taxi_route(&airport, &telemetry, "25L", false, 'C').unwrap();
+    println!("{}; end={:?}", route.instructions, route.points.last());
+    assert_eq!(route.hold_short_runway, "25R");
+    let end = route.points.last().unwrap();
+    let holding = Telemetry {
+        latitude: airport.reference_latitude + end.north / 111320.0,
+        longitude: airport.reference_longitude
+            + end.east / (111320.0 * airport.reference_latitude.to_radians().cos()),
+        ..telemetry
+    };
+    let cross = openatc_core::airport::calculate_crossing_route(&airport, &holding, "25R").unwrap();
+    println!("cross={:?}", cross.points);
+    let end = cross.points.last().unwrap();
+    let clear = Telemetry {
+        latitude: airport.reference_latitude + end.north / 111320.0,
+        longitude: airport.reference_longitude
+            + end.east / (111320.0 * airport.reference_latitude.to_radians().cos()),
+        ..holding
+    };
+    let onward = calculate_taxi_route(&airport, &clear, "25L", false, 'C').unwrap();
+    assert_eq!(onward.hold_short_runway, "25L");
+}

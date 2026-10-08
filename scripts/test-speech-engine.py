@@ -79,6 +79,11 @@ try:
                     assert f'Regional scope: {region}.' in captured[-1]
                     assert phrase in captured[-1]
                     assert f'flight rules {rules}' in captured[-1]
+                status, body = request('suggest', {'role':'atc', 'airport':'EGLL', 'flightRules':'ifr', 'facts':'Test wording examples only.'})
+                assert status == 200, (status, body)
+                prompt = captured[-1]
+                assert prompt.count('\n- ') > 18, 'example list still appears truncated'
+                assert 'rather than copying an example word for word' in prompt
                 before = len(captured)
                 for body in [
                     {'role':'atc','airport':'YMLT','flightRules':'vfr','phase':'cruise','situations':['basic_service']},
@@ -87,7 +92,7 @@ try:
                 ]:
                     assert request('suggest',body)[0] == 400
                 assert len(captured) == before, 'invalid regional/rules selection reached the model'
-                print('Real engine /suggest: 3 scoped selections and 3 rejected requests passed with local fake model')
+                print('Real engine /suggest: 3 scoped selections, complete example retrieval and 3 rejected requests passed with local fake model')
             finally:
                 engine.terminate()
                 engine.wait(timeout=5)

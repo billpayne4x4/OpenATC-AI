@@ -7,6 +7,33 @@ use axum::{
 };
 use serde_json::{Value, json};
 
+/// Wording history is separate from flight state, so a new flight keeps phrase rotation.
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct PhraseHistory {
+    pub choices: std::collections::BTreeMap<String, usize>,
+    pub templates: std::collections::BTreeMap<String, String>,
+    pub last: std::collections::BTreeMap<String, String>,
+}
+impl PhraseHistory {
+    pub fn load(dir: &std::path::Path) -> Self {
+        std::fs::read(dir.join("phrase-history.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default()
+    }
+    pub fn save(&self, dir: &std::path::Path) {
+        if let Ok(bytes) = serde_json::to_vec(self) {
+            let temporary = dir.join("phrase-history.json.tmp");
+            if let Err(error) = std::fs::write(&temporary, bytes)
+                .and_then(|()| std::fs::rename(temporary, dir.join("phrase-history.json")))
+            {
+                eprintln!("Could not save phrase history: {error}");
+            }
+        }
+    }
+}
+
 fn error(text: &str) -> Response {
     (
         axum::http::StatusCode::BAD_REQUEST,
@@ -232,20 +259,42 @@ pub fn apply_wording(
         ),
         ..Default::default()
     };
-    let pick = (state.session.next_sequence as usize) % entry.say.len().max(1);
-    if let Some(line) = entry.say.get(pick)
-        && let Ok(text) = openatc_core::speech::render_checked(line, &slots)
-    {
-        result.message.clone_from(&text);
-        if let Some(last) = state
-            .session
-            .transcript
-            .last_mut()
-            .filter(|e| e.speaker == "ATC")
-        {
-            last.text = text;
-            last.position.clone_from(&station.name);
+    let next = state.phrase_history.choices.get(id).copied().unwrap_or(0);
+    let previous = state.phrase_history.templates.get(id);
+    let Some((pick, line)) = (0..entry.say.len())
+        .map(|offset| {
+            let pick = (next + offset) % entry.say.len();
+            (pick, &entry.say[pick])
+        })
+        .find(|(_, line)| previous != Some(*line))
+        .or_else(|| entry.say.first().map(|line| (0, line)))
+    else {
+        return;
+    };
+    match openatc_core::speech::render_checked(line, &slots) {
+        Ok(text) => {
+            state.phrase_history.choices.insert(id.to_owned(), pick + 1);
+            state
+                .phrase_history
+                .templates
+                .insert(id.to_owned(), line.clone());
+            eprintln!(
+                "ATC wording: template={id} alternative={} station={} text={text}",
+                pick + 1,
+                station.name
+            );
+            result.message.clone_from(&text);
+            if let Some(last) = state
+                .session
+                .transcript
+                .last_mut()
+                .filter(|e| e.speaker == "ATC")
+            {
+                last.text = text;
+                last.position.clone_from(&station.name);
+            }
         }
+        Err(error) => eprintln!("ATC wording template {id} could not be rendered: {error}"),
     }
 }
 /// Conservative paraphrase check: every non-filler token stays in the same order.
@@ -275,6 +324,32 @@ pub fn safe_variety(original: &str, candidate: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::safe_variety;
+    #[test]
+    fn phrase_history_survives_reload() {
+        let dir = std::env::temp_dir().join(format!(
+            "openatc-phrase-history-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut history = super::PhraseHistory::default();
+        history.choices.insert("delivery.ifr_route".into(), 3);
+        history.last.insert(
+            "station|clearance".into(),
+            "Recorded clearance wording".into(),
+        );
+        history.save(&dir);
+        let restored = super::PhraseHistory::load(&dir);
+        assert_eq!(restored.choices["delivery.ifr_route"], 3);
+        assert_eq!(
+            restored.last["station|clearance"],
+            "Recorded clearance wording"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn wording_must_preserve_all_operational_tokens() {
         assert!(!safe_variety("THE, taxi via YOUR.", "Taxi via."));

@@ -1,0 +1,1327 @@
+# X-Plane 12 public cockpit commands; runtime availability is resolved through the SDK.
+sim/engines/throttle_full	engines throttle full
+sim/engines/throttle_idle	engines throttle idle
+sim/engines/mixture_min	engines mixture min
+sim/engines/mixture_max	engines mixture max
+sim/engines/carb_heat_off	engines carb heat off
+sim/engines/carb_heat_on	engines carb heat on
+sim/engines/carb_heat_toggle	engines carb heat toggle
+sim/flight_controls/cowl_flaps_open	flight controls cowl flaps open
+sim/flight_controls/cowl_flaps_closed	flight controls cowl flaps closed
+sim/engines/engage_starters	engines engage starters
+sim/engines/idle_hi_lo_toggle	engines idle hi lo toggle
+sim/engines/idle_hi_lo_toggle_1	engines idle hi lo toggle 1
+sim/engines/idle_hi_lo_toggle_2	engines idle hi lo toggle 2
+sim/engines/idle_hi_lo_toggle_3	engines idle hi lo toggle 3
+sim/engines/idle_hi_lo_toggle_4	engines idle hi lo toggle 4
+sim/engines/idle_hi_lo_toggle_5	engines idle hi lo toggle 5
+sim/engines/idle_hi_lo_toggle_6	engines idle hi lo toggle 6
+sim/engines/idle_hi_lo_toggle_7	engines idle hi lo toggle 7
+sim/engines/idle_hi_lo_toggle_8	engines idle hi lo toggle 8
+sim/engines/governor_on	engines governor on
+sim/engines/governor_off	engines governor off
+sim/engines/governor_toggle	engines governor toggle
+sim/engines/collective_idle_release	engines collective idle release
+sim/engines/collective_idle_release_1	engines collective idle release 1
+sim/engines/collective_idle_release_2	engines collective idle release 2
+sim/engines/collective_idle_release_3	engines collective idle release 3
+sim/engines/collective_idle_release_4	engines collective idle release 4
+sim/engines/collective_idle_release_5	engines collective idle release 5
+sim/engines/collective_idle_release_6	engines collective idle release 6
+sim/engines/collective_idle_release_7	engines collective idle release 7
+sim/engines/collective_idle_release_8	engines collective idle release 8
+sim/engines/clutch_on	engines clutch on
+sim/engines/clutch_off	engines clutch off
+sim/engines/clutch_toggle	engines clutch toggle
+sim/engines/beta_toggle	engines beta toggle
+sim/engines/thrust_reverse_toggle	engines thrust reverse toggle
+sim/engines/beta_toggle_1	engines beta toggle 1
+sim/engines/beta_toggle_2	engines beta toggle 2
+sim/engines/beta_toggle_3	engines beta toggle 3
+sim/engines/beta_toggle_4	engines beta toggle 4
+sim/engines/beta_toggle_5	engines beta toggle 5
+sim/engines/beta_toggle_6	engines beta toggle 6
+sim/engines/beta_toggle_7	engines beta toggle 7
+sim/engines/beta_toggle_8	engines beta toggle 8
+sim/engines/thrust_reverse_toggle_1	engines thrust reverse toggle 1
+sim/engines/thrust_reverse_toggle_2	engines thrust reverse toggle 2
+sim/engines/thrust_reverse_toggle_3	engines thrust reverse toggle 3
+sim/engines/thrust_reverse_toggle_4	engines thrust reverse toggle 4
+sim/engines/thrust_reverse_toggle_5	engines thrust reverse toggle 5
+sim/engines/thrust_reverse_toggle_6	engines thrust reverse toggle 6
+sim/engines/thrust_reverse_toggle_7	engines thrust reverse toggle 7
+sim/engines/thrust_reverse_toggle_8	engines thrust reverse toggle 8
+sim/flight_controls/cowl_flaps_closed_1	flight controls cowl flaps closed 1
+sim/flight_controls/cowl_flaps_closed_2	flight controls cowl flaps closed 2
+sim/flight_controls/cowl_flaps_closed_3	flight controls cowl flaps closed 3
+sim/flight_controls/cowl_flaps_closed_4	flight controls cowl flaps closed 4
+sim/flight_controls/cowl_flaps_closed_5	flight controls cowl flaps closed 5
+sim/flight_controls/cowl_flaps_closed_6	flight controls cowl flaps closed 6
+sim/flight_controls/cowl_flaps_closed_7	flight controls cowl flaps closed 7
+sim/flight_controls/cowl_flaps_closed_8	flight controls cowl flaps closed 8
+sim/flight_controls/cowl_flaps_open_1	flight controls cowl flaps open 1
+sim/flight_controls/cowl_flaps_open_2	flight controls cowl flaps open 2
+sim/flight_controls/cowl_flaps_open_3	flight controls cowl flaps open 3
+sim/flight_controls/cowl_flaps_open_4	flight controls cowl flaps open 4
+sim/flight_controls/cowl_flaps_open_5	flight controls cowl flaps open 5
+sim/flight_controls/cowl_flaps_open_6	flight controls cowl flaps open 6
+sim/flight_controls/cowl_flaps_open_7	flight controls cowl flaps open 7
+sim/flight_controls/cowl_flaps_open_8	flight controls cowl flaps open 8
+sim/engines/fire_ext_1_off	engines fire ext 1 off
+sim/engines/fire_ext_2_off	engines fire ext 2 off
+sim/engines/fire_ext_3_off	engines fire ext 3 off
+sim/engines/fire_ext_4_off	engines fire ext 4 off
+sim/engines/fire_ext_5_off	engines fire ext 5 off
+sim/engines/fire_ext_6_off	engines fire ext 6 off
+sim/engines/fire_ext_7_off	engines fire ext 7 off
+sim/engines/fire_ext_8_off	engines fire ext 8 off
+sim/engines/fire_ext_1_on	engines fire ext 1 on
+sim/engines/fire_ext_2_on	engines fire ext 2 on
+sim/engines/fire_ext_3_on	engines fire ext 3 on
+sim/engines/fire_ext_4_on	engines fire ext 4 on
+sim/engines/fire_ext_5_on	engines fire ext 5 on
+sim/engines/fire_ext_6_on	engines fire ext 6 on
+sim/engines/fire_ext_7_on	engines fire ext 7 on
+sim/engines/fire_ext_8_on	engines fire ext 8 on
+sim/flight_controls/roll_left	flight controls roll left
+sim/flight_controls/roll_right	flight controls roll right
+sim/flight_controls/flaps_detent_1	flight controls flaps detent 1
+sim/flight_controls/flaps_detent_2	flight controls flaps detent 2
+sim/flight_controls/flaps_detent_3	flight controls flaps detent 3
+sim/flight_controls/flaps_detent_4	flight controls flaps detent 4
+sim/flight_controls/flaps_detent_5	flight controls flaps detent 5
+sim/flight_controls/flaps_detent_6	flight controls flaps detent 6
+sim/flight_controls/flaps_detent_7	flight controls flaps detent 7
+sim/flight_controls/flaps_detent_8	flight controls flaps detent 8
+sim/flight_controls/vector_sweep_aft	flight controls vector sweep aft
+sim/flight_controls/vector_sweep_forward	flight controls vector sweep forward
+sim/flight_controls/wings_fold_aft	flight controls wings fold aft
+sim/flight_controls/wings_fold_fwd	flight controls wings fold fwd
+sim/flight_controls/speed_brakes_toggle	flight controls speed brakes toggle
+sim/flight_controls/speed_brakes_arm_toggle	flight controls speed brakes arm toggle
+sim/flight_controls/landing_gear_toggle	flight controls landing gear toggle
+sim/flight_controls/landing_gear_off	flight controls landing gear off
+sim/flight_controls/landing_gear_emer_on	flight controls landing gear emer on
+sim/flight_controls/landing_gear_emer_off	flight controls landing gear emer off
+sim/flight_controls/nwheel_steer_on	flight controls nwheel steer on
+sim/flight_controls/nwheel_steer_off	flight controls nwheel steer off
+sim/flight_controls/nwheel_steer_toggle	flight controls nwheel steer toggle
+sim/flight_controls/tail_wheel_lock_toggle	flight controls tail wheel lock toggle
+sim/flight_controls/tail_wheel_lock_engage	flight controls tail wheel lock engage
+sim/flight_controls/water_rudder_toggle	flight controls water rudder toggle
+sim/flight_controls/left_brake	flight controls left brake
+sim/flight_controls/right_brake	flight controls right brake
+sim/flight_controls/anchor_deploy	flight controls anchor deploy
+sim/flight_controls/anchor_retract	flight controls anchor retract
+sim/flight_controls/anchor_toggle	flight controls anchor toggle
+sim/flight_controls/brakes_toggle_regular	flight controls brakes toggle regular
+sim/flight_controls/brakes_toggle_max	flight controls brakes toggle max
+sim/flight_controls/brakes_regular	flight controls brakes regular
+sim/flight_controls/brakes_max	flight controls brakes max
+sim/flight_controls/brakes_toggle_auto	flight controls brakes toggle auto
+sim/flight_controls/brakes_dn_auto	flight controls brakes dn auto
+sim/flight_controls/brakes_off_auto	flight controls brakes off auto
+sim/flight_controls/brakes_rto_auto	flight controls brakes rto auto
+sim/flight_controls/brakes_1_auto	flight controls brakes 1 auto
+sim/flight_controls/brakes_2_auto	flight controls brakes 2 auto
+sim/flight_controls/brakes_3_auto	flight controls brakes 3 auto
+sim/flight_controls/brakes_max_auto	flight controls brakes max auto
+sim/flight_controls/park_brake_set	flight controls park brake set
+sim/flight_controls/park_brake_release	flight controls park brake release
+sim/flight_controls/park_brake_toggle	flight controls park brake toggle
+sim/flight_controls/park_brake_valve_close	flight controls park brake valve close
+sim/flight_controls/park_brake_valve_open	flight controls park brake valve open
+sim/flight_controls/park_brake_valve_toggle	flight controls park brake valve toggle
+sim/flight_controls/install_chocks	flight controls install chocks
+sim/flight_controls/remove_chocks	flight controls remove chocks
+sim/flight_controls/toggle_chocks	flight controls toggle chocks
+sim/flight_controls/hydraulic_on	flight controls hydraulic on
+sim/flight_controls/hydraulic_off	flight controls hydraulic off
+sim/flight_controls/hydraulic_tog	flight controls hydraulic tog
+sim/flight_controls/hydraulic_acmp_on	flight controls hydraulic acmp on
+sim/flight_controls/hydraulic_acmp_off	flight controls hydraulic acmp off
+sim/flight_controls/hydraulic_acmp_tog	flight controls hydraulic acmp tog
+sim/flight_controls/hydraulic_acmp2_on	flight controls hydraulic acmp2 on
+sim/flight_controls/hydraulic_acmp2_off	flight controls hydraulic acmp2 off
+sim/flight_controls/hydraulic_acmp2_tog	flight controls hydraulic acmp2 tog
+sim/flight_controls/hydraulic_acmp3_on	flight controls hydraulic acmp3 on
+sim/flight_controls/hydraulic_acmp3_off	flight controls hydraulic acmp3 off
+sim/flight_controls/hydraulic_acmp3_tog	flight controls hydraulic acmp3 tog
+sim/flight_controls/hydraulic_eng1A_on	flight controls hydraulic eng1A on
+sim/flight_controls/hydraulic_eng2A_on	flight controls hydraulic eng2A on
+sim/flight_controls/hydraulic_eng3A_on	flight controls hydraulic eng3A on
+sim/flight_controls/hydraulic_eng4A_on	flight controls hydraulic eng4A on
+sim/flight_controls/hydraulic_eng5A_on	flight controls hydraulic eng5A on
+sim/flight_controls/hydraulic_eng6A_on	flight controls hydraulic eng6A on
+sim/flight_controls/hydraulic_eng7A_on	flight controls hydraulic eng7A on
+sim/flight_controls/hydraulic_eng8A_on	flight controls hydraulic eng8A on
+sim/flight_controls/hydraulic_eng1B_on	flight controls hydraulic eng1B on
+sim/flight_controls/hydraulic_eng2B_on	flight controls hydraulic eng2B on
+sim/flight_controls/hydraulic_eng3B_on	flight controls hydraulic eng3B on
+sim/flight_controls/hydraulic_eng4B_on	flight controls hydraulic eng4B on
+sim/flight_controls/hydraulic_eng5B_on	flight controls hydraulic eng5B on
+sim/flight_controls/hydraulic_eng6B_on	flight controls hydraulic eng6B on
+sim/flight_controls/hydraulic_eng7B_on	flight controls hydraulic eng7B on
+sim/flight_controls/hydraulic_eng8B_on	flight controls hydraulic eng8B on
+sim/flight_controls/hydraulic_eng1C_on	flight controls hydraulic eng1C on
+sim/flight_controls/hydraulic_eng2C_on	flight controls hydraulic eng2C on
+sim/flight_controls/hydraulic_eng3C_on	flight controls hydraulic eng3C on
+sim/flight_controls/hydraulic_eng4C_on	flight controls hydraulic eng4C on
+sim/flight_controls/hydraulic_eng5C_on	flight controls hydraulic eng5C on
+sim/flight_controls/hydraulic_eng6C_on	flight controls hydraulic eng6C on
+sim/flight_controls/hydraulic_eng7C_on	flight controls hydraulic eng7C on
+sim/flight_controls/hydraulic_eng8C_on	flight controls hydraulic eng8C on
+sim/flight_controls/hydraulic_eng1A_off	flight controls hydraulic eng1A off
+sim/flight_controls/hydraulic_eng2A_off	flight controls hydraulic eng2A off
+sim/flight_controls/hydraulic_eng3A_off	flight controls hydraulic eng3A off
+sim/flight_controls/hydraulic_eng4A_off	flight controls hydraulic eng4A off
+sim/flight_controls/hydraulic_eng5A_off	flight controls hydraulic eng5A off
+sim/flight_controls/hydraulic_eng6A_off	flight controls hydraulic eng6A off
+sim/flight_controls/hydraulic_eng7A_off	flight controls hydraulic eng7A off
+sim/flight_controls/hydraulic_eng8A_off	flight controls hydraulic eng8A off
+sim/flight_controls/hydraulic_eng1B_off	flight controls hydraulic eng1B off
+sim/flight_controls/hydraulic_eng2B_off	flight controls hydraulic eng2B off
+sim/flight_controls/hydraulic_eng3B_off	flight controls hydraulic eng3B off
+sim/flight_controls/hydraulic_eng4B_off	flight controls hydraulic eng4B off
+sim/flight_controls/hydraulic_eng5B_off	flight controls hydraulic eng5B off
+sim/flight_controls/hydraulic_eng6B_off	flight controls hydraulic eng6B off
+sim/flight_controls/hydraulic_eng7B_off	flight controls hydraulic eng7B off
+sim/flight_controls/hydraulic_eng8B_off	flight controls hydraulic eng8B off
+sim/flight_controls/hydraulic_eng1C_off	flight controls hydraulic eng1C off
+sim/flight_controls/hydraulic_eng2C_off	flight controls hydraulic eng2C off
+sim/flight_controls/hydraulic_eng3C_off	flight controls hydraulic eng3C off
+sim/flight_controls/hydraulic_eng4C_off	flight controls hydraulic eng4C off
+sim/flight_controls/hydraulic_eng5C_off	flight controls hydraulic eng5C off
+sim/flight_controls/hydraulic_eng6C_off	flight controls hydraulic eng6C off
+sim/flight_controls/hydraulic_eng7C_off	flight controls hydraulic eng7C off
+sim/flight_controls/hydraulic_eng8C_off	flight controls hydraulic eng8C off
+sim/flight_controls/hydraulic_eng1A_tog	flight controls hydraulic eng1A tog
+sim/flight_controls/hydraulic_eng2A_tog	flight controls hydraulic eng2A tog
+sim/flight_controls/hydraulic_eng3A_tog	flight controls hydraulic eng3A tog
+sim/flight_controls/hydraulic_eng4A_tog	flight controls hydraulic eng4A tog
+sim/flight_controls/hydraulic_eng5A_tog	flight controls hydraulic eng5A tog
+sim/flight_controls/hydraulic_eng6A_tog	flight controls hydraulic eng6A tog
+sim/flight_controls/hydraulic_eng7A_tog	flight controls hydraulic eng7A tog
+sim/flight_controls/hydraulic_eng8A_tog	flight controls hydraulic eng8A tog
+sim/flight_controls/hydraulic_eng1B_tog	flight controls hydraulic eng1B tog
+sim/flight_controls/hydraulic_eng2B_tog	flight controls hydraulic eng2B tog
+sim/flight_controls/hydraulic_eng3B_tog	flight controls hydraulic eng3B tog
+sim/flight_controls/hydraulic_eng4B_tog	flight controls hydraulic eng4B tog
+sim/flight_controls/hydraulic_eng5B_tog	flight controls hydraulic eng5B tog
+sim/flight_controls/hydraulic_eng6B_tog	flight controls hydraulic eng6B tog
+sim/flight_controls/hydraulic_eng7B_tog	flight controls hydraulic eng7B tog
+sim/flight_controls/hydraulic_eng8B_tog	flight controls hydraulic eng8B tog
+sim/flight_controls/hydraulic_eng1C_tog	flight controls hydraulic eng1C tog
+sim/flight_controls/hydraulic_eng2C_tog	flight controls hydraulic eng2C tog
+sim/flight_controls/hydraulic_eng3C_tog	flight controls hydraulic eng3C tog
+sim/flight_controls/hydraulic_eng4C_tog	flight controls hydraulic eng4C tog
+sim/flight_controls/hydraulic_eng5C_tog	flight controls hydraulic eng5C tog
+sim/flight_controls/hydraulic_eng6C_tog	flight controls hydraulic eng6C tog
+sim/flight_controls/hydraulic_eng7C_tog	flight controls hydraulic eng7C tog
+sim/flight_controls/hydraulic_eng8C_tog	flight controls hydraulic eng8C tog
+sim/flight_controls/hydraulic_rat_man_on	flight controls hydraulic rat man on
+sim/flight_controls/tailhook_toggle	flight controls tailhook toggle
+sim/flight_controls/canopy_open	flight controls canopy open
+sim/flight_controls/canopy_close	flight controls canopy close
+sim/flight_controls/canopy_toggle	flight controls canopy toggle
+sim/flight_controls/rotor_brake_toggle	flight controls rotor brake toggle
+sim/flight_controls/hotel_mode_toggle	flight controls hotel mode toggle
+sim/flight_controls/puffers_toggle	flight controls puffers toggle
+sim/engines/rockets_left	engines rockets left
+sim/engines/rockets_right	engines rockets right
+sim/engines/rockets_forward	engines rockets forward
+sim/engines/rockets_aft	engines rockets aft
+sim/fuel/fuel_tank_selector_lft_one	fuel fuel tank selector lft one
+sim/fuel/fuel_tank_selector_rgt_one	fuel fuel tank selector rgt one
+sim/fuel/fuel_tank_pump_1_on	fuel fuel tank pump 1 on
+sim/fuel/fuel_tank_pump_2_on	fuel fuel tank pump 2 on
+sim/fuel/fuel_tank_pump_3_on	fuel fuel tank pump 3 on
+sim/fuel/fuel_tank_pump_4_on	fuel fuel tank pump 4 on
+sim/fuel/fuel_tank_pump_5_on	fuel fuel tank pump 5 on
+sim/fuel/fuel_tank_pump_6_on	fuel fuel tank pump 6 on
+sim/fuel/fuel_tank_pump_7_on	fuel fuel tank pump 7 on
+sim/fuel/fuel_tank_pump_8_on	fuel fuel tank pump 8 on
+sim/fuel/fuel_tank_pump_9_on	fuel fuel tank pump 9 on
+sim/fuel/fuel_tank_pump_1_off	fuel fuel tank pump 1 off
+sim/fuel/fuel_tank_pump_2_off	fuel fuel tank pump 2 off
+sim/fuel/fuel_tank_pump_3_off	fuel fuel tank pump 3 off
+sim/fuel/fuel_tank_pump_4_off	fuel fuel tank pump 4 off
+sim/fuel/fuel_tank_pump_5_off	fuel fuel tank pump 5 off
+sim/fuel/fuel_tank_pump_6_off	fuel fuel tank pump 6 off
+sim/fuel/fuel_tank_pump_7_off	fuel fuel tank pump 7 off
+sim/fuel/fuel_tank_pump_8_off	fuel fuel tank pump 8 off
+sim/fuel/fuel_tank_pump_9_off	fuel fuel tank pump 9 off
+sim/fuel/fuel_selector_none	fuel fuel selector none
+sim/fuel/fuel_selector_lft	fuel fuel selector lft
+sim/fuel/fuel_selector_ctr	fuel fuel selector ctr
+sim/fuel/fuel_selector_rgt	fuel fuel selector rgt
+sim/fuel/fuel_selector_aft	fuel fuel selector aft
+sim/fuel/fuel_selector_all	fuel fuel selector all
+sim/fuel/fuel_selector_none2	fuel fuel selector none2
+sim/fuel/left_fuel_selector_none	fuel left fuel selector none
+sim/fuel/left_fuel_selector_lft	fuel left fuel selector lft
+sim/fuel/left_fuel_selector_ctr	fuel left fuel selector ctr
+sim/fuel/left_fuel_selector_rgt	fuel left fuel selector rgt
+sim/fuel/left_fuel_selector_aft	fuel left fuel selector aft
+sim/fuel/left_fuel_selector_all	fuel left fuel selector all
+sim/fuel/right_fuel_selector_none	fuel right fuel selector none
+sim/fuel/right_fuel_selector_lft	fuel right fuel selector lft
+sim/fuel/right_fuel_selector_ctr	fuel right fuel selector ctr
+sim/fuel/right_fuel_selector_rgt	fuel right fuel selector rgt
+sim/fuel/right_fuel_selector_aft	fuel right fuel selector aft
+sim/fuel/right_fuel_selector_all	fuel right fuel selector all
+sim/fuel/fuel_transfer_to_lft	fuel fuel transfer to lft
+sim/fuel/fuel_transfer_to_ctr	fuel fuel transfer to ctr
+sim/fuel/fuel_transfer_to_rgt	fuel fuel transfer to rgt
+sim/fuel/fuel_transfer_to_aft	fuel fuel transfer to aft
+sim/fuel/fuel_transfer_to_off	fuel fuel transfer to off
+sim/fuel/fuel_transfer_from_lft	fuel fuel transfer from lft
+sim/fuel/fuel_transfer_from_ctr	fuel fuel transfer from ctr
+sim/fuel/fuel_transfer_from_rgt	fuel fuel transfer from rgt
+sim/fuel/fuel_transfer_from_aft	fuel fuel transfer from aft
+sim/fuel/fuel_transfer_from_off	fuel fuel transfer from off
+sim/fuel/fuel_crossfeed_from_lft_tank	fuel fuel crossfeed from lft tank
+sim/fuel/fuel_crossfeed_off	fuel fuel crossfeed off
+sim/fuel/fuel_crossfeed_from_rgt_tank	fuel fuel crossfeed from rgt tank
+sim/fuel/fuel_firewall_valve_lft_open	fuel fuel firewall valve lft open
+sim/fuel/fuel_firewall_valve_lft_closed	fuel fuel firewall valve lft closed
+sim/fuel/fuel_firewall_valve_rgt_open	fuel fuel firewall valve rgt open
+sim/fuel/fuel_firewall_valve_rgt_closed	fuel fuel firewall valve rgt closed
+sim/fuel/left_xfer_on	fuel left xfer on
+sim/fuel/left_xfer_off	fuel left xfer off
+sim/fuel/left_xfer_dn	fuel left xfer dn
+sim/fuel/right_xfer_on	fuel right xfer on
+sim/fuel/right_xfer_off	fuel right xfer off
+sim/fuel/right_xfer_dn	fuel right xfer dn
+sim/fuel/totalizer_init	fuel totalizer init
+sim/fuel/auto_crossfeed_on_open	fuel auto crossfeed on open
+sim/fuel/auto_crossfeed_auto	fuel auto crossfeed auto
+sim/fuel/auto_crossfeed_off	fuel auto crossfeed off
+sim/fuel/fuel_pumps_on	fuel fuel pumps on
+sim/fuel/fuel_pumps_off	fuel fuel pumps off
+sim/fuel/fuel_pumps_tog	fuel fuel pumps tog
+sim/fuel/fuel_pump_1_on	fuel fuel pump 1 on
+sim/fuel/fuel_pump_2_on	fuel fuel pump 2 on
+sim/fuel/fuel_pump_3_on	fuel fuel pump 3 on
+sim/fuel/fuel_pump_4_on	fuel fuel pump 4 on
+sim/fuel/fuel_pump_5_on	fuel fuel pump 5 on
+sim/fuel/fuel_pump_6_on	fuel fuel pump 6 on
+sim/fuel/fuel_pump_7_on	fuel fuel pump 7 on
+sim/fuel/fuel_pump_8_on	fuel fuel pump 8 on
+sim/fuel/fuel_pump_1_off	fuel fuel pump 1 off
+sim/fuel/fuel_pump_2_off	fuel fuel pump 2 off
+sim/fuel/fuel_pump_3_off	fuel fuel pump 3 off
+sim/fuel/fuel_pump_4_off	fuel fuel pump 4 off
+sim/fuel/fuel_pump_5_off	fuel fuel pump 5 off
+sim/fuel/fuel_pump_6_off	fuel fuel pump 6 off
+sim/fuel/fuel_pump_7_off	fuel fuel pump 7 off
+sim/fuel/fuel_pump_8_off	fuel fuel pump 8 off
+sim/fuel/fuel_pump_1_tog	fuel fuel pump 1 tog
+sim/fuel/fuel_pump_2_tog	fuel fuel pump 2 tog
+sim/fuel/fuel_pump_3_tog	fuel fuel pump 3 tog
+sim/fuel/fuel_pump_4_tog	fuel fuel pump 4 tog
+sim/fuel/fuel_pump_5_tog	fuel fuel pump 5 tog
+sim/fuel/fuel_pump_6_tog	fuel fuel pump 6 tog
+sim/fuel/fuel_pump_7_tog	fuel fuel pump 7 tog
+sim/fuel/fuel_pump_8_tog	fuel fuel pump 8 tog
+sim/fuel/fuel_pump_1_prime	fuel fuel pump 1 prime
+sim/fuel/fuel_pump_2_prime	fuel fuel pump 2 prime
+sim/fuel/fuel_pump_3_prime	fuel fuel pump 3 prime
+sim/fuel/fuel_pump_4_prime	fuel fuel pump 4 prime
+sim/fuel/fuel_pump_5_prime	fuel fuel pump 5 prime
+sim/fuel/fuel_pump_6_prime	fuel fuel pump 6 prime
+sim/fuel/fuel_pump_7_prime	fuel fuel pump 7 prime
+sim/fuel/fuel_pump_8_prime	fuel fuel pump 8 prime
+sim/fuel/engine_1_primer	fuel engine 1 primer
+sim/fuel/engine_2_primer	fuel engine 2 primer
+sim/fuel/engine_3_primer	fuel engine 3 primer
+sim/fuel/engine_4_primer	fuel engine 4 primer
+sim/fuel/engine_5_primer	fuel engine 5 primer
+sim/fuel/engine_6_primer	fuel engine 6 primer
+sim/fuel/engine_7_primer	fuel engine 7 primer
+sim/fuel/engine_8_primer	fuel engine 8 primer
+sim/fuel/re-fuel_half	fuel re-fuel half
+sim/fuel/re-fuel_full	fuel re-fuel full
+sim/electrical/cross_tie_on	electrical cross tie on
+sim/electrical/cross_tie_off	electrical cross tie off
+sim/electrical/cross_tie_toggle	electrical cross tie toggle
+sim/electrical/inverters_on	electrical inverters on
+sim/electrical/inverters_off	electrical inverters off
+sim/electrical/inverters_toggle	electrical inverters toggle
+sim/electrical/inverter_1_on	electrical inverter 1 on
+sim/electrical/inverter_1_off	electrical inverter 1 off
+sim/electrical/inverter_1_toggle	electrical inverter 1 toggle
+sim/electrical/inverter_2_on	electrical inverter 2 on
+sim/electrical/inverter_2_off	electrical inverter 2 off
+sim/electrical/inverter_2_toggle	electrical inverter 2 toggle
+sim/electrical/batteries_toggle	electrical batteries toggle
+sim/electrical/battery_1_on	electrical battery 1 on
+sim/electrical/battery_2_on	electrical battery 2 on
+sim/electrical/battery_1_off	electrical battery 1 off
+sim/electrical/battery_2_off	electrical battery 2 off
+sim/electrical/battery_1_toggle	electrical battery 1 toggle
+sim/electrical/battery_2_toggle	electrical battery 2 toggle
+sim/electrical/generators_toggle	electrical generators toggle
+sim/electrical/generator_1_off	electrical generator 1 off
+sim/electrical/generator_2_off	electrical generator 2 off
+sim/electrical/generator_3_off	electrical generator 3 off
+sim/electrical/generator_4_off	electrical generator 4 off
+sim/electrical/generator_5_off	electrical generator 5 off
+sim/electrical/generator_6_off	electrical generator 6 off
+sim/electrical/generator_7_off	electrical generator 7 off
+sim/electrical/generator_8_off	electrical generator 8 off
+sim/electrical/generator_1_on	electrical generator 1 on
+sim/electrical/generator_2_on	electrical generator 2 on
+sim/electrical/generator_3_on	electrical generator 3 on
+sim/electrical/generator_4_on	electrical generator 4 on
+sim/electrical/generator_5_on	electrical generator 5 on
+sim/electrical/generator_6_on	electrical generator 6 on
+sim/electrical/generator_7_on	electrical generator 7 on
+sim/electrical/generator_8_on	electrical generator 8 on
+sim/electrical/generator_1_toggle	electrical generator 1 toggle
+sim/electrical/generator_2_toggle	electrical generator 2 toggle
+sim/electrical/generator_3_toggle	electrical generator 3 toggle
+sim/electrical/generator_4_toggle	electrical generator 4 toggle
+sim/electrical/generator_5_toggle	electrical generator 5 toggle
+sim/electrical/generator_6_toggle	electrical generator 6 toggle
+sim/electrical/generator_7_toggle	electrical generator 7 toggle
+sim/electrical/generator_8_toggle	electrical generator 8 toggle
+sim/electrical/APU_start	electrical APU start
+sim/electrical/APU_on	electrical APU on
+sim/electrical/APU_off	electrical APU off
+sim/electrical/APU_fire_shutoff	electrical APU fire shutoff
+sim/electrical/APU_generator_on	electrical APU generator on
+sim/electrical/APU_generator_off	electrical APU generator off
+sim/electrical/air_driven_generator_on	electrical air driven generator on
+sim/electrical/GPU_on	electrical GPU on
+sim/electrical/GPU_off	electrical GPU off
+sim/electrical/GPU_toggle	electrical GPU toggle
+sim/electrical/recharge	electrical recharge
+sim/lights/nav_lights_on	lights nav lights on
+sim/lights/nav_lights_off	lights nav lights off
+sim/lights/nav_lights_toggle	lights nav lights toggle
+sim/lights/beacon_lights_on	lights beacon lights on
+sim/lights/beacon_lights_off	lights beacon lights off
+sim/lights/beacon_lights_toggle	lights beacon lights toggle
+sim/lights/strobe_lights_on	lights strobe lights on
+sim/lights/strobe_lights_off	lights strobe lights off
+sim/lights/strobe_lights_toggle	lights strobe lights toggle
+sim/lights/taxi_lights_on	lights taxi lights on
+sim/lights/taxi_lights_off	lights taxi lights off
+sim/lights/taxi_lights_toggle	lights taxi lights toggle
+sim/lights/landing_lights_on	lights landing lights on
+sim/lights/landing_lights_off	lights landing lights off
+sim/lights/landing_lights_toggle	lights landing lights toggle
+sim/lights/landing_01_light_on	lights landing 01 light on
+sim/lights/landing_02_light_on	lights landing 02 light on
+sim/lights/landing_03_light_on	lights landing 03 light on
+sim/lights/landing_04_light_on	lights landing 04 light on
+sim/lights/landing_05_light_on	lights landing 05 light on
+sim/lights/landing_06_light_on	lights landing 06 light on
+sim/lights/landing_07_light_on	lights landing 07 light on
+sim/lights/landing_08_light_on	lights landing 08 light on
+sim/lights/landing_09_light_on	lights landing 09 light on
+sim/lights/landing_10_light_on	lights landing 10 light on
+sim/lights/landing_11_light_on	lights landing 11 light on
+sim/lights/landing_12_light_on	lights landing 12 light on
+sim/lights/landing_13_light_on	lights landing 13 light on
+sim/lights/landing_14_light_on	lights landing 14 light on
+sim/lights/landing_15_light_on	lights landing 15 light on
+sim/lights/landing_16_light_on	lights landing 16 light on
+sim/lights/landing_01_light_off	lights landing 01 light off
+sim/lights/landing_02_light_off	lights landing 02 light off
+sim/lights/landing_03_light_off	lights landing 03 light off
+sim/lights/landing_04_light_off	lights landing 04 light off
+sim/lights/landing_05_light_off	lights landing 05 light off
+sim/lights/landing_06_light_off	lights landing 06 light off
+sim/lights/landing_07_light_off	lights landing 07 light off
+sim/lights/landing_08_light_off	lights landing 08 light off
+sim/lights/landing_09_light_off	lights landing 09 light off
+sim/lights/landing_10_light_off	lights landing 10 light off
+sim/lights/landing_11_light_off	lights landing 11 light off
+sim/lights/landing_12_light_off	lights landing 12 light off
+sim/lights/landing_13_light_off	lights landing 13 light off
+sim/lights/landing_14_light_off	lights landing 14 light off
+sim/lights/landing_15_light_off	lights landing 15 light off
+sim/lights/landing_16_light_off	lights landing 16 light off
+sim/lights/landing_01_light_tog	lights landing 01 light tog
+sim/lights/landing_02_light_tog	lights landing 02 light tog
+sim/lights/landing_03_light_tog	lights landing 03 light tog
+sim/lights/landing_04_light_tog	lights landing 04 light tog
+sim/lights/landing_05_light_tog	lights landing 05 light tog
+sim/lights/landing_06_light_tog	lights landing 06 light tog
+sim/lights/landing_07_light_tog	lights landing 07 light tog
+sim/lights/landing_08_light_tog	lights landing 08 light tog
+sim/lights/landing_09_light_tog	lights landing 09 light tog
+sim/lights/landing_10_light_tog	lights landing 10 light tog
+sim/lights/landing_11_light_tog	lights landing 11 light tog
+sim/lights/landing_12_light_tog	lights landing 12 light tog
+sim/lights/landing_13_light_tog	lights landing 13 light tog
+sim/lights/landing_14_light_tog	lights landing 14 light tog
+sim/lights/landing_15_light_tog	lights landing 15 light tog
+sim/lights/landing_16_light_tog	lights landing 16 light tog
+sim/lights/generic_01_light_tog	lights generic 01 light tog
+sim/lights/generic_02_light_tog	lights generic 02 light tog
+sim/lights/generic_03_light_tog	lights generic 03 light tog
+sim/lights/generic_04_light_tog	lights generic 04 light tog
+sim/lights/generic_05_light_tog	lights generic 05 light tog
+sim/lights/generic_06_light_tog	lights generic 06 light tog
+sim/lights/generic_07_light_tog	lights generic 07 light tog
+sim/lights/generic_08_light_tog	lights generic 08 light tog
+sim/lights/generic_09_light_tog	lights generic 09 light tog
+sim/lights/generic_10_light_tog	lights generic 10 light tog
+sim/lights/generic_11_light_tog	lights generic 11 light tog
+sim/lights/generic_12_light_tog	lights generic 12 light tog
+sim/lights/generic_13_light_tog	lights generic 13 light tog
+sim/lights/generic_14_light_tog	lights generic 14 light tog
+sim/lights/generic_15_light_tog	lights generic 15 light tog
+sim/lights/generic_16_light_tog	lights generic 16 light tog
+sim/lights/generic_17_light_tog	lights generic 17 light tog
+sim/lights/generic_18_light_tog	lights generic 18 light tog
+sim/lights/generic_19_light_tog	lights generic 19 light tog
+sim/lights/generic_20_light_tog	lights generic 20 light tog
+sim/lights/generic_21_light_tog	lights generic 21 light tog
+sim/lights/generic_22_light_tog	lights generic 22 light tog
+sim/lights/generic_23_light_tog	lights generic 23 light tog
+sim/lights/generic_24_light_tog	lights generic 24 light tog
+sim/lights/generic_25_light_tog	lights generic 25 light tog
+sim/lights/generic_26_light_tog	lights generic 26 light tog
+sim/lights/generic_27_light_tog	lights generic 27 light tog
+sim/lights/generic_28_light_tog	lights generic 28 light tog
+sim/lights/generic_29_light_tog	lights generic 29 light tog
+sim/lights/generic_30_light_tog	lights generic 30 light tog
+sim/lights/generic_31_light_tog	lights generic 31 light tog
+sim/lights/generic_32_light_tog	lights generic 32 light tog
+sim/lights/generic_33_light_tog	lights generic 33 light tog
+sim/lights/generic_34_light_tog	lights generic 34 light tog
+sim/lights/generic_35_light_tog	lights generic 35 light tog
+sim/lights/generic_36_light_tog	lights generic 36 light tog
+sim/lights/generic_37_light_tog	lights generic 37 light tog
+sim/lights/generic_38_light_tog	lights generic 38 light tog
+sim/lights/generic_39_light_tog	lights generic 39 light tog
+sim/lights/generic_40_light_tog	lights generic 40 light tog
+sim/lights/generic_41_light_tog	lights generic 41 light tog
+sim/lights/generic_42_light_tog	lights generic 42 light tog
+sim/lights/generic_43_light_tog	lights generic 43 light tog
+sim/lights/generic_44_light_tog	lights generic 44 light tog
+sim/lights/generic_45_light_tog	lights generic 45 light tog
+sim/lights/generic_46_light_tog	lights generic 46 light tog
+sim/lights/generic_47_light_tog	lights generic 47 light tog
+sim/lights/generic_48_light_tog	lights generic 48 light tog
+sim/lights/generic_49_light_tog	lights generic 49 light tog
+sim/lights/generic_50_light_tog	lights generic 50 light tog
+sim/lights/generic_51_light_tog	lights generic 51 light tog
+sim/lights/generic_52_light_tog	lights generic 52 light tog
+sim/lights/generic_53_light_tog	lights generic 53 light tog
+sim/lights/generic_54_light_tog	lights generic 54 light tog
+sim/lights/generic_55_light_tog	lights generic 55 light tog
+sim/lights/generic_56_light_tog	lights generic 56 light tog
+sim/lights/generic_57_light_tog	lights generic 57 light tog
+sim/lights/generic_58_light_tog	lights generic 58 light tog
+sim/lights/generic_59_light_tog	lights generic 59 light tog
+sim/lights/generic_60_light_tog	lights generic 60 light tog
+sim/lights/generic_61_light_tog	lights generic 61 light tog
+sim/lights/generic_62_light_tog	lights generic 62 light tog
+sim/lights/generic_63_light_tog	lights generic 63 light tog
+sim/lights/generic_64_light_tog	lights generic 64 light tog
+sim/lights/spot_lights_on	lights spot lights on
+sim/lights/spot_lights_off	lights spot lights off
+sim/lights/spot_lights_toggle	lights spot lights toggle
+sim/ice/anti_ice_toggle	ice anti ice toggle
+sim/ice/alternate_static_port	ice alternate static port
+sim/ice/pitot_heat0_on	ice pitot heat0 on
+sim/ice/pitot_heat1_on	ice pitot heat1 on
+sim/ice/pitot_heat2_on	ice pitot heat2 on
+sim/ice/pitot_heat0_off	ice pitot heat0 off
+sim/ice/pitot_heat1_off	ice pitot heat1 off
+sim/ice/pitot_heat2_off	ice pitot heat2 off
+sim/ice/pitot_heat0_tog	ice pitot heat0 tog
+sim/ice/pitot_heat1_tog	ice pitot heat1 tog
+sim/ice/pitot_heat2_tog	ice pitot heat2 tog
+sim/ice/static_heat0_on	ice static heat0 on
+sim/ice/static_heat1_on	ice static heat1 on
+sim/ice/static_heat2_on	ice static heat2 on
+sim/ice/static_heat0_off	ice static heat0 off
+sim/ice/static_heat1_off	ice static heat1 off
+sim/ice/static_heat2_off	ice static heat2 off
+sim/ice/static_heat0_tog	ice static heat0 tog
+sim/ice/static_heat1_tog	ice static heat1 tog
+sim/ice/static_heat2_tog	ice static heat2 tog
+sim/ice/AOA_heat0_on	ice AOA heat0 on
+sim/ice/AOA_heat1_on	ice AOA heat1 on
+sim/ice/AOA_heat2_on	ice AOA heat2 on
+sim/ice/AOA_heat0_off	ice AOA heat0 off
+sim/ice/AOA_heat1_off	ice AOA heat1 off
+sim/ice/AOA_heat2_off	ice AOA heat2 off
+sim/ice/AOA_heat0_tog	ice AOA heat0 tog
+sim/ice/AOA_heat1_tog	ice AOA heat1 tog
+sim/ice/AOA_heat2_tog	ice AOA heat2 tog
+sim/ice/TAT_heat0_on	ice TAT heat0 on
+sim/ice/TAT_heat1_on	ice TAT heat1 on
+sim/ice/TAT_heat2_on	ice TAT heat2 on
+sim/ice/TAT_heat0_off	ice TAT heat0 off
+sim/ice/TAT_heat1_off	ice TAT heat1 off
+sim/ice/TAT_heat2_off	ice TAT heat2 off
+sim/ice/TAT_heat0_tog	ice TAT heat0 tog
+sim/ice/TAT_heat1_tog	ice TAT heat1 tog
+sim/ice/TAT_heat2_tog	ice TAT heat2 tog
+sim/ice/window_heat_on	ice window heat on
+sim/ice/window_heat_off	ice window heat off
+sim/ice/window_heat_tog	ice window heat tog
+sim/ice/window2_heat_on	ice window2 heat on
+sim/ice/window2_heat_off	ice window2 heat off
+sim/ice/window2_heat_tog	ice window2 heat tog
+sim/ice/window3_heat_on	ice window3 heat on
+sim/ice/window3_heat_off	ice window3 heat off
+sim/ice/window3_heat_tog	ice window3 heat tog
+sim/ice/window4_heat_on	ice window4 heat on
+sim/ice/window4_heat_off	ice window4 heat off
+sim/ice/window4_heat_tog	ice window4 heat tog
+sim/ice/wing_heat_on	ice wing heat on
+sim/ice/wing_heat0_on	ice wing heat0 on
+sim/ice/wing_heat1_on	ice wing heat1 on
+sim/ice/wing_heat_off	ice wing heat off
+sim/ice/wing_heat0_off	ice wing heat0 off
+sim/ice/wing_heat1_off	ice wing heat1 off
+sim/ice/wing_heat_tog	ice wing heat tog
+sim/ice/wing_heat0_tog	ice wing heat0 tog
+sim/ice/wing_heat1_tog	ice wing heat1 tog
+sim/ice/tail_heat_on	ice tail heat on
+sim/ice/tail_heat0_on	ice tail heat0 on
+sim/ice/tail_heat1_on	ice tail heat1 on
+sim/ice/tail_heat_off	ice tail heat off
+sim/ice/tail_heat0_off	ice tail heat0 off
+sim/ice/tail_heat1_off	ice tail heat1 off
+sim/ice/tail_heat_tog	ice tail heat tog
+sim/ice/tail_heat0_tog	ice tail heat0 tog
+sim/ice/tail_heat1_tog	ice tail heat1 tog
+sim/ice/wing_boot_on	ice wing boot on
+sim/ice/wing_boot0_on	ice wing boot0 on
+sim/ice/wing_boot1_on	ice wing boot1 on
+sim/ice/wing_boot_off	ice wing boot off
+sim/ice/wing_boot0_off	ice wing boot0 off
+sim/ice/wing_boot1_off	ice wing boot1 off
+sim/ice/wing_boot_tog	ice wing boot tog
+sim/ice/wing_boot0_tog	ice wing boot0 tog
+sim/ice/wing_boot1_tog	ice wing boot1 tog
+sim/ice/wing_boot_single	ice wing boot single
+sim/ice/wing_boot0_single	ice wing boot0 single
+sim/ice/wing_boot1_single	ice wing boot1 single
+sim/ice/wing_boot_man	ice wing boot man
+sim/ice/wing_boot0_man	ice wing boot0 man
+sim/ice/wing_boot1_man	ice wing boot1 man
+sim/ice/tail_boot_on	ice tail boot on
+sim/ice/tail_boot0_on	ice tail boot0 on
+sim/ice/tail_boot1_on	ice tail boot1 on
+sim/ice/tail_boot_off	ice tail boot off
+sim/ice/tail_boot0_off	ice tail boot0 off
+sim/ice/tail_boot1_off	ice tail boot1 off
+sim/ice/tail_boot_tog	ice tail boot tog
+sim/ice/tail_boot0_tog	ice tail boot0 tog
+sim/ice/tail_boot1_tog	ice tail boot1 tog
+sim/ice/tail_boot_single	ice tail boot single
+sim/ice/tail_boot0_single	ice tail boot0 single
+sim/ice/tail_boot1_single	ice tail boot1 single
+sim/ice/tail_boot_man	ice tail boot man
+sim/ice/tail_boot0_man	ice tail boot0 man
+sim/ice/tail_boot1_man	ice tail boot1 man
+sim/ice/wing_tai_on	ice wing tai on
+sim/ice/wing_tai0_on	ice wing tai0 on
+sim/ice/wing_tai1_on	ice wing tai1 on
+sim/ice/wing_tai_off	ice wing tai off
+sim/ice/wing_tai0_off	ice wing tai0 off
+sim/ice/wing_tai1_off	ice wing tai1 off
+sim/ice/wing_tai_tog	ice wing tai tog
+sim/ice/wing_tai0_tog	ice wing tai0 tog
+sim/ice/wing_tai1_tog	ice wing tai1 tog
+sim/ice/wing_tai_crossover_open	ice wing tai crossover open
+sim/ice/wing_tai_crossover_close	ice wing tai crossover close
+sim/ice/wing_tai_crossover_toggle	ice wing tai crossover toggle
+sim/ice/tail_tai_on	ice tail tai on
+sim/ice/tail_tai0_on	ice tail tai0 on
+sim/ice/tail_tai1_on	ice tail tai1 on
+sim/ice/tail_tai_off	ice tail tai off
+sim/ice/tail_tai0_off	ice tail tai0 off
+sim/ice/tail_tai1_off	ice tail tai1 off
+sim/ice/tail_tai_tog	ice tail tai tog
+sim/ice/tail_tai0_tog	ice tail tai0 tog
+sim/ice/tail_tai1_tog	ice tail tai1 tog
+sim/ice/tks_off	ice tks off
+sim/ice/tks_norm	ice tks norm
+sim/ice/tks_high	ice tks high
+sim/ice/tks_max	ice tks max
+sim/ice/tks_bkup_on	ice tks bkup on
+sim/ice/tks_bkup_off	ice tks bkup off
+sim/ice/wing_tks_on	ice wing tks on
+sim/ice/wing_tks0_on	ice wing tks0 on
+sim/ice/wing_tks1_on	ice wing tks1 on
+sim/ice/wing_tks_high	ice wing tks high
+sim/ice/wing_tks0_high	ice wing tks0 high
+sim/ice/wing_tks1_high	ice wing tks1 high
+sim/ice/wing_tks_off	ice wing tks off
+sim/ice/wing_tks0_off	ice wing tks0 off
+sim/ice/wing_tks1_off	ice wing tks1 off
+sim/ice/wing_tks_tog	ice wing tks tog
+sim/ice/wing_tks0_tog	ice wing tks0 tog
+sim/ice/wing_tks1_tog	ice wing tks1 tog
+sim/ice/tail_tks_on	ice tail tks on
+sim/ice/tail_tks0_on	ice tail tks0 on
+sim/ice/tail_tks1_on	ice tail tks1 on
+sim/ice/tail_tks_high	ice tail tks high
+sim/ice/tail_tks0_high	ice tail tks0 high
+sim/ice/tail_tks1_high	ice tail tks1 high
+sim/ice/tail_tks_off	ice tail tks off
+sim/ice/tail_tks0_off	ice tail tks0 off
+sim/ice/tail_tks1_off	ice tail tks1 off
+sim/ice/tail_tks_tog	ice tail tks tog
+sim/ice/tail_tks0_tog	ice tail tks0 tog
+sim/ice/tail_tks1_tog	ice tail tks1 tog
+sim/ice/inlet_heat_on	ice inlet heat on
+sim/ice/inlet_heat_off	ice inlet heat off
+sim/ice/inlet_heat_tog	ice inlet heat tog
+sim/ice/inlet_heat0_on	ice inlet heat0 on
+sim/ice/inlet_heat1_on	ice inlet heat1 on
+sim/ice/inlet_heat2_on	ice inlet heat2 on
+sim/ice/inlet_heat3_on	ice inlet heat3 on
+sim/ice/inlet_heat4_on	ice inlet heat4 on
+sim/ice/inlet_heat5_on	ice inlet heat5 on
+sim/ice/inlet_heat6_on	ice inlet heat6 on
+sim/ice/inlet_heat7_on	ice inlet heat7 on
+sim/ice/inlet_heat0_off	ice inlet heat0 off
+sim/ice/inlet_heat1_off	ice inlet heat1 off
+sim/ice/inlet_heat2_off	ice inlet heat2 off
+sim/ice/inlet_heat3_off	ice inlet heat3 off
+sim/ice/inlet_heat4_off	ice inlet heat4 off
+sim/ice/inlet_heat5_off	ice inlet heat5 off
+sim/ice/inlet_heat6_off	ice inlet heat6 off
+sim/ice/inlet_heat7_off	ice inlet heat7 off
+sim/ice/inlet_heat0_tog	ice inlet heat0 tog
+sim/ice/inlet_heat1_tog	ice inlet heat1 tog
+sim/ice/inlet_heat2_tog	ice inlet heat2 tog
+sim/ice/inlet_heat3_tog	ice inlet heat3 tog
+sim/ice/inlet_heat4_tog	ice inlet heat4 tog
+sim/ice/inlet_heat5_tog	ice inlet heat5 tog
+sim/ice/inlet_heat6_tog	ice inlet heat6 tog
+sim/ice/inlet_heat7_tog	ice inlet heat7 tog
+sim/ice/inlet_eai0_on	ice inlet eai0 on
+sim/ice/inlet_eai1_on	ice inlet eai1 on
+sim/ice/inlet_eai2_on	ice inlet eai2 on
+sim/ice/inlet_eai3_on	ice inlet eai3 on
+sim/ice/inlet_eai4_on	ice inlet eai4 on
+sim/ice/inlet_eai5_on	ice inlet eai5 on
+sim/ice/inlet_eai6_on	ice inlet eai6 on
+sim/ice/inlet_eai7_on	ice inlet eai7 on
+sim/ice/inlet_eai0_off	ice inlet eai0 off
+sim/ice/inlet_eai1_off	ice inlet eai1 off
+sim/ice/inlet_eai2_off	ice inlet eai2 off
+sim/ice/inlet_eai3_off	ice inlet eai3 off
+sim/ice/inlet_eai4_off	ice inlet eai4 off
+sim/ice/inlet_eai5_off	ice inlet eai5 off
+sim/ice/inlet_eai6_off	ice inlet eai6 off
+sim/ice/inlet_eai7_off	ice inlet eai7 off
+sim/ice/inlet_eai0_tog	ice inlet eai0 tog
+sim/ice/inlet_eai1_tog	ice inlet eai1 tog
+sim/ice/inlet_eai2_tog	ice inlet eai2 tog
+sim/ice/inlet_eai3_tog	ice inlet eai3 tog
+sim/ice/inlet_eai4_tog	ice inlet eai4 tog
+sim/ice/inlet_eai5_tog	ice inlet eai5 tog
+sim/ice/inlet_eai6_tog	ice inlet eai6 tog
+sim/ice/inlet_eai7_tog	ice inlet eai7 tog
+sim/ice/prop_heat_on	ice prop heat on
+sim/ice/prop_heat_off	ice prop heat off
+sim/ice/prop_heat_tog	ice prop heat tog
+sim/ice/prop_heat0_on	ice prop heat0 on
+sim/ice/prop_heat1_on	ice prop heat1 on
+sim/ice/prop_heat2_on	ice prop heat2 on
+sim/ice/prop_heat3_on	ice prop heat3 on
+sim/ice/prop_heat4_on	ice prop heat4 on
+sim/ice/prop_heat5_on	ice prop heat5 on
+sim/ice/prop_heat6_on	ice prop heat6 on
+sim/ice/prop_heat7_on	ice prop heat7 on
+sim/ice/prop_heat0_off	ice prop heat0 off
+sim/ice/prop_heat1_off	ice prop heat1 off
+sim/ice/prop_heat2_off	ice prop heat2 off
+sim/ice/prop_heat3_off	ice prop heat3 off
+sim/ice/prop_heat4_off	ice prop heat4 off
+sim/ice/prop_heat5_off	ice prop heat5 off
+sim/ice/prop_heat6_off	ice prop heat6 off
+sim/ice/prop_heat7_off	ice prop heat7 off
+sim/ice/prop_heat0_tog	ice prop heat0 tog
+sim/ice/prop_heat1_tog	ice prop heat1 tog
+sim/ice/prop_heat2_tog	ice prop heat2 tog
+sim/ice/prop_heat3_tog	ice prop heat3 tog
+sim/ice/prop_heat4_tog	ice prop heat4 tog
+sim/ice/prop_heat5_tog	ice prop heat5 tog
+sim/ice/prop_heat6_tog	ice prop heat6 tog
+sim/ice/prop_heat7_tog	ice prop heat7 tog
+sim/ice/prop_tks_on	ice prop tks on
+sim/ice/prop_tks_high	ice prop tks high
+sim/ice/prop_tks_off	ice prop tks off
+sim/ice/prop_tks_tog	ice prop tks tog
+sim/ice/prop_tks0_on	ice prop tks0 on
+sim/ice/prop_tks1_on	ice prop tks1 on
+sim/ice/prop_tks2_on	ice prop tks2 on
+sim/ice/prop_tks3_on	ice prop tks3 on
+sim/ice/prop_tks4_on	ice prop tks4 on
+sim/ice/prop_tks5_on	ice prop tks5 on
+sim/ice/prop_tks6_on	ice prop tks6 on
+sim/ice/prop_tks7_on	ice prop tks7 on
+sim/ice/prop_tks0_high	ice prop tks0 high
+sim/ice/prop_tks1_high	ice prop tks1 high
+sim/ice/prop_tks2_high	ice prop tks2 high
+sim/ice/prop_tks3_high	ice prop tks3 high
+sim/ice/prop_tks4_high	ice prop tks4 high
+sim/ice/prop_tks5_high	ice prop tks5 high
+sim/ice/prop_tks6_high	ice prop tks6 high
+sim/ice/prop_tks7_high	ice prop tks7 high
+sim/ice/prop_tks0_off	ice prop tks0 off
+sim/ice/prop_tks1_off	ice prop tks1 off
+sim/ice/prop_tks2_off	ice prop tks2 off
+sim/ice/prop_tks3_off	ice prop tks3 off
+sim/ice/prop_tks4_off	ice prop tks4 off
+sim/ice/prop_tks5_off	ice prop tks5 off
+sim/ice/prop_tks6_off	ice prop tks6 off
+sim/ice/prop_tks7_off	ice prop tks7 off
+sim/ice/prop_tks0_tog	ice prop tks0 tog
+sim/ice/prop_tks1_tog	ice prop tks1 tog
+sim/ice/prop_tks2_tog	ice prop tks2 tog
+sim/ice/prop_tks3_tog	ice prop tks3 tog
+sim/ice/prop_tks4_tog	ice prop tks4 tog
+sim/ice/prop_tks5_tog	ice prop tks5 tog
+sim/ice/prop_tks6_tog	ice prop tks6 tog
+sim/ice/prop_tks7_tog	ice prop tks7 tog
+sim/ice/detect_on	ice detect on
+sim/ice/detect_off	ice detect off
+sim/flight_controls/parachute_flares	flight controls parachute flares
+sim/flight_controls/smoke_toggle	flight controls smoke toggle
+sim/flight_controls/water_scoop_toggle	flight controls water scoop toggle
+sim/flight_controls/boost	flight controls boost
+sim/flight_controls/ignite_jato	flight controls ignite jato
+sim/flight_controls/jettison_payload	flight controls jettison payload
+sim/flight_controls/dump_fuel_on	flight controls dump fuel on
+sim/flight_controls/dump_fuel_off	flight controls dump fuel off
+sim/flight_controls/dump_fuel_toggle	flight controls dump fuel toggle
+sim/flight_controls/deploy_parachute	flight controls deploy parachute
+sim/flight_controls/eject	flight controls eject
+sim/flight_controls/drop_tank	flight controls drop tank
+sim/lights/spot_light_left	lights spot light left
+sim/lights/spot_light_right	lights spot light right
+sim/lights/spot_light_center	lights spot light center
+sim/flight_controls/door_toggle_1	flight controls door toggle 1
+sim/flight_controls/door_toggle_2	flight controls door toggle 2
+sim/flight_controls/door_toggle_3	flight controls door toggle 3
+sim/flight_controls/door_toggle_4	flight controls door toggle 4
+sim/flight_controls/door_toggle_5	flight controls door toggle 5
+sim/flight_controls/door_toggle_6	flight controls door toggle 6
+sim/flight_controls/door_toggle_7	flight controls door toggle 7
+sim/flight_controls/door_toggle_8	flight controls door toggle 8
+sim/flight_controls/door_toggle_9	flight controls door toggle 9
+sim/flight_controls/door_toggle_10	flight controls door toggle 10
+sim/flight_controls/door_toggle_11	flight controls door toggle 11
+sim/flight_controls/door_toggle_12	flight controls door toggle 12
+sim/flight_controls/door_toggle_13	flight controls door toggle 13
+sim/flight_controls/door_toggle_14	flight controls door toggle 14
+sim/flight_controls/door_toggle_15	flight controls door toggle 15
+sim/flight_controls/door_toggle_16	flight controls door toggle 16
+sim/flight_controls/door_toggle_17	flight controls door toggle 17
+sim/flight_controls/door_toggle_18	flight controls door toggle 18
+sim/flight_controls/door_toggle_19	flight controls door toggle 19
+sim/flight_controls/door_toggle_20	flight controls door toggle 20
+sim/flight_controls/door_open_1	flight controls door open 1
+sim/flight_controls/door_open_2	flight controls door open 2
+sim/flight_controls/door_open_3	flight controls door open 3
+sim/flight_controls/door_open_4	flight controls door open 4
+sim/flight_controls/door_open_5	flight controls door open 5
+sim/flight_controls/door_open_6	flight controls door open 6
+sim/flight_controls/door_open_7	flight controls door open 7
+sim/flight_controls/door_open_8	flight controls door open 8
+sim/flight_controls/door_open_9	flight controls door open 9
+sim/flight_controls/door_open_10	flight controls door open 10
+sim/flight_controls/door_open_11	flight controls door open 11
+sim/flight_controls/door_open_12	flight controls door open 12
+sim/flight_controls/door_open_13	flight controls door open 13
+sim/flight_controls/door_open_14	flight controls door open 14
+sim/flight_controls/door_open_15	flight controls door open 15
+sim/flight_controls/door_open_16	flight controls door open 16
+sim/flight_controls/door_open_17	flight controls door open 17
+sim/flight_controls/door_open_18	flight controls door open 18
+sim/flight_controls/door_open_19	flight controls door open 19
+sim/flight_controls/door_open_20	flight controls door open 20
+sim/flight_controls/door_close_1	flight controls door close 1
+sim/flight_controls/door_close_2	flight controls door close 2
+sim/flight_controls/door_close_3	flight controls door close 3
+sim/flight_controls/door_close_4	flight controls door close 4
+sim/flight_controls/door_close_5	flight controls door close 5
+sim/flight_controls/door_close_6	flight controls door close 6
+sim/flight_controls/door_close_7	flight controls door close 7
+sim/flight_controls/door_close_8	flight controls door close 8
+sim/flight_controls/door_close_9	flight controls door close 9
+sim/flight_controls/door_close_10	flight controls door close 10
+sim/flight_controls/door_close_11	flight controls door close 11
+sim/flight_controls/door_close_12	flight controls door close 12
+sim/flight_controls/door_close_13	flight controls door close 13
+sim/flight_controls/door_close_14	flight controls door close 14
+sim/flight_controls/door_close_15	flight controls door close 15
+sim/flight_controls/door_close_16	flight controls door close 16
+sim/flight_controls/door_close_17	flight controls door close 17
+sim/flight_controls/door_close_18	flight controls door close 18
+sim/flight_controls/door_close_19	flight controls door close 19
+sim/flight_controls/door_close_20	flight controls door close 20
+sim/flight_controls/glider_tow_release	flight controls glider tow release
+sim/flight_controls/winch_release	flight controls winch release
+sim/flight_controls/glider_all_release	flight controls glider all release
+sim/flight_controls/toggle_towline	flight controls toggle towline
+sim/flight_controls/glider_tow_left	flight controls glider tow left
+sim/flight_controls/glider_tow_right	flight controls glider tow right
+sim/flight_controls/winch_faster	flight controls winch faster
+sim/flight_controls/winch_slower	flight controls winch slower
+sim/radios/power_nav1_off	radios power nav1 off
+sim/radios/power_nav1_on	radios power nav1 on
+sim/radios/power_nav2_off	radios power nav2 off
+sim/radios/power_nav2_on	radios power nav2 on
+sim/radios/power_tac1_off	radios power tac1 off
+sim/radios/power_tac1_rec	radios power tac1 rec
+sim/radios/power_tac1_tr	radios power tac1 tr
+sim/radios/power_tac2_off	radios power tac2 off
+sim/radios/power_tac2_rec	radios power tac2 rec
+sim/radios/power_tac2_tr	radios power tac2 tr
+sim/radios/power_com1_off	radios power com1 off
+sim/radios/power_com1_on	radios power com1 on
+sim/radios/power_com2_off	radios power com2 off
+sim/radios/power_com2_on	radios power com2 on
+sim/radios/power_adf1_dn	radios power adf1 dn
+sim/radios/power_adf2_dn	radios power adf2 dn
+sim/radios/adf1_power_mode_0	radios adf1 power mode 0
+sim/radios/adf1_power_mode_1	radios adf1 power mode 1
+sim/radios/adf1_power_mode_2	radios adf1 power mode 2
+sim/radios/adf1_power_mode_3	radios adf1 power mode 3
+sim/radios/adf1_power_mode_4	radios adf1 power mode 4
+sim/radios/adf2_power_mode_0	radios adf2 power mode 0
+sim/radios/adf2_power_mode_1	radios adf2 power mode 1
+sim/radios/adf2_power_mode_2	radios adf2 power mode 2
+sim/radios/adf2_power_mode_3	radios adf2 power mode 3
+sim/radios/adf2_power_mode_4	radios adf2 power mode 4
+sim/radios/actv_tac1_channel_1down	radios actv tac1 channel 1down
+sim/radios/actv_tac1_channel_1up	radios actv tac1 channel 1up
+sim/radios/actv_tac1_channel_10down	radios actv tac1 channel 10down
+sim/radios/actv_tac1_channel_10up	radios actv tac1 channel 10up
+sim/radios/actv_tac1_mode_x	radios actv tac1 mode x
+sim/radios/actv_tac1_mode_y	radios actv tac1 mode y
+sim/radios/stby_tac1_channel_1down	radios stby tac1 channel 1down
+sim/radios/stby_tac1_channel_1up	radios stby tac1 channel 1up
+sim/radios/stby_tac1_channel_10down	radios stby tac1 channel 10down
+sim/radios/stby_tac1_channel_10up	radios stby tac1 channel 10up
+sim/radios/stby_tac1_mode_x	radios stby tac1 mode x
+sim/radios/stby_tac1_mode_y	radios stby tac1 mode y
+sim/radios/actv_tac2_channel_1down	radios actv tac2 channel 1down
+sim/radios/actv_tac2_channel_1up	radios actv tac2 channel 1up
+sim/radios/actv_tac2_channel_10down	radios actv tac2 channel 10down
+sim/radios/actv_tac2_channel_10up	radios actv tac2 channel 10up
+sim/radios/actv_tac2_mode_x	radios actv tac2 mode x
+sim/radios/actv_tac2_mode_y	radios actv tac2 mode y
+sim/radios/stby_tac2_channel_1down	radios stby tac2 channel 1down
+sim/radios/stby_tac2_channel_1up	radios stby tac2 channel 1up
+sim/radios/stby_tac2_channel_10down	radios stby tac2 channel 10down
+sim/radios/stby_tac2_channel_10up	radios stby tac2 channel 10up
+sim/radios/stby_tac2_mode_x	radios stby tac2 mode x
+sim/radios/stby_tac2_mode_y	radios stby tac2 mode y
+sim/transponder/transponder_digit_0	transponder transponder digit 0
+sim/transponder/transponder_digit_1	transponder transponder digit 1
+sim/transponder/transponder_digit_2	transponder transponder digit 2
+sim/transponder/transponder_digit_3	transponder transponder digit 3
+sim/transponder/transponder_digit_4	transponder transponder digit 4
+sim/transponder/transponder_digit_5	transponder transponder digit 5
+sim/transponder/transponder_digit_6	transponder transponder digit 6
+sim/transponder/transponder_digit_7	transponder transponder digit 7
+sim/transponder/transponder_CLR	transponder transponder CLR
+sim/transponder/transponder_ident	transponder transponder ident
+sim/transponder/transponder_off	transponder transponder off
+sim/transponder/transponder_standby	transponder transponder standby
+sim/transponder/transponder_on	transponder transponder on
+sim/transponder/transponder_alt	transponder transponder alt
+sim/transponder/transponder_ground	transponder transponder ground
+sim/transponder/transponder_dn	transponder transponder dn
+sim/transponder/transponder_ta_only	transponder transponder ta only
+sim/transponder/transponder_ta_ra	transponder transponder ta ra
+sim/transponder/transponder_vfr	transponder transponder vfr
+sim/radios/nav1_standy_flip	radios nav1 standy flip
+sim/radios/nav2_standy_flip	radios nav2 standy flip
+sim/radios/com1_standy_flip	radios com1 standy flip
+sim/radios/com2_standy_flip	radios com2 standy flip
+sim/radios/adf1_standy_flip	radios adf1 standy flip
+sim/radios/adf2_standy_flip	radios adf2 standy flip
+sim/radios/dme_standby_flip	radios dme standby flip
+sim/radios/RMI_L_tog	radios RMI L tog
+sim/radios/RMI_R_tog	radios RMI R tog
+sim/radios/copilot_RMI_L_tog_cop	radios copilot RMI L tog cop
+sim/radios/copilot_RMI_R_tog_cop	radios copilot RMI R tog cop
+sim/radios/rmu1/ls_1l	radios rmu1 ls 1l
+sim/radios/rmu1/ls_2l	radios rmu1 ls 2l
+sim/radios/rmu1/ls_3l	radios rmu1 ls 3l
+sim/radios/rmu1/ls_4l	radios rmu1 ls 4l
+sim/radios/rmu1/ls_5l	radios rmu1 ls 5l
+sim/radios/rmu1/ls_6l	radios rmu1 ls 6l
+sim/radios/rmu1/ls_1r	radios rmu1 ls 1r
+sim/radios/rmu1/ls_2r	radios rmu1 ls 2r
+sim/radios/rmu1/ls_3r	radios rmu1 ls 3r
+sim/radios/rmu1/ls_4r	radios rmu1 ls 4r
+sim/radios/rmu1/ls_5r	radios rmu1 ls 5r
+sim/radios/rmu1/ls_6r	radios rmu1 ls 6r
+sim/radios/rmu1/12	radios rmu1 12
+sim/radios/rmu1/test	radios rmu1 test
+sim/radios/rmu1/ID	radios rmu1 ID
+sim/radios/rmu1/DME	radios rmu1 DME
+sim/radios/rmu1/popup	radios rmu1 popup
+sim/radios/rmu1/popout	radios rmu1 popout
+sim/radios/rmu2/ls_1l	radios rmu2 ls 1l
+sim/radios/rmu2/ls_2l	radios rmu2 ls 2l
+sim/radios/rmu2/ls_3l	radios rmu2 ls 3l
+sim/radios/rmu2/ls_4l	radios rmu2 ls 4l
+sim/radios/rmu2/ls_5l	radios rmu2 ls 5l
+sim/radios/rmu2/ls_6l	radios rmu2 ls 6l
+sim/radios/rmu2/ls_1r	radios rmu2 ls 1r
+sim/radios/rmu2/ls_2r	radios rmu2 ls 2r
+sim/radios/rmu2/ls_3r	radios rmu2 ls 3r
+sim/radios/rmu2/ls_4r	radios rmu2 ls 4r
+sim/radios/rmu2/ls_5r	radios rmu2 ls 5r
+sim/radios/rmu2/ls_6r	radios rmu2 ls 6r
+sim/radios/rmu2/12	radios rmu2 12
+sim/radios/rmu2/test	radios rmu2 test
+sim/radios/rmu2/ID	radios rmu2 ID
+sim/radios/rmu2/DME	radios rmu2 DME
+sim/radios/rmu2/popup	radios rmu2 popup
+sim/radios/rmu2/popout	radios rmu2 popout
+sim/instruments/map_zoom_in	instruments map zoom in
+sim/instruments/map_zoom_out	instruments map zoom out
+sim/instruments/map_mag_north	instruments map mag north
+sim/instruments/map_true_north	instruments map true north
+sim/instruments/EFIS_wxr	instruments EFIS wxr
+sim/instruments/EFIS_tcas	instruments EFIS tcas
+sim/instruments/EFIS_apt	instruments EFIS apt
+sim/instruments/EFIS_fix	instruments EFIS fix
+sim/instruments/EFIS_vor	instruments EFIS vor
+sim/instruments/EFIS_ndb	instruments EFIS ndb
+sim/instruments/EFIS_terr	instruments EFIS terr
+sim/instruments/EFIS_mode_dn	instruments EFIS mode dn
+sim/instruments/EFIS_mfd_map	instruments EFIS mfd map
+sim/instruments/EFIS_arc_full	instruments EFIS arc full
+sim/instruments/EFIS_tcas_window	instruments EFIS tcas window
+sim/instruments/EFIS_wxr_pfd	instruments EFIS wxr pfd
+sim/instruments/map_copilot_zoom_in	instruments map copilot zoom in
+sim/instruments/map_copilot_zoom_out	instruments map copilot zoom out
+sim/instruments/map_copilot_mag_north	instruments map copilot mag north
+sim/instruments/map_copilot_true_north	instruments map copilot true north
+sim/instruments/EFIS_copilot_wxr	instruments EFIS copilot wxr
+sim/instruments/EFIS_copilot_tcas	instruments EFIS copilot tcas
+sim/instruments/EFIS_copilot_apt	instruments EFIS copilot apt
+sim/instruments/EFIS_copilot_fix	instruments EFIS copilot fix
+sim/instruments/EFIS_copilot_vor	instruments EFIS copilot vor
+sim/instruments/EFIS_copilot_ndb	instruments EFIS copilot ndb
+sim/instruments/EFIS_copilot_terr	instruments EFIS copilot terr
+sim/instruments/EFIS_copilot_mode_dn	instruments EFIS copilot mode dn
+sim/instruments/EFIS_copilot_mfd_map	instruments EFIS copilot mfd map
+sim/instruments/EFIS_copilot_arc_full	instruments EFIS copilot arc full
+sim/instruments/EFIS_copilot_tcas_window	instruments EFIS copilot tcas window
+sim/instruments/EFIS_copilot_wxr_pfd	instruments EFIS copilot wxr pfd
+sim/instruments/EFIS_wxr_radar_off	instruments EFIS wxr radar off
+sim/instruments/EFIS_wxr_radar_wx	instruments EFIS wxr radar wx
+sim/instruments/EFIS_wxr_radar_wxt	instruments EFIS wxr radar wxt
+sim/instruments/EFIS_wxr_radar_map	instruments EFIS wxr radar map
+sim/instruments/EFIS_wxr_radar_turb	instruments EFIS wxr radar turb
+sim/instruments/EFIS_wxr_radar_off_copilot	instruments EFIS wxr radar off copilot
+sim/instruments/EFIS_wxr_radar_wx_copilot	instruments EFIS wxr radar wx copilot
+sim/instruments/EFIS_wxr_radar_wxt_copilot	instruments EFIS wxr radar wxt copilot
+sim/instruments/EFIS_wxr_radar_map_copilot	instruments EFIS wxr radar map copilot
+sim/instruments/EFIS_wxr_radar_turb_copilot	instruments EFIS wxr radar turb copilot
+sim/instruments/EFIS_wxr_gain_cal	instruments EFIS wxr gain cal
+sim/instruments/EFIS_wxr_gain_cal_copilot	instruments EFIS wxr gain cal copilot
+sim/instruments/EFIS_wxr_stab_on	instruments EFIS wxr stab on
+sim/instruments/EFIS_wxr_stab_off	instruments EFIS wxr stab off
+sim/instruments/EFIS_wxr_stab_tog	instruments EFIS wxr stab tog
+sim/instruments/EFIS_wxr_stab_on_copilot	instruments EFIS wxr stab on copilot
+sim/instruments/EFIS_wxr_stab_off_copilot	instruments EFIS wxr stab off copilot
+sim/instruments/EFIS_wxr_stab_tog_copilot	instruments EFIS wxr stab tog copilot
+sim/instruments/EFIS_wxr_gcs_on	instruments EFIS wxr gcs on
+sim/instruments/EFIS_wxr_gcs_off	instruments EFIS wxr gcs off
+sim/instruments/EFIS_wxr_gcs_tog	instruments EFIS wxr gcs tog
+sim/instruments/EFIS_wxr_gcs_on_copilot	instruments EFIS wxr gcs on copilot
+sim/instruments/EFIS_wxr_gcs_off_copilot	instruments EFIS wxr gcs off copilot
+sim/instruments/EFIS_wxr_gcs_tog_copilot	instruments EFIS wxr gcs tog copilot
+sim/instruments/EFIS_wxr_pws_on	instruments EFIS wxr pws on
+sim/instruments/EFIS_wxr_pws_off	instruments EFIS wxr pws off
+sim/instruments/EFIS_wxr_pws_tog	instruments EFIS wxr pws tog
+sim/instruments/EFIS_wxr_auto_tilt_on	instruments EFIS wxr auto tilt on
+sim/instruments/EFIS_wxr_auto_tilt_off	instruments EFIS wxr auto tilt off
+sim/instruments/EFIS_wxr_auto_tilt_tog	instruments EFIS wxr auto tilt tog
+sim/instruments/EFIS_wxr_auto_tilt_on_copilot	instruments EFIS wxr auto tilt on copilot
+sim/instruments/EFIS_wxr_auto_tilt_off_copilot	instruments EFIS wxr auto tilt off copilot
+sim/instruments/EFIS_wxr_auto_tilt_tog_copilot	instruments EFIS wxr auto tilt tog copilot
+sim/instruments/EFIS_wxr_multiscan_auto	instruments EFIS wxr multiscan auto
+sim/instruments/EFIS_wxr_multiscan_on_path	instruments EFIS wxr multiscan on path
+sim/instruments/EFIS_wxr_multiscan_all	instruments EFIS wxr multiscan all
+sim/instruments/EFIS_wxr_multiscan_elev	instruments EFIS wxr multiscan elev
+sim/instruments/EFIS_wxr_multiscan_off	instruments EFIS wxr multiscan off
+sim/instruments/EFIS_wxr_multiscan_auto_copilot	instruments EFIS wxr multiscan auto copilot
+sim/instruments/EFIS_wxr_multiscan_on_path_copilot	instruments EFIS wxr multiscan on path copilot
+sim/instruments/EFIS_wxr_multiscan_all_copilot	instruments EFIS wxr multiscan all copilot
+sim/instruments/EFIS_wxr_multiscan_elev_copilot	instruments EFIS wxr multiscan elev copilot
+sim/instruments/EFIS_wxr_multiscan_off_copilot	instruments EFIS wxr multiscan off copilot
+sim/instruments/PFD_copilot_popup	instruments PFD copilot popup
+sim/instruments/EFIS_copilot_back	instruments EFIS copilot back
+sim/instruments/EFIS_copilot_softkey_1	instruments EFIS copilot softkey 1
+sim/instruments/EFIS_copilot_softkey_2	instruments EFIS copilot softkey 2
+sim/instruments/EFIS_copilot_softkey_3	instruments EFIS copilot softkey 3
+sim/instruments/EFIS_copilot_softkey_4	instruments EFIS copilot softkey 4
+sim/instruments/EFIS_copilot_softkey_5	instruments EFIS copilot softkey 5
+sim/instruments/EFIS_copilot_popup	instruments EFIS copilot popup
+sim/instruments/EFIS_copilot_pan_left	instruments EFIS copilot pan left
+sim/instruments/EFIS_copilot_pan_right	instruments EFIS copilot pan right
+sim/instruments/EFIS_copilot_skp	instruments EFIS copilot skp
+sim/instruments/EFIS_copilot_rcl	instruments EFIS copilot rcl
+sim/instruments/center_control_left	instruments center control left
+sim/instruments/center_control_right	instruments center control right
+sim/instruments/EFIS_center_back	instruments EFIS center back
+sim/instruments/EFIS_center_softkey_1	instruments EFIS center softkey 1
+sim/instruments/EFIS_center_softkey_2	instruments EFIS center softkey 2
+sim/instruments/EFIS_center_softkey_3	instruments EFIS center softkey 3
+sim/instruments/EFIS_center_softkey_4	instruments EFIS center softkey 4
+sim/instruments/EFIS_center_softkey_5	instruments EFIS center softkey 5
+sim/instruments/EFIS_center_popup	instruments EFIS center popup
+sim/instruments/PFD_pilot_popup	instruments PFD pilot popup
+sim/instruments/EFIS_back	instruments EFIS back
+sim/instruments/EFIS_softkey_1	instruments EFIS softkey 1
+sim/instruments/EFIS_softkey_2	instruments EFIS softkey 2
+sim/instruments/EFIS_softkey_3	instruments EFIS softkey 3
+sim/instruments/EFIS_softkey_4	instruments EFIS softkey 4
+sim/instruments/EFIS_softkey_5	instruments EFIS softkey 5
+sim/instruments/EFIS_pilot_popup	instruments EFIS pilot popup
+sim/instruments/EFIS_pan_left	instruments EFIS pan left
+sim/instruments/EFIS_pan_right	instruments EFIS pan right
+sim/instruments/EFIS_skp	instruments EFIS skp
+sim/instruments/EFIS_rcl	instruments EFIS rcl
+sim/instruments/EFIS_1_pilot_sel_dn	instruments EFIS 1 pilot sel dn
+sim/instruments/EFIS_1_pilot_sel_off	instruments EFIS 1 pilot sel off
+sim/instruments/EFIS_1_pilot_sel_vor	instruments EFIS 1 pilot sel vor
+sim/instruments/EFIS_1_pilot_sel_adf	instruments EFIS 1 pilot sel adf
+sim/instruments/EFIS_1_pilot_sel_fms	instruments EFIS 1 pilot sel fms
+sim/instruments/EFIS_1_copilot_sel_dn	instruments EFIS 1 copilot sel dn
+sim/instruments/EFIS_1_copilot_sel_off	instruments EFIS 1 copilot sel off
+sim/instruments/EFIS_1_copilot_sel_vor	instruments EFIS 1 copilot sel vor
+sim/instruments/EFIS_1_copilot_sel_adf	instruments EFIS 1 copilot sel adf
+sim/instruments/EFIS_1_copilot_sel_fms	instruments EFIS 1 copilot sel fms
+sim/instruments/EFIS_2_pilot_sel_dn	instruments EFIS 2 pilot sel dn
+sim/instruments/EFIS_2_pilot_sel_off	instruments EFIS 2 pilot sel off
+sim/instruments/EFIS_2_pilot_sel_vor	instruments EFIS 2 pilot sel vor
+sim/instruments/EFIS_2_pilot_sel_adf	instruments EFIS 2 pilot sel adf
+sim/instruments/EFIS_2_pilot_sel_fms	instruments EFIS 2 pilot sel fms
+sim/instruments/EFIS_2_copilot_sel_dn	instruments EFIS 2 copilot sel dn
+sim/instruments/EFIS_2_copilot_sel_off	instruments EFIS 2 copilot sel off
+sim/instruments/EFIS_2_copilot_sel_vor	instruments EFIS 2 copilot sel vor
+sim/instruments/EFIS_2_copilot_sel_adf	instruments EFIS 2 copilot sel adf
+sim/instruments/EFIS_2_copilot_sel_fms	instruments EFIS 2 copilot sel fms
+sim/radios/obs_HSI_direct	radios obs HSI direct
+sim/radios/copilot_obs_HSI_direct	radios copilot obs HSI direct
+sim/autopilot/hsi_select_nav_1	autopilot hsi select nav 1
+sim/autopilot/hsi_select_nav_2	autopilot hsi select nav 2
+sim/autopilot/hsi_toggle_nav	autopilot hsi toggle nav
+sim/autopilot/hsi_select_gps	autopilot hsi select gps
+sim/autopilot/hsi_select_gps2	autopilot hsi select gps2
+sim/autopilot/hsi_toggle_gps	autopilot hsi toggle gps
+sim/autopilot/hsi_toggle_preview	autopilot hsi toggle preview
+sim/autopilot/hsi_select_copilot_nav_1	autopilot hsi select copilot nav 1
+sim/autopilot/hsi_select_copilot_nav_2	autopilot hsi select copilot nav 2
+sim/autopilot/hsi_toggle_copilot_nav	autopilot hsi toggle copilot nav
+sim/autopilot/hsi_select_copilot_gps	autopilot hsi select copilot gps
+sim/autopilot/hsi_select_copilot_gps2	autopilot hsi select copilot gps2
+sim/autopilot/hsi_toggle_copilot_gps	autopilot hsi toggle copilot gps
+sim/autopilot/hsi_toggle_copilot_preview	autopilot hsi toggle copilot preview
+sim/flight_controls/carrier_ILS	flight controls carrier ILS
+sim/flight_controls/boats_navaids_on	flight controls boats navaids on
+sim/flight_controls/boats_navaids_off	flight controls boats navaids off
+sim/autopilot/source_01	autopilot source 01
+sim/autopilot/fdir_on	autopilot fdir on
+sim/autopilot/fdir_toggle	autopilot fdir toggle
+sim/autopilot/servos_on	autopilot servos on
+sim/autopilot/servos_toggle	autopilot servos toggle
+sim/autopilot/fdir_command_bars_on	autopilot fdir command bars on
+sim/autopilot/fdir_command_bars_off	autopilot fdir command bars off
+sim/autopilot/fdir_command_bars_toggle	autopilot fdir command bars toggle
+sim/autopilot/servos_fdir_off	autopilot servos fdir off
+sim/autopilot/servos_fdir_yawd_off	autopilot servos fdir yawd off
+sim/autopilot/servos_fdir_yawd_trim_off	autopilot servos fdir yawd trim off
+sim/autopilot/control_wheel_steer	autopilot control wheel steer
+sim/autopilot/fdir2_on	autopilot fdir2 on
+sim/autopilot/fdir2_toggle	autopilot fdir2 toggle
+sim/autopilot/servos2_on	autopilot servos2 on
+sim/autopilot/servos2_toggle	autopilot servos2 toggle
+sim/autopilot/fdir2_command_bars_on	autopilot fdir2 command bars on
+sim/autopilot/fdir2_command_bars_off	autopilot fdir2 command bars off
+sim/autopilot/fdir2_command_bars_toggle	autopilot fdir2 command bars toggle
+sim/autopilot/servos_fdir2_off	autopilot servos fdir2 off
+sim/autopilot/CWSA	autopilot CWSA
+sim/autopilot/CWSB	autopilot CWSB
+sim/autopilot/servos3_on	autopilot servos3 on
+sim/autopilot/servos3_toggle	autopilot servos3 toggle
+sim/autopilot/servos_fdir3_off	autopilot servos fdir3 off
+sim/autopilot/servos_off_any	autopilot servos off any
+sim/autopilot/ap_disc_trim_interrupt	autopilot ap disc trim interrupt
+sim/autopilot/servos_yawd_off_any	autopilot servos yawd off any
+sim/autopilot/servos_yawd_trim_off_any	autopilot servos yawd trim off any
+sim/autopilot/electric_master_on	autopilot electric master on
+sim/autopilot/electric_master_off	autopilot electric master off
+sim/autopilot/electric_master_toggle	autopilot electric master toggle
+sim/autopilot/electric_trim_servo_on	autopilot electric trim servo on
+sim/autopilot/electric_trim_servo_off	autopilot electric trim servo off
+sim/autopilot/electric_trim_servo_toggle	autopilot electric trim servo toggle
+sim/autopilot/priority_pb_left	autopilot priority pb left
+sim/autopilot/priority_pb_right	autopilot priority pb right
+sim/autopilot/autothrottle_on	autopilot autothrottle on
+sim/autopilot/autothrottle_off	autopilot autothrottle off
+sim/autopilot/autothrottle_toggle	autopilot autothrottle toggle
+sim/autopilot/autothrottle_n1epr	autopilot autothrottle n1epr
+sim/autopilot/autothrottle_n1epr_toggle	autopilot autothrottle n1epr toggle
+sim/autopilot/autothrottle_arm	autopilot autothrottle arm
+sim/autopilot/autothrottle_retard	autopilot autothrottle retard
+sim/autopilot/autothrottle_hard_off	autopilot autothrottle hard off
+sim/autopilot/heading	autopilot heading
+sim/autopilot/track	autopilot track
+sim/autopilot/wing_leveler	autopilot wing leveler
+sim/autopilot/return_to_level	autopilot return to level
+sim/autopilot/attitude	autopilot attitude
+sim/autopilot/hdg_nav	autopilot hdg nav
+sim/autopilot/NAV	autopilot NAV
+sim/autopilot/vertical_speed	autopilot vertical speed
+sim/autopilot/fpa	autopilot fpa
+sim/autopilot/alt_vs	autopilot alt vs
+sim/autopilot/vertical_speed_pre_sel	autopilot vertical speed pre sel
+sim/autopilot/pitch_sync	autopilot pitch sync
+sim/autopilot/level_change	autopilot level change
+sim/autopilot/terrain_following	autopilot terrain following
+sim/autopilot/take_off_go_around	autopilot take off go around
+sim/autopilot/reentry	autopilot reentry
+sim/autopilot/glide_slope	autopilot glide slope
+sim/autopilot/vnav	autopilot vnav
+sim/autopilot/vnav_spd	autopilot vnav spd
+sim/autopilot/gpss	autopilot gpss
+sim/autopilot/climb	autopilot climb
+sim/autopilot/descend	autopilot descend
+sim/autopilot/hover	autopilot hover
+sim/autopilot/trkfpa	autopilot trkfpa
+sim/autopilot/alt_intv	autopilot alt intv
+sim/autopilot/spd_intv	autopilot spd intv
+sim/autopilot/airspeed_sync	autopilot airspeed sync
+sim/autopilot/heading_sync	autopilot heading sync
+sim/autopilot/heading_sync_pilot	autopilot heading sync pilot
+sim/autopilot/heading_sync_copilot	autopilot heading sync copilot
+sim/autopilot/vertical_speed_sync	autopilot vertical speed sync
+sim/autopilot/altitude_sync	autopilot altitude sync
+sim/autopilot/altitude_arm	autopilot altitude arm
+sim/autopilot/approach	autopilot approach
+sim/autopilot/back_course	autopilot back course
+sim/autopilot/knots_mach_toggle	autopilot knots mach toggle
+sim/autopilot/FMS	autopilot FMS
+sim/autopilot/bank_limit_toggle	autopilot bank limit toggle
+sim/autopilot/soft_ride_toggle	autopilot soft ride toggle
+sim/autopilot/st360_dta	autopilot st360 dta
+sim/autopilot/st360_bar	autopilot st360 bar
+sim/autopilot/st360_alt	autopilot st360 alt
+sim/autopilot/st360_alr	autopilot st360 alr
+sim/autopilot/st360_dh	autopilot st360 dh
+sim/autopilot/st360_vs	autopilot st360 vs
+sim/autopilot/st360_man	autopilot st360 man
+sim/autopilot/st360_inc	autopilot st360 inc
+sim/autopilot/st360_dec	autopilot st360 dec
+sim/autopilot/st360_pull	autopilot st360 pull
+sim/autopilot/st360_push	autopilot st360 push
+sim/autopilot/st360_tog_tenths	autopilot st360 tog tenths
+sim/electrical/dc_volt_dn	electrical dc volt dn
+sim/electrical/dc_volt_ext	electrical dc volt ext
+sim/electrical/dc_volt_ctr	electrical dc volt ctr
+sim/electrical/dc_volt_lft	electrical dc volt lft
+sim/electrical/dc_volt_rgt	electrical dc volt rgt
+sim/electrical/dc_volt_tpl	electrical dc volt tpl
+sim/electrical/dc_volt_bat	electrical dc volt bat
+sim/instruments/thermo_units_toggle	instruments thermo units toggle
+sim/instruments/barometer_2992	instruments barometer 2992
+sim/instruments/DG_sync_mag	instruments DG sync mag
+sim/instruments/copilot_DG_sync_mag	instruments copilot DG sync mag
+sim/instruments/free_gyro	instruments free gyro
+sim/instruments/slave_gyro	instruments slave gyro
+sim/instruments/copilot_free_gyro	instruments copilot free gyro
+sim/instruments/copilot_slave_gyro	instruments copilot slave gyro
+sim/instruments/dg_ahrs	instruments dg ahrs
+sim/instruments/slave_ahrs	instruments slave ahrs
+sim/instruments/copilot_dg_ahrs	instruments copilot dg ahrs
+sim/instruments/copilot_slave_ahrs	instruments copilot slave ahrs
+sim/instruments/ahrs_slew_left	instruments ahrs slew left
+sim/instruments/ahrs_slew_right	instruments ahrs slew right
+sim/instruments/copilot_ahrs_slew_left	instruments copilot ahrs slew left
+sim/instruments/copilot_ahrs_slew_right	instruments copilot ahrs slew right
+sim/instruments/ah_fast_erect	instruments ah fast erect
+sim/instruments/ah_cage	instruments ah cage
+sim/instruments/ah_fast_erect_copilot	instruments ah fast erect copilot
+sim/instruments/ah_cage_copilot	instruments ah cage copilot
+sim/instruments/barometer_std	instruments barometer std
+sim/instruments/barometer_copilot_std	instruments barometer copilot std
+sim/instruments/baro_alt_alert_cancel	instruments baro alt alert cancel
+sim/instruments/mda_alert_cancel	instruments mda alert cancel
+sim/instruments/adc_rev	instruments adc rev
+sim/instruments/ahrs_rev	instruments ahrs rev
+sim/instruments/adc_rev_cop	instruments adc rev cop
+sim/instruments/ahrs_rev_cop	instruments ahrs rev cop
+sim/instruments/ra_baro	instruments ra baro
+sim/instruments/ra_baro_copilot	instruments ra baro copilot
+sim/flight_controls/pump_flaps	flight controls pump flaps
+sim/flight_controls/pump_gear	flight controls pump gear
+sim/fuel/indicate_aux	fuel indicate aux
+sim/fuel/indicate_all	fuel indicate all
+sim/fuel/indicate_nacelle	fuel indicate nacelle
+sim/autopilot/test_auto_annunciators	autopilot test auto annunciators
+sim/flight_controls/aileron_trimA_left	flight controls aileron trimA left
+sim/flight_controls/aileron_trimA_right	flight controls aileron trimA right
+sim/flight_controls/aileron_trimB_left	flight controls aileron trimB left
+sim/flight_controls/aileron_trimB_right	flight controls aileron trimB right
+sim/flight_controls/aileron_trim_left	flight controls aileron trim left
+sim/flight_controls/aileron_trim_right	flight controls aileron trim right
+sim/flight_controls/rudder_trimA_left	flight controls rudder trimA left
+sim/flight_controls/rudder_trimA_right	flight controls rudder trimA right
+sim/flight_controls/rudder_trimB_left	flight controls rudder trimB left
+sim/flight_controls/rudder_trimB_right	flight controls rudder trimB right
+sim/flight_controls/rudder_trim_left	flight controls rudder trim left
+sim/flight_controls/rudder_trim_right	flight controls rudder trim right
+sim/flight_controls/magnetic_lock	flight controls magnetic lock
+sim/flight_controls/pitch_trim_takeoff	flight controls pitch trim takeoff
+sim/flight_controls/aileron_trim_center	flight controls aileron trim center
+sim/flight_controls/rudder_trim_center	flight controls rudder trim center
+sim/flight_controls/rudder_lft	flight controls rudder lft
+sim/flight_controls/rudder_ctr	flight controls rudder ctr
+sim/flight_controls/rudder_rgt	flight controls rudder rgt
+sim/flight_controls/split_roll	flight controls split roll
+sim/flight_controls/split_pitch	flight controls split pitch
+sim/flight_controls/reconnect_roll	flight controls reconnect roll
+sim/flight_controls/reconnect_pitch	flight controls reconnect pitch
+sim/flight_controls/split_all	flight controls split all
+sim/flight_controls/reconnect_all	flight controls reconnect all
+sim/autopilot/set_ott_seldisp_ALT_VVI_vvi	autopilot set ott seldisp ALT VVI vvi
+sim/autopilot/set_ott_seldisp_ALT_VVI_alt	autopilot set ott seldisp ALT VVI alt
+sim/instruments/timer_start_stop	instruments timer start stop
+sim/instruments/timer_show_date	instruments timer show date
+sim/instruments/timer_mode	instruments timer mode
+sim/instruments/timer_cycle	instruments timer cycle
+sim/instruments/timer_is_GMT	instruments timer is GMT
+sim/instruments/chrono1_start_stop	instruments chrono1 start stop
+sim/instruments/chrono1_cycle	instruments chrono1 cycle
+sim/instruments/chrono2_start_stop	instruments chrono2 start stop
+sim/instruments/chrono2_cycle	instruments chrono2 cycle
+sim/instruments/chrono3_start_stop	instruments chrono3 start stop
+sim/instruments/chrono3_cycle	instruments chrono3 cycle
+sim/instruments/chrono4_start_stop	instruments chrono4 start stop
+sim/instruments/chrono4_cycle	instruments chrono4 cycle
+sim/instruments/elapsed1_start_stop	instruments elapsed1 start stop
+sim/instruments/elapsed1_cycle	instruments elapsed1 cycle
+sim/instruments/elapsed2_start_stop	instruments elapsed2 start stop
+sim/instruments/elapsed2_cycle	instruments elapsed2 cycle
+sim/instruments/elapsed3_start_stop	instruments elapsed3 start stop
+sim/instruments/elapsed3_cycle	instruments elapsed3 cycle
+sim/instruments/elapsed4_start_stop	instruments elapsed4 start stop
+sim/instruments/elapsed4_cycle	instruments elapsed4 cycle

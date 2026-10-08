@@ -79,6 +79,9 @@ pub struct Realism {
     #[serde(default = "yes")]
     /// Readbacks must match altitude, route and sequence exactly.
     pub strict_readbacks: bool,
+    /// Monitor accepted instructions; cancel permission after three unresolved corrections.
+    #[serde(default)]
+    pub enforce_clearance_constraints: bool,
     #[serde(default)]
     /// Answer service requests only on the assigned COM1 frequency.
     pub require_frequency: bool,
@@ -104,6 +107,7 @@ impl Default for Realism {
     fn default() -> Self {
         Self {
             strict_readbacks: true,
+            enforce_clearance_constraints: false,
             require_frequency: false,
             require_callsign: false,
             strict_phraseology: true,
@@ -243,6 +247,8 @@ pub struct Settings {
     #[serde(default = "yes")]
     /// Readbacks must match altitude, route and sequence exactly.
     pub strict_readbacks: bool,
+    /// Warn about deviations and withdraw permission after three corrective calls.
+    pub enforce_clearance_constraints: bool,
     #[serde(default)]
     /// Answer service requests only on the assigned COM1 frequency.
     pub require_frequency: bool,
@@ -371,6 +377,7 @@ impl Default for Settings {
             radio_fx_ground: false,
             // Discipline (Standard preset).
             strict_readbacks: true,
+            enforce_clearance_constraints: false,
             require_frequency: false,
             require_callsign: false,
             strict_phraseology: true,
@@ -410,6 +417,7 @@ impl Settings {
     pub fn realism(&self) -> Realism {
         Realism {
             strict_readbacks: self.strict_readbacks,
+            enforce_clearance_constraints: self.enforce_clearance_constraints,
             require_frequency: self.require_frequency,
             require_callsign: self.require_callsign,
             strict_phraseology: self.strict_phraseology,

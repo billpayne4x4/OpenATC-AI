@@ -1,5 +1,22 @@
 # Unreleased
 
+## Aircraft crew controls and checklist exchanges — 8 October 2026
+
+Added standard X-Plane controls with third-party TOML overrides, a searchable live-availability page, and 463 additional ToLiss cockpit button mappings. Fixed purser/MECH routing by observing actual commands instead of reading nonexistent datarefs. Added bounded control requests, optional validated JSON interpretation, verified setting replies, button-dispatch replies, cabin lighting/slides, chocks/external power and both checklist directions. All spoken requests/challenges/responses are in speech TOML, with 168 new examples. ToLiss pushback distance/angle remain unavailable through identified public controls; no tug is started with stale parameters.
+
+
+## Named position reports and TTS diagnostics — 8 October 2026
+
+Position requests use an offline worldwide settlement lookup with approximate distance/direction and an airport fallback, replacing spoken GPS coordinates. Added GeoNames attribution and dataset coverage notes. TTS failures record attempted text, voice/model and transport error or provider status; synthesis-worker failures also record text.
+
+## Strict and natural ATC wording — 8 October 2026
+
+Clarified the existing wording setting: off uses TOML controller phrases as written; on permits validated natural wording. Added a real-engine regression proving that strict mode does not call the wording model. Crew conversations remain separate from this ATC wording switch.
+
+## LLM phrase examples — 8 October 2026
+
+Removed the four/six-situation cutoff from crew, suggestion and optional ATC wording prompts. All matching phrase alternatives now reach the model, retaining role, phase, regional and flight-rule selection. Prompts explicitly request fresh wording while preserving standard phraseology, live facts and controller permissions. Deterministic fallback and operational-token validation remain in place.
+
 ## Repository housekeeping — 8 October 2026
 
 Expanded ignore rules for local assistant settings, instruction files, histories, generated plans and model downloads. Product prompts, speech, model manifests, Cargo configuration and CI workflows remain project files. Reworded first-party source comments to describe current behavior and removed obsolete porting notes without changing executable code. Consolidated the README around setup, departure operation, editable files and current limitations. No Git operations were performed.
@@ -276,3 +293,59 @@ Live sessions no longer generate fictional callsigns or canned background cleara
 Legacy cleanup: removed top-level `src/`, `include/`, CMake configuration and obsolete C++ test executables. Shared JSON/TOML fixtures remain in `tests/fixtures/`. `scripts/fedora-build.sh` and GitHub CI use Cargo; `scripts/package.py linux-x64` packages the built Rust plugin through the installer. CI currently targets Linux; Windows/macOS packaging remains unverified. Native third-party dependencies remain.
 
 Workspace layout: Cargo.toml, Cargo.lock, models.toml, .cargo configuration and crates/ now live at the repository root. Build with cargo from the root; outputs are under target/. Build/CI/install/package paths and embedded resource/fixture paths were updated. packages/ and target/ are ignored; the patched vendor/xplane source is explicitly included. Local old-crate archives were moved outside the repository.
+
+### Cabin phase and ToLiss pushback follow-up
+
+- Cabin greetings use speech TOML and no longer select a landing-preparation response. Other cabin conversations receive live phase, ground state, speed and flight endpoints. Removed the landing example embedded in the cabin prompt.
+- Ground crew can trigger ToLiss pushback with settings already entered in ToLiss. Requests containing distance or turn parameters remain unsupported, and questions, stop requests and negated requests do not start the tug.
+- Verified the live simulator exposes writable cabin brightness, slide arm/disarm commands and readable slide state. Physical control behavior still needs simulator acceptance testing.
+- Crew integration and radio regression checks pass.
+
+### Ground crew wording and attendant identity
+
+- Pushback acknowledgments use brief ground-crew wording without aircraft vendor or configuration details. Explicit pushback requests use the aircraft ground-panel settings, including when spoken requests contain distance or angle. OpenATC does not change those parameters.
+- Recognize both CABIN and ATTENDANT transcript identities for badges, attendant voice, volume and speech playback settings.
+- Treat explicit connection requests as actions rather than status queries. Unmapped ground-service connections cannot receive fabricated completion claims through free conversation.
+
+### Friendly cabin phrasebook
+
+- Added 47 situations and 282 phrases covering all 11 flight phases, with greetings, thanks, clarification, refreshments, cabin comfort, departure and arrival updates, and farewells.
+- Separate interphone and passenger-announcement examples; casual conversation cannot be treated as an announcement request.
+- Expanded the live wellbeing greeting to 12 alternatives. Updated the cabin prompt, editing documentation and phrasebook index.
+
+### Clearance wording variation
+
+- Rotate runtime phrases per response ID instead of using a shared counter. Rotate clearance/start/pushback templates independently of transcript sequence.
+- Persist ATC phrase choices and previous station/task wording in `phrase-history.json`, retaining them across flight resets and engine restarts.
+- Explain controller duties, live phase and current task in optional wording prompts, with prior wording and phase/rules/service-matched examples. Reject repeated model candidates and preserve operational facts.
+- Expanded the IFR route-clearance template to ten alternatives. Strict mode stays on TOML wording; only the variety setting enables model rewording.
+
+### Panel appearance and chat frequency links
+
+- Lightened the panel and child backgrounds, with translucent tint, a soft top highlight and a subtle border. This is a glass-style finish without simulator-image blur.
+- Underline decimal COM frequencies in ATC messages and tune COM1 when clicked. Respect radio power, wrap text and retain message selection/copy. Pilot and crew messages remain plain text.
+- Headless UI checks exercise link clicks, powered-off behavior and ordinary text; parser checks exclude altitudes, runway numbers and navigation frequencies. Simulator appearance still needs a visual check.
+
+### Simulator test follow-up
+
+- Recognize chalks/shocks as chocks aliases, reject compound control requests instead of executing only one control, and prevent unconfirmed ground-service completion claims. Control acknowledgments now require 750 ms of stable readback within the confirmation timeout.
+- Holding-point detection uses a 45 m stopped-aircraft tolerance to allow for the aircraft reference point behind its nose. Ground hands off to Tower, and traffic protection still governs runway permission.
+- Remember the actual last clearance template as well as its next index. Skip repeated templates and log selected alternatives and rendering failures for diagnosis.
+- Removed the extra square panel gradient/border and increased the tinted surface opacity. True simulator-image blur remains unavailable in the current renderer.
+
+### Clearance readback and Ground handoff wording
+
+- Removed the routine spoken list of required readback items from initial clearances. Validation still checks those items.
+- Correct IFR readback on Delivery now includes the published Ground frequency for start-up/pushback when ready; no station or permission is invented where a separate Ground station is absent. All handoff alternatives are in speech TOML.
+
+### Intermediate runway crossings
+
+Taxi hold-short instructions now identify the nearby physical runway instead of always naming the departure runway. Ground and Tower can proactively issue a traffic-checked crossing clearance at an intermediate hold. Crossing readback enables its route; reaching the far-side endpoint produces a new taxi instruction toward the original destination, requiring readback. Crossing completion uses a tighter endpoint tolerance than an ordinary holding-point arrival. Comma-separated runway annotations and padded reciprocal runway numbers are accepted. Crossing edges are sampled against other runways to prevent an unintended second crossing. New crossing, hold, readback, vacated and onward-taxi alternatives remain editable in TOML. Yellow guard lights remain scenery-owned and continue flashing; they are not stop bars.
+
+Removed the ATC-page taxi readback banner and its duplicate instruction display. Taxi clearance validation and Auto Reply remain available.
+
+### New flight and plugin re-enable
+
+Added a page-with-plus New flight icon in the window header with reset confirmation. Reset clears the plan, conversation, permissions, guidance, checklist progress, pending crew actions and local recording/playback state. Operator settings, phrase history, controller voices and live aircraft state are preserved. Previous queued commands, stale snapshots and delayed model responses cannot restore the old flight after reset. The simulator host clears its pending crew callbacks and guidance caches. Reset does not restart the remote AI server or change aircraft controls.
+
+Re-enabling now reuses the existing window and ImGui renderer instead of creating a second active context. Command handlers and the Plugins menu are registered once. Disable releases flight-local crew bindings and datarefs, and enable rebuilds them. Live X-Plane re-enable and header reset remain simulator acceptance checks.

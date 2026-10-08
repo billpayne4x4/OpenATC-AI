@@ -1,6 +1,6 @@
 # Situation index
 
-Generated from the shipped library. Stable IDs, eligible ATC services and phases make editing explicit. See [editing](README.md) for schema and limits.
+Generated from the shipped library. Pilot entries illustrate requests and captain responses. See [editing](README.md).
 
 | File | ID | Services | Phases | Tags |
 |---|---|---|---|---|
@@ -220,6 +220,30 @@ Generated from the shipped library. Stable IDs, eligible ATC services and phases
 | [common/shared/atc_emergencies.toml](common/shared/atc_emergencies.toml) | `emergency.divert_request_ack` | Clearance, Ground, Tower, Approach, Departure | departure, cruise, arrival, approach, landed | divert_request_ack |
 | [common/shared/atc_emergencies.toml](common/shared/atc_emergencies.toml) | `emergency.minimum_fuel_delay` | Clearance, Ground, Tower, Approach, Departure | departure, cruise, arrival, approach, landed | minimum_fuel_delay |
 | [common/shared/atc_emergencies.toml](common/shared/atc_emergencies.toml) | `emergency.distress_assistance` | Clearance, Ground, Tower, Approach, Departure | departure, cruise, arrival, approach, landed | distress_assistance |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.cross` | Tower | taxi, taxi_in | runway_crossing |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.cross_hold` | Tower | taxi, taxi_in | crossing_not_authorized |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.cross_traffic` | Tower | taxi, taxi_in | crossing_traffic_hold |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.tower_handoff` | Ground | taxi | holding_point_handoff |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.takeoff` | Tower | taxi, departure | takeoff_clearance |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.departure_contact` | Tower | departure | departure_handoff |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.departure_ack` | Departure | departure | departure_checkin |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.center_contact` | Center | departure, cruise, arrival | sector_handoff |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.center_ack` | Center | cruise | sector_checkin |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.level_correction` | Center | departure, cruise, arrival | altitude_noncompliance |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.altitude_amendment` | Center | departure, cruise, arrival | amended_altitude |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.arrival_contact` | Center | cruise, arrival | arrival_handoff |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.star_expect` | Approach | arrival | arrival_star |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.ils` | Approach | arrival, approach | approach_clearance |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.established` | Approach | approach | established_localizer |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.arrival_tower` | Approach | approach | arrival_tower_handoff |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.landing` | Tower | approach | landing_clearance |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.landing_wait` | Tower | approach | landing_clearance_pending |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.go_around` | Tower | approach | controller_go_around |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.vacate` | Tower | landed | runway_vacate |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.arrival_ground` | Tower | landed | arrival_ground_handoff |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.gate_taxi` | Ground | landed, taxi_in | arrival_gate_taxi |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.gate_hold` | Ground | taxi_in | arrival_gate_hold |
+| [common/shared/atc_flight_progression.toml](common/shared/atc_flight_progression.toml) | `flight_examples.parked` | Ground | taxi_in, finished | arrival_parked |
 | [common/shared/atc_ground.toml](common/shared/atc_ground.toml) | `ground.pushback_approved` | Ground | parked | pushback_request |
 | [common/shared/atc_ground.toml](common/shared/atc_ground.toml) | `ground.pushback_conditional` | Ground | parked | pushback_conflict |
 | [common/shared/atc_ground.toml](common/shared/atc_ground.toml) | `ground.startup_only` | Ground | parked, clearance, pushback | startup_request |
@@ -329,131 +353,204 @@ Generated from the shipped library. Stable IDs, eligible ATC services and phases
 | [common/vfr/atc_vfr.toml](common/vfr/atc_vfr.toml) | `vfr.service_terminated` | Tower, Approach | departure, cruise, arrival, approach | service_terminated |
 | [common/vfr/atc_vfr.toml](common/vfr/atc_vfr.toml) | `vfr.uncertain_position` | Tower, Approach | departure, cruise, arrival, approach | uncertain_position |
 | [common/vfr/atc_vfr.toml](common/vfr/atc_vfr.toml) | `vfr.practice_approach_request` | Tower, Approach | departure, cruise, arrival, approach | practice_approach_request |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.takeoff_roll` |  | departure | airspeed_check |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.after_takeoff` |  | departure | positive_climb |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.altitude_capture` |  | departure, cruise, arrival | altitude_captured |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.approach_calls` |  | approach | approach_stable_verified |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.goaround_calls` |  | approach | go_around_announced |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.checklist` |  | parked, taxi, departure, approach | checklist_requested |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.interphone_cabin` |  | departure, arrival | prepare_cabin_departure |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.monitoring_challenge` |  | cruise, approach | speed_decreasing_verified |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.fuel_state` |  | arrival | fuel_endurance_verified |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.rejected_takeoff` |  | departure | rejected_takeoff_announced |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.engine_fail_after_v1` |  | departure | engine_failure_detected |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.tcas_ra` |  | cruise, arrival | tcas_ra_active |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.windshear_escape` |  | departure, approach | windshear_warning_active |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.cabin_secure_report` |  | approach, parked | cabin_secure_report_received |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.flap_extension` |  | approach | flap_selection_requested |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.shutdown_flows` |  | parked | shutdown_checklist_requested |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.conversation_ready` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | conversation_ready |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.repeat_request` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | repeat_request |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.radio_task_redirect` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | radio_task_redirect |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.no_clearance` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | no_clearance |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.clearance_review` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | clearance_review |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.runway_crosscheck` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | runway_crosscheck |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.taxi_review` |  | taxi, taxi_in | taxi_review |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.hold_short_reminder` |  | taxi, taxi_in | hold_short_reminder |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.runway_crossing_check` |  | taxi, taxi_in | runway_crossing_check |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.heading_crosscheck` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | heading_crosscheck |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.altitude_crosscheck` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | altitude_crosscheck |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.speed_crosscheck` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | speed_crosscheck |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.pressure_crosscheck` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | pressure_crosscheck |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.frequency_crosscheck` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | frequency_crosscheck |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.preflight_review` |  | parked | preflight_review |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.brief_departure` |  | parked, clearance, taxi | brief_departure |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.brief_arrival` |  | arrival, approach | brief_arrival |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.terrain_gap` |  | departure, cruise, arrival, approach | terrain_gap |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.high_profile` |  | arrival, approach | high_profile |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.low_profile` |  | arrival, approach | low_profile |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.projected_long` |  | arrival, approach | projected_long |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.projected_short` |  | arrival, approach | projected_short |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.v1_call` |  | departure | v1_call |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.rotate_call` |  | departure | rotate_call |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.thousand_remaining` |  | departure, cruise, arrival, approach | thousand_remaining |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.localizer_captured` |  | arrival, approach | localizer_captured |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.glideslope_captured` |  | arrival, approach | glideslope_captured |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.approach_unstable` |  | arrival, approach | approach_unstable |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.minimums_call` |  | arrival, approach | minimums_call |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.no_visual_at_minimums` |  | arrival, approach | no_visual_at_minimums |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.visual_reference` |  | arrival, approach | visual_reference |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.ra_clear` |  | departure, cruise, arrival, approach | ra_clear |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.checklist_not_verified` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | checklist_not_verified |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.control_authority` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | control_authority |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.aircraft_procedure` |  | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | aircraft_procedure |
-| [crew/copilot.toml](crew/copilot.toml) | `copilot.parking_confirm` |  | parked | parking_confirm |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.boarding` |  | parked | boarding |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.safety_demo` |  | parked, taxi | safety_brief |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.turbulence_pax` |  | cruise, arrival | turbulence_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.interphone_turbulence` |  | cruise, arrival | turbulence_crew |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.descent` |  | arrival | descent_prep |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.landing_stations` |  | approach | landing_prep |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.arrival_welcome` |  | landed, taxi_in | arrival |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_call` |  | cruise | medical_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.delay_pax` |  | parked, taxi, arrival | delay |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.missed_approach_pax` |  | approach | go_around_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.diversion_pax` |  | cruise, arrival | diversion_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_diversion` |  | cruise, arrival | medical_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.security_delay` |  | parked | security_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.arrival_gate` |  | taxi_in, parked | arrival_gate |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.farewell_thanks` |  | taxi_in, parked | farewell |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.turbulence_seated_check` |  | cruise, arrival | turbulence_pax |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.boarding_complete` |  | parked | boarding_complete |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.cabin_not_secure` |  | parked, pushback, taxi | cabin_not_secure |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.cabin_secure_departure` |  | parked | cabin_secure_departure |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.cabin_secure_landing` |  | arrival, approach | cabin_secure_landing |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.door_status_query` |  | parked | door_status_query |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.seatbelts_reminder` |  | parked, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | seatbelts_reminder |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.service_start` |  | cruise | service_start |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.service_suspended` |  | departure, cruise, arrival, approach | service_suspended |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.service_resume` |  | cruise | service_resume |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_report` |  | departure, cruise, arrival, approach | medical_report |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_update` |  | departure, cruise, arrival, approach | medical_update |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.smoke_report` |  | departure, cruise, arrival, approach | smoke_report |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.smoke_update` |  | departure, cruise, arrival, approach | smoke_update |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.security_report` |  | departure, cruise, arrival, approach | security_report |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.crew_injury` |  | departure, cruise, arrival, approach | crew_injury |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.diversion_ready` |  | departure, cruise, arrival, approach | diversion_ready |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.approach_delay` |  | arrival, approach | approach_delay |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.remain_seated_taxi` |  | taxi_in | remain_seated_taxi |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.disembark_ready` |  | parked | disembark_ready |
-| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.connection_information` |  | parked | connection_information |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_crew` |  | parked | pushback_coordination |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.startup_clearance` |  | parked | engine_start |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.fuel_catering` |  | parked | turnaround |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.marshaller` |  | taxi_in, parked | parking |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deicing` |  | parked, taxi | winter_ops |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.after_landing_check` |  | taxi_in | arrival_check |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.follow_me` |  | taxi, taxi_in | follow_me |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.tow_to_maintenance` |  | parked | tow |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.night_pushback` |  | parked | pushback_coordination, night_ops |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.lav_water_service` |  | parked | turnaround |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.cargo_loading` |  | parked | turnaround |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pre_departure_walkaround` |  | parked | walkaround |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.chocks_in` |  | parked, pushback, taxi_in | chocks_in |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.chocks_out` |  | parked | chocks_out |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.gpu_connected` |  | parked, pushback, taxi_in | gpu_connected |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.gpu_disconnected` |  | parked | gpu_disconnected |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_moving` |  | pushback | pushback_moving |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_hold` |  | pushback | pushback_hold |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_complete` |  | pushback | pushback_complete |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pin_removed` |  | pushback | pin_removed |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.tug_clear` |  | pushback | tug_clear |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.start_hold` |  | parked, pushback, taxi_in | start_hold |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.fuel_in_progress` |  | parked | fuel_in_progress |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.fuel_quantity_check` |  | parked | fuel_quantity_check |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.catering_complete` |  | parked | catering_complete |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.loading_complete` |  | parked | loading_complete |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.load_sheet_ready` |  | parked | load_sheet_ready |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.service_vehicle_near` |  | parked, pushback, taxi_in | service_vehicle_near |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deice_ready` |  | parked | deice_ready |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deice_hold` |  | parked | deice_hold |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deice_report_repeat` |  | parked | deice_report_repeat |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.holdover_review` |  | parked | holdover_review |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.walkaround_defect` |  | parked, pushback, taxi_in | walkaround_defect |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.maintenance_requested` |  | parked, pushback, taxi_in | maintenance_requested |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.stand_obstructed` |  | taxi_in | stand_obstructed |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.marshaller_visual` |  | taxi_in | marshaller_visual |
-| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.all_services_clear` |  | parked | all_services_clear |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_greeting` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, greeting |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_wellbeing` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, wellbeing |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_thanks` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, thanks |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_acknowledge` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, acknowledge |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_repeat` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, say_again |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_clarify` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, clarification |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_standby` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, standby |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_apology` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, apology |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_correction` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, correction |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.friendly_help` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in, finished | interphone, help |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_morning` | — | parked, clearance | interphone, morning_greeting |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_evening` | — | parked, clearance | interphone, evening_greeting |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_flight_plan` | — | parked, clearance | interphone, departure_briefing |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_boarding_question` | — | parked, clearance | interphone, boarding_status_query |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_door_question` | — | parked, clearance | interphone, door_status_query |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_departure_preparation` | — | parked, clearance | interphone, departure_prep_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_delay_ack` | — | parked, clearance | interphone, delay_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.parked_welcome_pa` | — | parked | passenger_pa, welcome_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.pushback_ack` | — | pushback | interphone, pushback_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.pushback_service_question` | — | pushback | interphone, refreshment_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.taxi_interphone_brief` | — | taxi | interphone, brief_contact |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.taxi_hold_update` | — | taxi | interphone, holding_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.taxi_seated_pa` | — | taxi | passenger_pa, remain_seated_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.departure_nonessential` | — | departure | interphone, nonessential_contact |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.departure_safety_contact` | — | departure, approach | interphone, urgent_contact |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.departure_after_takeoff` | — | departure, cruise | interphone, after_takeoff_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_checkin` | — | cruise | interphone, friendly_checkin |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_drink_offer` | — | cruise | interphone, drink_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_drink_details` | — | cruise | interphone, drink_preferences |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_food_request` | — | cruise | interphone, food_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_delivery_query` | — | cruise | interphone, delivery_status_query |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_comfort` | — | cruise | interphone, comfort_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_lighting_clarify` | — | cruise, arrival | interphone, lighting_clarification |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_turbulence_update` | — | cruise, arrival | interphone, turbulence_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.cruise_pax_comfort_pa` | — | cruise | passenger_pa, comfort_announcement_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.arrival_descent_ack` | — | arrival | interphone, descent_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.arrival_landing_prep_ack` | — | arrival, approach | interphone, landing_prep_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.arrival_eta_query` | — | arrival | interphone, arrival_time_query |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.arrival_weather_query` | — | arrival | interphone, destination_weather_query |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.approach_brief_reply` | — | approach | interphone, brief_contact |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.approach_goaround_ack` | — | approach | interphone, go_around_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.landed_ack` | — | landed | interphone, landing_update |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.taxiin_stand_query` | — | taxi_in | interphone, stand_query |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.taxiin_remain_seated` | — | taxi_in, landed | passenger_pa, remain_seated_request |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.finished_friendly_farewell` | — | finished | interphone, farewell |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.finished_debrief` | — | finished | interphone, debrief |
+| [crew/cabin_conversation.toml](crew/cabin_conversation.toml) | `cabin_conversation.finished_farewell_pa` | — | finished | passenger_pa, farewell_request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_heading` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | heading, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_altitude` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | altitude, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_speed` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | speed, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_autopilot` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | autopilot, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_autothrust` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | autothrust, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_gear` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | gear, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_flaps` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | flaps, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_lights` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | lights, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_checklists` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | checklists, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_captain_responses` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | captain_responses, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_cabin_lights` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | cabin_lights, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_cabin_slides` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | cabin_slides, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_ground_power` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | ground_power, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.pilot_pushback` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | pushback, request |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_heading` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | heading, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_altitude` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | altitude, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_speed` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | speed, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_autopilot` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | autopilot, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_gear` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | gear, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_flaps` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | flaps, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_checklists` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | checklists, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.copilot_limitations` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | limitations, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.attendant_lights` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | lights, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.attendant_slides` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | slides, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.ground_services` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | services, response |
+| [crew/controls_and_checklists.toml](crew/controls_and_checklists.toml) | `crew_controls.ground_pushback` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | pushback, response |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.takeoff_roll` | — | departure | airspeed_check |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.after_takeoff` | — | departure | positive_climb |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.altitude_capture` | — | departure, cruise, arrival | altitude_captured |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.approach_calls` | — | approach | approach_stable_verified |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.goaround_calls` | — | approach | go_around_announced |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.checklist` | — | parked, taxi, departure, approach | checklist_requested |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.interphone_cabin` | — | departure, arrival | prepare_cabin_departure |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.monitoring_challenge` | — | cruise, approach | speed_decreasing_verified |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.fuel_state` | — | arrival | fuel_endurance_verified |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.rejected_takeoff` | — | departure | rejected_takeoff_announced |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.engine_fail_after_v1` | — | departure | engine_failure_detected |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.tcas_ra` | — | cruise, arrival | tcas_ra_active |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.windshear_escape` | — | departure, approach | windshear_warning_active |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.cabin_secure_report` | — | approach, parked | cabin_secure_report_received |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.flap_extension` | — | approach | flap_selection_requested |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.shutdown_flows` | — | parked | shutdown_checklist_requested |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.conversation_ready` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | conversation_ready |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.repeat_request` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | repeat_request |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.radio_task_redirect` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | radio_task_redirect |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.no_clearance` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | no_clearance |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.clearance_review` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | clearance_review |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.runway_crosscheck` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | runway_crosscheck |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.taxi_review` | — | taxi, taxi_in | taxi_review |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.hold_short_reminder` | — | taxi, taxi_in | hold_short_reminder |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.runway_crossing_check` | — | taxi, taxi_in | runway_crossing_check |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.heading_crosscheck` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | heading_crosscheck |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.altitude_crosscheck` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | altitude_crosscheck |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.speed_crosscheck` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | speed_crosscheck |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.pressure_crosscheck` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | pressure_crosscheck |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.frequency_crosscheck` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | frequency_crosscheck |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.preflight_review` | — | parked | preflight_review |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.brief_departure` | — | parked, clearance, taxi | brief_departure |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.brief_arrival` | — | arrival, approach | brief_arrival |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.terrain_gap` | — | departure, cruise, arrival, approach | terrain_gap |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.high_profile` | — | arrival, approach | high_profile |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.low_profile` | — | arrival, approach | low_profile |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.projected_long` | — | arrival, approach | projected_long |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.projected_short` | — | arrival, approach | projected_short |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.v1_call` | — | departure | v1_call |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.rotate_call` | — | departure | rotate_call |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.thousand_remaining` | — | departure, cruise, arrival, approach | thousand_remaining |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.localizer_captured` | — | arrival, approach | localizer_captured |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.glideslope_captured` | — | arrival, approach | glideslope_captured |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.approach_unstable` | — | arrival, approach | approach_unstable |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.minimums_call` | — | arrival, approach | minimums_call |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.no_visual_at_minimums` | — | arrival, approach | no_visual_at_minimums |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.visual_reference` | — | arrival, approach | visual_reference |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.ra_clear` | — | departure, cruise, arrival, approach | ra_clear |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.checklist_not_verified` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | checklist_not_verified |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.control_authority` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | control_authority |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.aircraft_procedure` | — | parked, clearance, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | aircraft_procedure |
+| [crew/copilot.toml](crew/copilot.toml) | `copilot.parking_confirm` | — | parked | parking_confirm |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.boarding` | — | parked | boarding |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.safety_demo` | — | parked, taxi | safety_brief |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.turbulence_pax` | — | cruise, arrival | turbulence_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.interphone_turbulence` | — | cruise, arrival | turbulence_crew |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.descent` | — | arrival | descent_prep |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.landing_stations` | — | approach | landing_prep |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.arrival_welcome` | — | landed, taxi_in | arrival |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_call` | — | cruise | medical_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.delay_pax` | — | parked, taxi, arrival | delay |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.missed_approach_pax` | — | approach | go_around_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.diversion_pax` | — | cruise, arrival | diversion_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_diversion` | — | cruise, arrival | medical_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.security_delay` | — | parked | security_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.arrival_gate` | — | taxi_in, parked | arrival_gate |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.farewell_thanks` | — | taxi_in, parked | farewell |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.turbulence_seated_check` | — | cruise, arrival | turbulence_pax |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.boarding_complete` | — | parked | boarding_complete |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.cabin_not_secure` | — | parked, pushback, taxi | cabin_not_secure |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.cabin_secure_departure` | — | parked | cabin_secure_departure |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.cabin_secure_landing` | — | arrival, approach | cabin_secure_landing |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.door_status_query` | — | parked | door_status_query |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.seatbelts_reminder` | — | parked, pushback, taxi, departure, cruise, arrival, approach, landed, taxi_in | seatbelts_reminder |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.service_start` | — | cruise | service_start |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.service_suspended` | — | departure, cruise, arrival, approach | service_suspended |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.service_resume` | — | cruise | service_resume |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_report` | — | departure, cruise, arrival, approach | medical_report |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.medical_update` | — | departure, cruise, arrival, approach | medical_update |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.smoke_report` | — | departure, cruise, arrival, approach | smoke_report |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.smoke_update` | — | departure, cruise, arrival, approach | smoke_update |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.security_report` | — | departure, cruise, arrival, approach | security_report |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.crew_injury` | — | departure, cruise, arrival, approach | crew_injury |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.diversion_ready` | — | departure, cruise, arrival, approach | diversion_ready |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.approach_delay` | — | arrival, approach | approach_delay |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.remain_seated_taxi` | — | taxi_in | remain_seated_taxi |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.disembark_ready` | — | parked | disembark_ready |
+| [crew/flight_attendant.toml](crew/flight_attendant.toml) | `cabin.connection_information` | — | parked | connection_information |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_crew` | — | parked | pushback_coordination |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.startup_clearance` | — | parked | engine_start |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.fuel_catering` | — | parked | turnaround |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.marshaller` | — | taxi_in, parked | parking |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deicing` | — | parked, taxi | winter_ops |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.after_landing_check` | — | taxi_in | arrival_check |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.follow_me` | — | taxi, taxi_in | follow_me |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.tow_to_maintenance` | — | parked | tow |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.night_pushback` | — | parked | pushback_coordination, night_ops |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.lav_water_service` | — | parked | turnaround |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.cargo_loading` | — | parked | turnaround |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pre_departure_walkaround` | — | parked | walkaround |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.chocks_in` | — | parked, pushback, taxi_in | chocks_in |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.chocks_out` | — | parked | chocks_out |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.gpu_connected` | — | parked, pushback, taxi_in | gpu_connected |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.gpu_disconnected` | — | parked | gpu_disconnected |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_moving` | — | pushback | pushback_moving |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_hold` | — | pushback | pushback_hold |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pushback_complete` | — | pushback | pushback_complete |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.pin_removed` | — | pushback | pin_removed |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.tug_clear` | — | pushback | tug_clear |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.start_hold` | — | parked, pushback, taxi_in | start_hold |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.fuel_in_progress` | — | parked | fuel_in_progress |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.fuel_quantity_check` | — | parked | fuel_quantity_check |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.catering_complete` | — | parked | catering_complete |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.loading_complete` | — | parked | loading_complete |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.load_sheet_ready` | — | parked | load_sheet_ready |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.service_vehicle_near` | — | parked, pushback, taxi_in | service_vehicle_near |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deice_ready` | — | parked | deice_ready |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deice_hold` | — | parked | deice_hold |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.deice_report_repeat` | — | parked | deice_report_repeat |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.holdover_review` | — | parked | holdover_review |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.walkaround_defect` | — | parked, pushback, taxi_in | walkaround_defect |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.maintenance_requested` | — | parked, pushback, taxi_in | maintenance_requested |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.stand_obstructed` | — | taxi_in | stand_obstructed |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.marshaller_visual` | — | taxi_in | marshaller_visual |
+| [crew/ground_services.toml](crew/ground_services.toml) | `ramp.all_services_clear` | — | parked | all_services_clear |
 | [united_kingdom/ifr/clearance.toml](united_kingdom/ifr/clearance.toml) | `united_kingdom_clearance.qnh` | Clearance, Ground, Tower, Approach, Departure | clearance, arrival, approach | qnh |
 | [united_kingdom/ifr/clearance.toml](united_kingdom/ifr/clearance.toml) | `united_kingdom_clearance.report_established` | Clearance, Ground, Tower, Approach, Departure | clearance, arrival, approach | report_established |
 | [united_kingdom/vfr/services.toml](united_kingdom/vfr/services.toml) | `united_kingdom_services.basic_service` | Tower, Approach | departure, cruise, arrival, approach | basic_service |
@@ -480,7 +577,3 @@ Generated from the shipped library. Stable IDs, eligible ATC services and phases
 | [us/vfr/services.toml](us/vfr/services.toml) | `us_services.pattern_left` | Tower, Approach | departure, cruise, arrival, approach | pattern_left |
 | [us/vfr/services.toml](us/vfr/services.toml) | `us_services.pattern_right` | Tower, Approach | departure, cruise, arrival, approach | pattern_right |
 | [us/vfr/services.toml](us/vfr/services.toml) | `us_services.option` | Tower, Approach | departure, cruise, arrival, approach | option |
-
-## Live runtime templates
-
-See [runtime/responses.toml](runtime/responses.toml) for 191 operational/measurement templates and 381 phrases, and [runtime/README.md](runtime/README.md) for editing and validation. These are loaded separately from regional AI examples.

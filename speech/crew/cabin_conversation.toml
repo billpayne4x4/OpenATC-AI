@@ -1,0 +1,708 @@
+# Friendly cabin examples. Interphone replies answer the captain; passenger PA needs an explicit request.
+# Status reports and completed actions require confirmed live facts. These examples do not trigger events.
+
+[cabin_conversation.friendly_greeting]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "greeting"]
+slots = []
+say = [
+  "Hello, Captain. How can I help?",
+  "Good to hear from you, Captain. What do you need?",
+  "Hello, Captain. I'm listening.",
+  "Hi, Captain. What can I do for you?",
+  "Hello there, Captain. How are you?",
+  "Cabin speaking, Captain. How can I help?",
+]
+
+[cabin_conversation.friendly_wellbeing]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "wellbeing"]
+slots = []
+say = [
+  "I'm well, thank you, Captain. How are you?",
+  "Very well, thank you. I hope you're doing well too.",
+  "I'm good, Captain, thanks for asking. What can I help with?",
+  "Doing well, thank you, Captain. And you?",
+  "All good here, thank you for asking. How are you feeling?",
+  "I'm fine, thank you. It's nice of you to ask.",
+]
+
+[cabin_conversation.friendly_thanks]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "thanks"]
+slots = []
+say = [
+  "You're welcome, Captain.",
+  "My pleasure, Captain.",
+  "Of course, Captain. Happy to help.",
+  "No problem at all, Captain.",
+  "You're very welcome. Let me know if you need anything else.",
+  "Any time, Captain.",
+]
+
+[cabin_conversation.friendly_acknowledge]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "acknowledge"]
+slots = []
+say = [
+  "Understood, Captain.",
+  "Thank you, Captain. Message received.",
+  "Of course. I've understood your request.",
+  "Understood. Thank you for letting me know.",
+  "Message received, Captain.",
+  "Thanks for the update, Captain.",
+]
+
+[cabin_conversation.friendly_repeat]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "say_again"]
+slots = []
+say = [
+  "Sorry, Captain, could you say that again?",
+  "I didn't catch the last part. Could you repeat it?",
+  "Could you repeat your request, Captain?",
+  "Please say that once more, Captain.",
+  "I couldn't make out the request. Could you say it again?",
+  "One more time, please, Captain. I didn't quite hear you.",
+]
+
+[cabin_conversation.friendly_clarify]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "clarification"]
+slots = []
+say = [
+  "What would you like me to do, Captain?",
+  "Could you clarify what you need?",
+  "Which item do you mean, Captain?",
+  "Could you be a little more specific, please?",
+  "Before I do anything, please confirm your request.",
+  "Please tell me which setting or service you need.",
+]
+
+[cabin_conversation.friendly_standby]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "standby"]
+slots = []
+say = [
+  "Standing by, Captain.",
+  "Of course, Captain. Call when you're ready.",
+  "Understood. I'll wait for your next call.",
+  "No rush, Captain. I'm listening when you're ready.",
+  "Standing by. Let me know when you want to continue.",
+  "Understood, Captain. Speak when you're ready.",
+]
+
+[cabin_conversation.friendly_apology]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "apology"]
+slots = []
+say = [
+  "No problem, Captain.",
+  "That's all right, Captain.",
+  "No worries. What would you like to do next?",
+  "That's fine, Captain. Please go ahead.",
+  "No trouble at all. I'm listening.",
+  "Of course, Captain. We can start again.",
+]
+
+[cabin_conversation.friendly_correction]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "correction"]
+slots = []
+say = [
+  "Thank you for correcting that, Captain.",
+  "Understood, Captain. Please confirm the revised request.",
+  "Thanks for clarifying. What would you like instead?",
+  "Of course. Please give me the corrected instruction.",
+  "Understood. I'll use your latest instruction.",
+  "Thank you, Captain. The latest request takes priority.",
+]
+
+[cabin_conversation.friendly_help]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in", "finished"]
+variant = "common"
+situation = ["interphone", "help"]
+slots = []
+say = [
+  "I can help with cabin lights and door-mode requests, Captain.",
+  "You can ask me about cabin controls or make a passenger-announcement request.",
+  "Tell me what you need in the cabin, Captain.",
+  "For a cabin setting, please tell me the control and the setting you want.",
+  "If you need an announcement, tell me what you want the passengers to hear.",
+  "I'm here to help, Captain. What would you like to arrange?",
+]
+
+[cabin_conversation.parked_morning]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "morning_greeting"]
+slots = []
+say = [
+  "Good morning, Captain. How are you today?",
+  "Morning, Captain. What can I help you with?",
+  "Good morning. Nice to hear from you.",
+  "Morning, Captain. I'm listening.",
+  "A very good morning, Captain. What do you need?",
+  "Good morning, Captain. How can I help before departure?",
+]
+
+[cabin_conversation.parked_evening]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "evening_greeting"]
+slots = []
+say = [
+  "Good evening, Captain. How can I help?",
+  "Evening, Captain. What do you need?",
+  "Good evening. How are you doing?",
+  "Evening, Captain. I'm listening.",
+  "Good evening, Captain. Nice to hear from you.",
+  "Hello, Captain. I hope you're having a good evening.",
+]
+
+[cabin_conversation.parked_flight_plan]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "departure_briefing"]
+slots = []
+say = [
+  "Please let me know any cabin arrangements you need for this flight.",
+  "Do you have any special cabin instructions today, Captain?",
+  "What would you like included in the cabin briefing?",
+  "Please advise any changes that affect the cabin.",
+  "If there are any special requests, please let me know.",
+  "What do you need from the cabin team before departure?",
+]
+
+[cabin_conversation.parked_boarding_question]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "boarding_status_query"]
+slots = []
+say = [
+  "I don't have a confirmed boarding count, Captain.",
+  "Boarding completion isn't confirmed here. Please check the boarding status.",
+  "I can't confirm everyone is aboard from the information available.",
+  "Please check the boarding indication before treating boarding as complete.",
+  "I don't have a verified boarding-complete report yet.",
+  "The boarding status hasn't been confirmed, Captain.",
+]
+
+[cabin_conversation.parked_door_question]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "door_status_query"]
+slots = []
+say = [
+  "Which door would you like checked, Captain?",
+  "Please specify the door and the mode you want.",
+  "Are you asking about the door position or the slide mode?",
+  "Which door indication do you want me to confirm?",
+  "Please tell me which door you mean.",
+  "Do you want a door-status check or a door-mode change?",
+]
+
+[cabin_conversation.parked_departure_preparation]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "departure_prep_request"]
+slots = []
+say = [
+  "Understood, Captain. Departure preparation requested; the secure report needs confirmation.",
+  "Of course, Captain. I'll need confirmed cabin checks before reporting secure.",
+  "Departure preparation understood. I won't report cabin secure until it is confirmed.",
+  "Understood. Please allow for the cabin checks before departure.",
+  "Thank you, Captain. Departure instructions received; cabin readiness remains to be confirmed.",
+  "Understood, Captain. A departure-ready report will need verified cabin status.",
+]
+
+[cabin_conversation.parked_delay_ack]
+role = "attendant"
+phase = ["parked", "clearance"]
+variant = "common"
+situation = ["interphone", "delay_update"]
+slots = []
+say = [
+  "Thank you for letting me know, Captain. Do you want a passenger update?",
+  "Understood. What delay information should I pass to the passengers?",
+  "Thanks, Captain. Please advise the estimate you want announced.",
+  "Message received. Shall I make an announcement with that information?",
+  "Understood, Captain. Please let me know when there is an updated estimate.",
+  "Thank you. I'll use the information you've provided, without guessing a departure time.",
+]
+
+[cabin_conversation.parked_welcome_pa]
+role = "attendant"
+phase = ["parked"]
+variant = "common"
+situation = ["passenger_pa", "welcome_request"]
+slots = []
+say = [
+  "Welcome aboard. We're pleased to have you with us today.",
+  "Good day, everyone, and welcome aboard. Please settle into your assigned seats.",
+  "Welcome aboard, everyone. Please stow your belongings and keep the aisle clear.",
+  "It's a pleasure to welcome you aboard. Please take your seat and make yourself comfortable.",
+  "Welcome to our flight. Please place your baggage securely in the overhead locker or under the seat ahead.",
+  "Hello, everyone, and welcome aboard. Please ask a crew member if you need assistance finding your seat.",
+]
+
+[cabin_conversation.pushback_ack]
+role = "attendant"
+phase = ["pushback"]
+variant = "common"
+situation = ["interphone", "pushback_update"]
+slots = []
+say = [
+  "Thank you, Captain. Pushback update received.",
+  "Understood, Captain. Please keep us advised of any change.",
+  "Pushback information received, Captain.",
+  "Thanks for the update. What do you need from the cabin?",
+  "Understood. Let us know if the departure plan changes.",
+  "Message received, Captain. I'll keep this brief.",
+]
+
+[cabin_conversation.pushback_service_question]
+role = "attendant"
+phase = ["pushback"]
+variant = "common"
+situation = ["interphone", "refreshment_request"]
+slots = []
+say = [
+  "Let's arrange that once the aircraft is safely airborne, Captain.",
+  "Could we leave refreshments until after departure?",
+  "I can discuss that with you after takeoff, Captain.",
+  "Please call again once we're airborne and cabin service is appropriate.",
+  "Let's keep the cabin focused on departure for now, Captain.",
+  "Once the departure workload eases, we can discuss what you'd like.",
+]
+
+[cabin_conversation.taxi_interphone_brief]
+role = "attendant"
+phase = ["taxi"]
+variant = "common"
+situation = ["interphone", "brief_contact"]
+slots = []
+say = [
+  "Cabin speaking, Captain. Please go ahead.",
+  "I'm listening, Captain. I'll keep the reply brief.",
+  "Go ahead, Captain.",
+  "Cabin here. What do you need?",
+  "Captain, I'm listening.",
+  "Cabin speaking. Is there something you need before takeoff?",
+]
+
+[cabin_conversation.taxi_hold_update]
+role = "attendant"
+phase = ["taxi"]
+variant = "common"
+situation = ["interphone", "holding_update"]
+slots = []
+say = [
+  "Understood, Captain. Thank you for the holding update.",
+  "Thanks, Captain. Do you want a brief passenger announcement?",
+  "Message received. Please let us know when the situation changes.",
+  "Understood. What information would you like shared with passengers?",
+  "Thank you for keeping us informed, Captain.",
+  "Holding update received. I won't give passengers a time estimate unless you provide one.",
+]
+
+[cabin_conversation.taxi_seated_pa]
+role = "attendant"
+phase = ["taxi"]
+variant = "common"
+situation = ["passenger_pa", "remain_seated_request"]
+slots = []
+say = [
+  "Please remain seated with your seatbelt fastened while we taxi.",
+  "For your safety, please stay in your seat and keep your seatbelt secured.",
+  "As the aircraft taxis, please remain seated with your belt fastened.",
+  "Please keep the aisle clear and remain seated during taxi.",
+  "We're taxiing now. Please stay seated with your seatbelt fastened.",
+  "Please remain seated until advised otherwise, with your seatbelt securely fastened.",
+]
+
+[cabin_conversation.departure_nonessential]
+role = "attendant"
+phase = ["departure"]
+variant = "common"
+situation = ["interphone", "nonessential_contact"]
+slots = []
+say = [
+  "Captain, we can continue that conversation once the departure workload eases.",
+  "Let's leave that until it's an appropriate time after departure, Captain.",
+  "Understood. We can discuss the nonessential details once you're ready.",
+  "I'll keep this brief, Captain. Please call again when convenient.",
+  "We can pick that up later, Captain.",
+  "Of course, Captain. Let's return to that when the flight deck workload allows.",
+]
+
+[cabin_conversation.departure_safety_contact]
+role = "attendant"
+phase = ["departure", "approach"]
+variant = "common"
+situation = ["interphone", "urgent_contact"]
+slots = []
+say = [
+  "Cabin speaking. Go ahead with the safety message.",
+  "I'm listening, Captain. Please give the safety instruction.",
+  "Please go ahead, Captain. Safety information takes priority.",
+  "Cabin here. What is the urgent instruction?",
+  "Captain, I'm listening. Please repeat any critical detail clearly.",
+  "Go ahead, Captain. Please specify the action needed.",
+]
+
+[cabin_conversation.departure_after_takeoff]
+role = "attendant"
+phase = ["departure", "cruise"]
+variant = "common"
+situation = ["interphone", "after_takeoff_update"]
+slots = []
+say = [
+  "Thank you for the update, Captain. Please advise when cabin service may begin.",
+  "Understood. Let me know any restrictions for the cabin.",
+  "Thanks, Captain. What cabin arrangements do you need now?",
+  "Message received. Please advise the seatbelt and service instructions.",
+  "Thank you. We'll need your guidance before changing the cabin routine.",
+  "Understood, Captain. Is there anything specific you want passed to passengers?",
+]
+
+[cabin_conversation.cruise_checkin]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["interphone", "friendly_checkin"]
+slots = []
+say = [
+  "Hello, Captain. How are things on the flight deck?",
+  "Good to hear from you. What can I help with?",
+  "Cabin speaking, Captain. What would you like?",
+  "Hello again, Captain. How can I help?",
+  "Captain, I'm listening. Do you need anything?",
+  "Hello, Captain. What can I do for you during the cruise?",
+]
+
+[cabin_conversation.cruise_drink_offer]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["interphone", "drink_request"]
+slots = []
+say = [
+  "What would you like to drink, Captain? I'll need to check what's available.",
+  "Would you prefer tea, coffee or water, Captain?",
+  "Of course, Captain. Please tell me your preference and I'll check availability.",
+  "What drink would you like, Captain?",
+  "Happy to help, Captain. What would you prefer?",
+  "Please tell me what you'd like, Captain. Any preferences?",
+]
+
+[cabin_conversation.cruise_drink_details]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["interphone", "drink_preferences"]
+slots = []
+say = [
+  "How would you like that, Captain?",
+  "Would you like milk or sugar, if available?",
+  "Any preference for how it's prepared?",
+  "Please let me know your drink preferences.",
+  "Do you have any particular requirements for that drink?",
+  "What would you like with it, subject to availability?",
+]
+
+[cabin_conversation.cruise_food_request]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["interphone", "food_request"]
+slots = []
+say = [
+  "What would you like to eat, Captain? I'll need to check availability.",
+  "Please tell me your preference. I don't have a confirmed menu here.",
+  "Of course, Captain. What meal would you like, if it's available?",
+  "Do you have a preference or any dietary requirements?",
+  "What would you fancy, Captain? Something light or a meal?",
+  "Let me know what you'd like, Captain. Any dietary preferences?",
+]
+
+[cabin_conversation.cruise_delivery_query]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["interphone", "delivery_status_query"]
+slots = []
+say = [
+  "I don't have confirmation that it has been delivered, Captain.",
+  "Delivery hasn't been confirmed here. Please check with the cabin team.",
+  "I can't verify that the request has been completed yet.",
+  "I have no confirmed delivery status for that item.",
+  "That request needs a confirmed completion report, Captain.",
+  "I can't confirm it is at the flight deck without a delivery report.",
+]
+
+[cabin_conversation.cruise_comfort]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["interphone", "comfort_request"]
+slots = []
+say = [
+  "What would make you more comfortable, Captain?",
+  "Please tell me what you need and I'll check whether it's available.",
+  "Do you need something specific for the flight deck?",
+  "Happy to help. What would you like, Captain?",
+  "Please give me the item or adjustment you'd like.",
+  "What can I help you arrange, subject to availability?",
+]
+
+[cabin_conversation.cruise_lighting_clarify]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["interphone", "lighting_clarification"]
+slots = []
+say = [
+  "What cabin brightness would you like, Captain?",
+  "Please tell me the brightness level you want.",
+  "Would you like the cabin lights dimmed or switched off?",
+  "What light setting do you need?",
+  "Please specify the cabin-light level, Captain.",
+  "Do you want a particular percentage for the cabin lighting?",
+]
+
+[cabin_conversation.cruise_turbulence_update]
+role = "attendant"
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["interphone", "turbulence_update"]
+slots = []
+say = [
+  "Thank you for the turbulence warning, Captain. Please advise the cabin instructions.",
+  "Understood. Do you want service suspended and everyone seated?",
+  "Thanks for the warning. Please confirm what you need from the cabin.",
+  "Turbulence information received. A cabin-secure report still needs confirmation.",
+  "Understood, Captain. Please advise any expected duration if known.",
+  "Message received. Please let us know when conditions allow the cabin routine to resume.",
+]
+
+[cabin_conversation.cruise_pax_comfort_pa]
+role = "attendant"
+phase = ["cruise"]
+variant = "common"
+situation = ["passenger_pa", "comfort_announcement_request"]
+slots = []
+say = [
+  "Please keep your seatbelt fastened whenever you're seated. Thank you.",
+  "For your comfort and safety, keep your seatbelt fastened while seated.",
+  "If you need assistance, please use your call button when it is appropriate to do so.",
+  "Please be considerate of fellow passengers and keep the aisle clear.",
+  "We hope you're enjoying your flight. Please keep your seatbelt secured whenever seated.",
+  "Thank you for keeping the cabin comfortable for everyone. Please leave the aisle clear.",
+]
+
+[cabin_conversation.arrival_descent_ack]
+role = "attendant"
+phase = ["arrival"]
+variant = "common"
+situation = ["interphone", "descent_update"]
+slots = []
+say = [
+  "Thank you, Captain. Descent information received.",
+  "Understood, Captain. What would you like included in the passenger update?",
+  "Thanks for the arrival briefing. Please advise any cabin restrictions.",
+  "Descent update received. Please let us know any changes to the arrival plan.",
+  "Understood. Do you want a brief descent announcement?",
+  "Thank you, Captain. Please advise when you want landing preparation requested.",
+]
+
+[cabin_conversation.arrival_landing_prep_ack]
+role = "attendant"
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["interphone", "landing_prep_request"]
+slots = []
+say = [
+  "Understood, Captain. Landing preparation requested; cabin secure still needs confirmation.",
+  "Landing instructions received. I won't report secure until the checks are confirmed.",
+  "Understood. We need a confirmed cabin-secure report before treating preparations as complete.",
+  "Thank you, Captain. Landing preparation understood, with the secure report still pending.",
+  "Message received. Please confirm the cabin checks before we report secure.",
+  "Understood, Captain. I'll keep the request separate from a confirmed cabin-secure report.",
+]
+
+[cabin_conversation.arrival_eta_query]
+role = "attendant"
+phase = ["arrival"]
+variant = "common"
+situation = ["interphone", "arrival_time_query"]
+slots = []
+say = [
+  "What arrival estimate would you like me to announce, Captain?",
+  "I don't have a confirmed arrival time. Please advise your estimate.",
+  "Please give me the arrival estimate you want passed to passengers.",
+  "What time should I use for the passenger update?",
+  "I won't guess the arrival time, Captain. Please give me the current estimate.",
+  "Please confirm the latest arrival estimate before an announcement.",
+]
+
+[cabin_conversation.arrival_weather_query]
+role = "attendant"
+phase = ["arrival"]
+variant = "common"
+situation = ["interphone", "destination_weather_query"]
+slots = []
+say = [
+  "Please provide the destination weather you want included, Captain.",
+  "I don't have confirmed destination weather for an announcement.",
+  "What weather details would you like passed to passengers?",
+  "Please confirm the destination conditions before I describe them.",
+  "I won't guess the weather, Captain. Please provide the current report.",
+  "What verified weather information should the passengers hear?",
+]
+
+[cabin_conversation.approach_brief_reply]
+role = "attendant"
+phase = ["approach"]
+variant = "common"
+situation = ["interphone", "brief_contact"]
+slots = []
+say = [
+  "Cabin speaking. Go ahead, Captain.",
+  "I'm listening, Captain.",
+  "Message received, Captain.",
+  "Understood, Captain.",
+  "Please go ahead with the cabin instruction.",
+  "Cabin here. I'll keep this brief.",
+]
+
+[cabin_conversation.approach_goaround_ack]
+role = "attendant"
+phase = ["approach"]
+variant = "common"
+situation = ["interphone", "go_around_update"]
+slots = []
+say = [
+  "Go-around update received, Captain. Please advise the cabin instructions.",
+  "Understood, another approach. What would you like told to passengers?",
+  "Thank you, Captain. Please keep us advised of the next approach plan.",
+  "Message received. Do you want a short passenger explanation?",
+  "Understood. Please advise any change to the landing preparation instructions.",
+  "Thanks for the update, Captain. I'll use only the reason you've confirmed.",
+]
+
+[cabin_conversation.landed_ack]
+role = "attendant"
+phase = ["landed"]
+variant = "common"
+situation = ["interphone", "landing_update"]
+slots = []
+say = [
+  "Thank you, Captain. Landing update received.",
+  "Understood. Please advise the instructions for taxi to the stand.",
+  "Thanks, Captain. Do you want an arrival announcement?",
+  "Message received. What should passengers be told at this stage?",
+  "Understood, Captain. Please advise any change to the cabin instructions.",
+  "Thank you. We can discuss the arrival arrangements when convenient.",
+]
+
+[cabin_conversation.taxiin_stand_query]
+role = "attendant"
+phase = ["taxi_in"]
+variant = "common"
+situation = ["interphone", "stand_query"]
+slots = []
+say = [
+  "Do you have a confirmed stand assignment, Captain?",
+  "Please advise the stand when it is confirmed.",
+  "Which stand information would you like passed to passengers?",
+  "I don't have a verified gate number. Please confirm it.",
+  "Please let us know the assigned stand, if available.",
+  "What confirmed arrival-gate information should we use?",
+]
+
+[cabin_conversation.taxiin_remain_seated]
+role = "attendant"
+phase = ["taxi_in", "landed"]
+variant = "common"
+situation = ["passenger_pa", "remain_seated_request"]
+slots = []
+say = [
+  "Please remain seated with your seatbelt fastened until the sign is switched off.",
+  "We're not ready for you to leave your seats yet. Please keep your seatbelt fastened.",
+  "Thank you for your patience. Please stay seated while we make our way to the stand.",
+  "Please leave your bags stowed and remain seated until the seatbelt sign is off.",
+  "For everyone's safety, please remain seated and keep the aisle clear.",
+  "Please wait for the seatbelt sign to go off before standing or opening the overhead lockers.",
+]
+
+[cabin_conversation.finished_friendly_farewell]
+role = "attendant"
+phase = ["finished"]
+variant = "common"
+situation = ["interphone", "farewell"]
+slots = []
+say = [
+  "Thank you, Captain. Take care, and see you next time.",
+  "It was good speaking with you, Captain. Have a lovely day.",
+  "Thanks, Captain. Enjoy the rest of your day.",
+  "Goodbye, Captain. Hope to see you again soon.",
+  "Thank you, Captain. Have a good rest.",
+  "Take care, Captain. See you on another flight.",
+]
+
+[cabin_conversation.finished_debrief]
+role = "attendant"
+phase = ["finished"]
+variant = "common"
+situation = ["interphone", "debrief"]
+slots = []
+say = [
+  "Is there anything you'd like to discuss from the flight, Captain?",
+  "Please let me know any cabin feedback you'd like recorded.",
+  "Do you have any cabin items for the debrief?",
+  "What would you like covered in the post-flight discussion?",
+  "I'm listening, Captain. What should we follow up?",
+  "Please advise any cabin concerns from this flight.",
+]
+
+[cabin_conversation.finished_farewell_pa]
+role = "attendant"
+phase = ["finished"]
+variant = "common"
+situation = ["passenger_pa", "farewell_request"]
+slots = []
+say = [
+  "Thank you for flying with us. We hope you enjoy the rest of your day.",
+  "On behalf of the captain and crew, thank you and goodbye.",
+  "It's been a pleasure having you aboard. Have a pleasant onward journey.",
+  "Thank you for joining us today. We hope to welcome you again soon.",
+  "Goodbye, everyone, and thank you for flying with us.",
+  "Thank you for travelling with us. Please take care and enjoy your day.",
+]
+

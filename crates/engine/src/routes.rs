@@ -76,7 +76,7 @@ fn realism_from(settings: &Settings) -> Realism {
     }
 }
 
-fn snapshot(session: &State, settings: &Settings) -> Value {
+pub(crate) fn snapshot(session: &State, settings: &Settings) -> Value {
     let mut state = serde_json::to_value(session).unwrap_or(Value::Null);
     if let Some(map) = state.as_object_mut() {
         map.insert(
@@ -189,16 +189,53 @@ pub async fn post_telemetry(
     Json(telemetry): Json<Telemetry>,
 ) -> Response {
     let shared = state;
-    let (settings, pilot_report) = {
+    let (settings, pilot_report, automatic_intent) = {
         let mut state = shared.write().await;
         if update_flight_phase(&mut state.session, &telemetry).is_err() {
             return bad_request("Invalid telemetry");
         }
         state.session.demo = false;
+        super::flight::tick(&mut state);
+        let crossing = state.session.taxi_clearance.clone();
+        if crossing.approved
+            && crossing.guidance_complete
+            && !crossing.crossing_runway.is_empty()
+            && telemetry.on_ground
+            && !telemetry.paused
+            && telemetry.radio_power
+            && let Some(airport) = state.airport.as_ref()
+        {
+            let nearby = openatc_core::stations::nearby(&state.stations, &telemetry);
+            if let Some(station) = openatc_core::stations::tuned(&nearby, telemetry.com1_khz)
+                && station.airport == crossing.airport
+                && openatc_core::stations::station_serves(station, "cross_runway")
+                && let Ok(mut route) = openatc_core::airport::calculate_taxi_route(
+                    airport,
+                    &telemetry,
+                    &crossing.destination,
+                    crossing.to_parking,
+                    'C',
+                )
+            {
+                route.pending_readback = true;
+                route.sequence = state.session.next_sequence;
+                let controller_key = super::flight::station_key(station);
+                let station_name = station.name.clone();
+                let settings = state.settings.clone();
+                let mut tag =
+                    assign_airspace_controller(&mut state, &settings, &controller_key, "standard");
+                tag.position = station_name;
+                let text = route.instructions.clone();
+                state.session.taxi_clearance = route;
+                add_transmission(&mut state.session, "ATC", &text, &tag);
+                return Json(json!({"accepted":true})).into_response();
+            }
+        }
         let route = &state.session.taxi_clearance;
         let eligible = route.approved
             && route.guidance_complete
             && !route.to_parking
+            && route.crossing_runway.is_empty()
             && telemetry.on_ground
             && !telemetry.paused
             && telemetry.radio_power
@@ -220,7 +257,7 @@ pub async fn post_telemetry(
             || route
                 .points
                 .last()
-                .is_none_or(|end| (end.east - here.east).hypot(end.north - here.north) > 25.0)
+                .is_none_or(|end| (end.east - here.east).hypot(end.north - here.north) > 45.0)
         {
             return Json(json!({"accepted":true})).into_response();
         }
@@ -236,7 +273,12 @@ pub async fn post_telemetry(
         }
         let retry = route.waiting_for_traffic
             && state.airport.as_ref().is_some_and(|a| {
-                openatc_core::holding::blocked(a, &state.session.plan.runway, &telemetry).is_none()
+                openatc_core::holding::blocked(
+                    a,
+                    &state.session.taxi_clearance.hold_short_runway,
+                    &telemetry,
+                )
+                .is_none()
             });
         if route.holding_channel == telemetry.com1_khz && !retry {
             return Json(json!({"accepted":true})).into_response();
@@ -244,6 +286,7 @@ pub async fn post_telemetry(
         let needs_further = route.backtrack_required
             || (!route.hold_short_runway.is_empty()
                 && route.hold_short_runway != state.session.plan.runway);
+        let backtrack = route.backtrack_required;
         let tower = openatc_core::stations::station_serves(station, "ready");
         let tag = SpeechTag {
             position: station.name.clone(),
@@ -251,7 +294,7 @@ pub async fn post_telemetry(
             ..Default::default()
         };
         state.session.taxi_clearance.holding_channel = telemetry.com1_khz;
-        if needs_further && tower {
+        if backtrack && tower {
             let text = openatc_core::dialogue::say(
                 "holding_report_ready",
                 &[(
@@ -268,6 +311,11 @@ pub async fn post_telemetry(
                 "pilot_holding_ready",
                 &[("callsign", state.session.plan.callsign.clone())],
             ),
+            if needs_further && !state.session.taxi_clearance.backtrack_required {
+                "cross_runway"
+            } else {
+                "ready"
+            },
         )
     };
     // Normal station-role and runway checks still govern this automatic request.
@@ -275,8 +323,13 @@ pub async fn post_telemetry(
         &shared,
         &settings,
         Request {
-            intent: "ready".into(),
-            text: pilot_report,
+            controller_initiated: automatic_intent == "cross_runway",
+            intent: automatic_intent.into(),
+            text: if automatic_intent == "cross_runway" {
+                String::new()
+            } else {
+                pilot_report
+            },
             ..Default::default()
         },
     )
@@ -320,12 +373,16 @@ pub async fn post_demo(AxumState(state): AxumState<Shared>, Json(body): Json<Val
 
 pub async fn session_reset(AxumState(state): AxumState<Shared>) -> Json<Value> {
     let mut state = state.write().await;
+    state.session_generation = state.session_generation.wrapping_add(1);
     let telemetry = state.session.telemetry.clone();
     let demo = state.session.demo;
-    let transcript = std::mem::take(&mut state.session.transcript);
     let next_sequence = state.session.next_sequence;
     state.session = State::default();
-    state.session.transcript = transcript;
+    state.flow = super::flight::FlightFlow::default();
+    state.crew.checklist = None;
+    state.crew.pushback = None;
+    state.expectations.clear();
+    state.airport = None;
     state.session.next_sequence = next_sequence;
     state.session.telemetry = telemetry;
     state.session.demo = demo;
@@ -795,19 +852,33 @@ pub async fn post_speak(AxumState(state): AxumState<Shared>, Json(body): Json<Va
         call = call.header("Authorization", format!("Bearer {key}"));
     }
     let reply = call.json(&tts_body).send().await;
-    let Ok(reply) = reply else {
-        return bad_request(
-            "TTS request failed. Check endpoint, model and OPENATC_TTS_KEY on the engine."
-                .to_owned(),
-        );
+    let reply = match reply {
+        Ok(reply) => reply,
+        Err(error) => {
+            eprintln!(
+                "OpenATC TTS transport failure: speaker={speaker} voice={voice} model={} text={text:?} error={error}",
+                settings.tts_model
+            );
+            return bad_request(
+                "TTS connection failed; see engine.log for the failed text and error.",
+            );
+        }
     };
     if !reply.status().is_success() {
+        let status = reply.status();
+        eprintln!(
+            "OpenATC TTS provider failure: status={status} speaker={speaker} voice={voice} model={} text={text:?}",
+            settings.tts_model
+        );
         return bad_request(
             "TTS request failed. Check endpoint, model and OPENATC_TTS_KEY on the engine."
                 .to_owned(),
         );
     }
     let Ok(bytes) = reply.bytes().await else {
+        eprintln!(
+            "OpenATC TTS response read failure: speaker={speaker} voice={voice} text={text:?}"
+        );
         return bad_request(
             "TTS request failed. Check endpoint, model and OPENATC_TTS_KEY on the engine."
                 .to_owned(),
@@ -839,6 +910,7 @@ pub async fn post_request(
     AxumState(shared): AxumState<Shared>,
     Json(body): Json<Value>,
 ) -> Response {
+    let generation = shared.read().await.session_generation;
     let mut request: Request = match serde_json::from_value(body) {
         Ok(request) => request,
         Err(_) => return bad_request("Invalid request"),
@@ -858,6 +930,9 @@ pub async fn post_request(
     }
     request.role = role.clone();
     let settings = shared.read().await.settings.clone();
+    if let Some(response) = crate::crew::request(&shared, &request).await {
+        return response;
+    }
     if role == "cabin" || role == "ground" {
         return crew_chat(&shared, &settings, &request, role == "cabin").await;
     }
@@ -881,6 +956,9 @@ pub async fn post_request(
             Err(error) => return bad_request(error.as_str()),
         }
     }
+    if shared.read().await.session_generation != generation {
+        return bad_request("Flight was reset; previous request discarded.");
+    }
     if role == "copilot" {
         return copilot_chat(&shared, &settings, &request).await;
     }
@@ -893,7 +971,8 @@ async fn crew_chat(
     request: &Request,
     attendant: bool,
 ) -> Response {
-    let crew = if attendant { "CABIN" } else { "GROUND" };
+    let generation = shared.read().await.session_generation;
+    let crew = if attendant { "ATTENDANT" } else { "GROUND" };
     let voice = if attendant {
         &settings.attendant_voice
     } else {
@@ -910,8 +989,45 @@ async fn crew_chat(
     };
     let off = openatc_core::dialogue::say("crew_chat_needs_ai_intent_classification_on", &[]);
     let busy = openatc_core::dialogue::say("crew_line_is_busy_try_again", &[]);
-    let mut reply_text = off.clone();
-    if settings.ai_enabled && !settings.ai_model.is_empty() {
+    let greeting = attendant
+        && [
+            "how are you",
+            "how's it going",
+            "hello",
+            "hi",
+            "good morning",
+            "good evening",
+        ]
+        .iter()
+        .any(|g| {
+            request
+                .text
+                .trim()
+                .trim_end_matches(['?', '.', '!'])
+                .eq_ignore_ascii_case(g)
+        });
+    let unconfirmed_service = !attendant
+        && [
+            "connect ",
+            "disconnect ",
+            "remove ",
+            "add ",
+            "set ",
+            "turn ",
+            "can you remove ",
+            "can you connect ",
+            "can you disconnect ",
+        ]
+        .iter()
+        .any(|prefix| request.text.trim().to_lowercase().starts_with(prefix));
+    let mut reply_text = if unconfirmed_service {
+        openatc_core::dialogue::say("crew_ground_service_unconfirmed", &[])
+    } else if greeting {
+        openatc_core::dialogue::say("crew_cabin_greeting", &[])
+    } else {
+        off.clone()
+    };
+    if !greeting && !unconfirmed_service && settings.ai_enabled && !settings.ai_model.is_empty() {
         let system = if personality.is_empty() {
             base
         } else {
@@ -921,7 +1037,14 @@ async fn crew_chat(
             let state = shared.read().await;
             let role = if attendant { "attendant" } else { "ground" };
             let phase = format!("{:?}", state.session.phase).to_lowercase();
-            system + &few_shots(&state.speech, role, &[], &phase)
+            let live = format!(
+                "\nLive flight phase: {phase}. On ground: {}. Ground speed: {:.1} knots. Departure: {}. Destination: {}. Answer only the captain's current request. Examples are not current events. Do not claim an action was performed unless simulator confirmation is supplied.\n",
+                state.session.telemetry.on_ground,
+                state.session.telemetry.ground_speed_knots,
+                state.session.plan.departure,
+                state.session.plan.destination
+            );
+            system + &live + &few_shots(&state.speech, role, &[], &phase)
         };
         let client = shared.read().await.client.clone();
         if let Ok(generated) = chat_complete(
@@ -936,7 +1059,21 @@ async fn crew_chat(
         {
             let cleaned = clean_reply(generated);
             if !cleaned.is_empty() {
-                reply_text = cleaned;
+                let claims_action = !attendant
+                    && [
+                        "removed",
+                        "connected",
+                        "disconnected",
+                        "chocks clear",
+                        "power available",
+                    ]
+                    .iter()
+                    .any(|claim| cleaned.to_lowercase().contains(claim));
+                reply_text = if claims_action {
+                    openatc_core::dialogue::say("crew_ground_service_unconfirmed", &[])
+                } else {
+                    cleaned
+                };
             }
         }
         if reply_text == off {
@@ -953,8 +1090,15 @@ async fn crew_chat(
     } else if reply_text.is_empty() {
         busy.clone_into(&mut reply_text);
     }
-    let ok = reply_text != off && reply_text != busy;
+    let ok = !unconfirmed_service
+        && reply_text != off
+        && reply_text != busy
+        && !openatc_core::dialogue::phrases("crew_ground_service_unconfirmed")
+            .contains(&reply_text);
     let mut state = shared.write().await;
+    if state.session_generation != generation {
+        return bad_request("Flight was reset; previous request discarded.");
+    }
     let pilot = state.session.plan.callsign.clone();
     add_transmission(
         &mut state.session,
@@ -1062,6 +1206,7 @@ async fn classify_request(
 }
 
 async fn copilot_chat(shared: &Shared, settings: &Settings, request: &Request) -> Response {
+    let generation = shared.read().await.session_generation;
     let callsign = shared.read().await.session.plan.callsign.clone();
     let prompts = shared.read().await.copilot_chat_prompt();
     let mut system = if settings.copilot_personality.is_empty() {
@@ -1112,6 +1257,9 @@ async fn copilot_chat(shared: &Shared, settings: &Settings, request: &Request) -
     }
     let ok = reply_text != off && reply_text != busy;
     let mut state = shared.write().await;
+    if state.session_generation != generation {
+        return bad_request("Flight was reset; previous request discarded.");
+    }
     let speaker = state.session.plan.callsign.clone();
     add_transmission(
         &mut state.session,
@@ -1166,7 +1314,7 @@ fn chatter_exchanges() -> Vec<(String, String)> {
 
 /// Assign (or recall) the controller voice for one airspace, persisting new
 /// assignments, and build its speech tag.
-fn assign_airspace_controller(
+pub(crate) fn assign_airspace_controller(
     state: &mut super::EngineState,
     settings: &Settings,
     airspace: &str,
@@ -1207,6 +1355,7 @@ fn assign_airspace_controller(
 }
 
 async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> Response {
+    let generation = shared.read().await.session_generation;
     if settings.congestion != Congestion::Off {
         let millis = if settings.congestion == Congestion::Busy {
             1000 + rand::rng().random_range(0..3000)
@@ -1254,6 +1403,11 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
         "gate",
         "ready",
         "progressive",
+        "cross_runway",
+        "landing",
+        "approach",
+        "checkin",
+        "position",
     ]
     .contains(&request.intent.as_str())
     {
@@ -1275,6 +1429,10 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
         }
     }
     let mut state = shared.write().await;
+    if state.session_generation != generation {
+        return bad_request("Flight was reset; previous request discarded.");
+    }
+
     let current_stations =
         openatc_core::stations::nearby(&state.stations, &state.session.telemetry);
     if state.station_root != state.settings.simulator_root
@@ -1291,7 +1449,7 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
     if !openatc_core::stations::station_serves(&receiving, &request.intent) {
         let wanted = match request.intent.as_str() {
             "clearance" => "Clearance",
-            "ready" | "backtrack" => "Tower",
+            "ready" | "backtrack" | "cross_runway" | "landing" => "Tower",
             _ => "Ground",
         };
         let station = state.stations.iter().find(|s| {
@@ -1418,7 +1576,7 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
             );
         }
     }
-    let airspace = format!("{}:{}", receiving.airport, receiving.service);
+    let airspace = super::flight::station_key(&receiving);
     let pool = parse_voice_pool(&settings.voice_pool);
     let mut delivery = delivery_name(settings.controller_delivery).to_owned();
     if settings.randomize_delivery {
@@ -1433,9 +1591,14 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
         speed: settings.pilot_speed,
         ..Default::default()
     };
+    if let Some(result) = super::flight::request(&mut state, &receiving, &request, &atc_tag) {
+        return Json(json!({"result": result, "state":snapshot(&state.session,&state.settings)}))
+            .into_response();
+    }
     let ctx = RequestContext {
         runway_taxi_authorized: receiving.service == "Tower"
-            || receiving.services.iter().any(|s| s == "Tower"),
+            || receiving.services.iter().any(|s| s == "Tower")
+            || (request.intent == "cross_runway" && receiving.service == "Ground"),
         request: &request,
         airport: airport.as_ref(),
         atc_tag: &atc_tag,
@@ -1446,11 +1609,36 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
     };
     let mut result = apply_request(&mut state.session, &ctx);
     super::radio::apply_wording(&mut state, &request.intent, &receiving, &mut result);
-    if result.accepted && request.intent == "clearance" {
-        result.message.push_str(&openatc_core::dialogue::say(
-            "read_back_the_clearance_including_destination_route",
-            &[],
-        ));
+    if result.accepted && request.intent == "ready" {
+        super::flight::takeoff_wording(&mut state, &receiving, &mut result);
+    }
+    if result.accepted
+        && request.intent == "readback"
+        && state
+            .session
+            .clearance
+            .as_ref()
+            .is_some_and(|c| c.acknowledged)
+        && receiving.service == "Clearance"
+        && let Some(ground) =
+            openatc_core::stations::nearby(&state.stations, &state.session.telemetry)
+                .into_iter()
+                .find(|s| s.airport == receiving.airport && s.service == "Ground")
+    {
+        let handoff = openatc_core::dialogue::say(
+            "clearance_contact_ground_when_ready",
+            &[
+                ("station", ground.name.clone()),
+                (
+                    "frequency",
+                    format!("{:.3}", f64::from(ground.khz) / 1000.0),
+                ),
+            ],
+        );
+        result.message.push(' ');
+        result.message.push_str(&handoff);
+        state.session.recommended_frequency_khz = ground.khz;
+        state.session.frequency_sequence = state.session.next_sequence;
         if let Some(last) = state.session.transcript.last_mut() {
             last.text.clone_from(&result.message);
         }
@@ -1492,10 +1680,42 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
     let sequence = state.session.transcript.last().map_or(0, |e| e.sequence);
     let mut final_message = message.clone();
     let client = state.client.clone();
+    let history_key = format!("{}|{}", super::flight::station_key(&receiving), intent);
+    let previous_wording = state
+        .phrase_history
+        .last
+        .get(&history_key)
+        .cloned()
+        .unwrap_or_default();
+    let role_description = match receiving.service.as_str() {
+        "Clearance" => {
+            "You are the clearance-delivery controller, issuing the recorded IFR route, initial altitude, squawk and departure runway."
+        }
+        "Ground" => {
+            "You are the ground controller, coordinating authorized surface movements and runway hold restrictions."
+        }
+        "Tower" => {
+            "You are the tower controller, responsible for runway operations. You may cover delivery or ground duties only when the supplied station services and recorded instruction authorize that duty."
+        }
+        "Approach" => {
+            "You are the approach controller, managing the recorded terminal-arrival instructions."
+        }
+        "Departure" => {
+            "You are the departure controller, managing the recorded climb and departure instructions."
+        }
+        "Center" => {
+            "You are the area controller, managing the recorded en-route instructions and handoffs."
+        }
+        _ => {
+            "You are the tuned station controller. Speak only within the supplied station services and recorded instruction."
+        }
+    };
+    let phase = format!("{:?}", state.session.phase).to_lowercase();
+    let rules = if state.session.ifr { "ifr" } else { "vfr" };
     let examples =
         state
             .speech
-            .select_for_airport("atc", &[], "", &receiving.airport, "ifr", usize::MAX);
+            .select_for_airport("atc", &[], &phase, &receiving.airport, rules, usize::MAX);
     let examples = examples
         .into_iter()
         .filter(|e| {
@@ -1503,7 +1723,6 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
                 || e.service.contains(&receiving.service)
                 || receiving.services.iter().any(|s| e.service.contains(s))
         })
-        .take(6)
         .flat_map(|e| e.say.iter().cloned())
         .collect::<Vec<_>>()
         .join("\n");
@@ -1515,7 +1734,7 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
         && !["ready", "readback", "acknowledge"].contains(&request.intent.as_str())
     {
         let system = format!(
-            "You may adjust filler words only. Preserve every operational token, instruction and value in its original order. Never add commands, change numbers, remove negations or introduce facts. Return only the transmission. Service: {}. Style examples:\n{examples}",
+            "Sound natural and concise as an air traffic controller. Use the examples as style references, not scripts to copy. Compose fresh wording where filler permits; standard ATC terms may repeat. Example values are fictional. You may adjust filler words only. Preserve every operational token, instruction and value in its original order. Never add commands, change numbers, remove negations or introduce facts. Return only the transmission. Service: {}. {role_description} Your current task is {intent}; the live flight phase is {phase}. The controller decision is already made; you are wording it, not making a new decision. All supplied examples are fictional style references. Do not copy a full example verbatim. Previous transmission for this station and task: {previous_wording:?}. Avoid repeating that wording where safe filler permits; standard operational terms must remain exact. Style examples:\n{examples}",
             receiving.service
         );
         if let Ok(Ok(candidate)) = tokio::time::timeout(
@@ -1530,12 +1749,17 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
             ),
         )
         .await
+            && candidate.trim() != previous_wording.trim()
             && super::radio::safe_variety(&final_message, &candidate)
         {
             final_message = candidate;
         }
     }
     let mut state = shared.write().await;
+    if state.session_generation != generation {
+        return bad_request("Flight was reset; previous request discarded.");
+    }
+
     if state
         .session
         .transcript
@@ -1552,6 +1776,19 @@ async fn atc_request(shared: &Shared, settings: &Settings, request: Request) -> 
         }
     } else {
         final_message = message;
+    }
+    if accepted
+        && state
+            .session
+            .transcript
+            .last()
+            .is_some_and(|e| e.sequence == sequence)
+    {
+        state
+            .phrase_history
+            .last
+            .insert(history_key, final_message.clone());
+        state.phrase_history.save(&state.config_dir);
     }
     let result = json!({"accepted": accepted, "message": final_message});
     let snapshot = snapshot(&state.session, &state.settings);
@@ -1662,12 +1899,14 @@ fn maybe_copilot_echo(
 /// Few-shot voice examples from the speech pool, rendered with sample slots
 /// so the model hears finished transmissions, not templates.
 fn few_shots(pool: &SpeechPool, role: &str, situations: &[&str], phase: &str) -> String {
-    let examples = pool.select(role, situations, phase, "icao", 4);
+    let examples = pool.select(role, situations, phase, "icao", usize::MAX);
     if examples.is_empty() {
         return String::new();
     }
     let samples = sample_slots();
-    let mut out = String::from("\nVoice examples from the library:");
+    let mut out = String::from(
+        "\nSound natural and concise for your role. Use these fictional examples as style references, not scripts to copy. Compose a fresh response from supplied live facts; standard phraseology may repeat.\nVoice examples from the library:",
+    );
     for example in examples {
         for line in &example.say {
             out.push_str("\n- ");
@@ -1750,7 +1989,7 @@ pub async fn post_suggest(
         let examples =
             state
                 .speech
-                .select_for_airport(role, &tags, &phase, airport, flight_rules, 6);
+                .select_for_airport(role, &tags, &phase, airport, flight_rules, usize::MAX);
         if examples.is_empty() {
             return bad_request("No examples for that role and situation".to_owned());
         }
@@ -1816,6 +2055,26 @@ fn clearance_rejection(
 #[cfg(test)]
 mod chatter_tests {
     use super::*;
+    #[test]
+    fn crew_prompt_includes_every_matching_phrase() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../speech");
+        let pool = openatc_core::speech::load_speech_dir(&path).unwrap();
+        let entries = pool.select("copilot", &[], "parked", "icao", usize::MAX);
+        assert!(entries.len() > 4, "fixture must exercise the old cutoff");
+        let prompt = few_shots(&pool, "copilot", &[], "parked");
+        let slots = sample_slots();
+        for entry in entries {
+            for phrase in &entry.say {
+                assert!(
+                    prompt.contains(&render_template(phrase, &slots)),
+                    "{}",
+                    entry.id
+                );
+            }
+        }
+        assert!(prompt.contains("not scripts to copy"));
+    }
+
     #[test]
     fn live_busy_frequency_never_invents_aircraft() {
         let mut session = State {

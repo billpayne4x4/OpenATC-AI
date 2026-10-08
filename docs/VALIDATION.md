@@ -1,3 +1,17 @@
+# New flight and runway crossings — 8 October 2026
+
+The release engine and plugin build passed. Rust core, engine and UI tests passed, including a delayed HTTP snapshot check that prevents an old flight from returning after reset. Clippy completed with the existing vendor and pedantic warnings; it was not warning-free.
+
+The isolated radio integration verifies proactive Ground crossing clearance, holds when traffic data is missing or a runway is occupied, crossing readback, no crossing completion on the runway, and onward taxi to the original departure runway. The installed KLAX regression verifies that a route toward 25L first holds at 25R, crosses only 25R and continues toward the 25L hold. The airport identifiers belong to regression tests, not production routing branches.
+
+Reset checks verify an empty plan and conversation, cleared permissions and crew actions, preserved live telemetry and monotonic transmission IDs, rejection of stale crew acknowledgments, and rejection of a delayed LLM response after reset. Crew integration also passed. The installed plugin and engine were updated after X-Plane closed.
+
+The New flight icon and re-enable lifecycle change still require live simulator acceptance. The crash log identified OpenATC during re-enable; inspection found that the previous enable path created a second active ImGui context while retaining the first. Enable now reuses that renderer and avoids duplicate command registration. Yellow scenery guard lights remain unchanged; individual native light control has not been established.
+
+# Crew control validation — 8 October 2026
+
+The real engine crew integration passes role-specific bounded controls, heading 360 normalization, flight-level units, cabin slides/cross-check, no-action queries/negations, ground gear-up rejection, both checklist modes, failed-item stopping, idempotent acknowledgements, button-dispatch wording and aircraft replacement. This uses simulated plugin observations and acknowledgements. It does not prove live ToLiss writability or actual cockpit operation. The user must check ATTN/MECH selection, controls, cabin lighting and slides in the simulator. ToLiss pushback distance/angle are not implemented.
+
 # Taxi fallback and Auto Reply — 8 October 2026
 
 Core/engine/UI tests cover complete pilot readbacks, background traffic exclusion, centerline versus edge marking types, pavement gaps and holding-line barriers, assigned runway backtracking and rejection of other-runway crossings. The release engine integration verifies Ground-to-Tower handoff for runway taxi, mandatory backtrack readback, endpoint gating before departure and rejection of reused start/pushback acknowledgments. Installed VLVT scenery is separately exercised for runway 31 taxi and a holding point plus runway 13 backtrack. ATC was rendered at 960 and 520 pixels with Auto Reply beside Replay ATC. Live simulator message selection/system clipboard, physical taxi tracking and ground arrows remain user acceptance checks.
@@ -128,3 +142,11 @@ Holding-point follow-up: core tests cover an empty valid scan, missing traffic d
 Legacy-source cleanup: the Rust plugin/engine release build and core/engine/UI/plugin test suites pass after removal of top-level src/include and the old CMake targets. The isolated radio engine integration also passes. The Fedora helper passes shell syntax validation. The Cargo-based Linux package was built locally and checked for binaries, speech, source/license notices and SHA-256 integrity; the updated GitHub workflow has not yet run on GitHub.
 
 Root-workspace migration: the Linux plugin/engine release build, core/engine/UI/plugin tests, settings/platform/AI-core/audio tests, desktop compilation check, formatting, scoped Clippy, isolated radio integration and dependency audit pass from the repository root. The Linux archive was rebuilt with the new paths and verified for binary/docs/branding/lockfile presence and checksum. Python and Fedora script syntax checks pass. packages/ and target/ are listed in .gitignore, and vendor/xplane is explicitly allowed. No Git commands were used for the migration or readiness checks; index/staging and commit operations remain with the maintainer. GitHub CI and new live simulator acceptance were not run during this filesystem-only migration.
+
+## Named positions and TTS recovery — 8 October 2026
+
+Offline GeoNames tests cover the reported VLVT location, airborne/ground wording near Hobart, invalid coordinates and an ocean position with no nearby settlement. Core/engine suites passed after replacing the coordinate-response fixture. Restored eSpeak data alongside the existing fedora-server binary and restarted its AI service; live provider requests synthesized both the exact reported coordinate phrase and a named-place phrase into valid 24 kHz WAV audio. This does not establish every prior failure cause, but confirms coordinates themselves can synthesize. Failed-text diagnostics were added to engine and server source; simulator acceptance remains pending.
+
+Phrase variation checks cover independent runtime-template rotation, saved-history reload, different IFR clearance wording across flight resets, strict mode avoiding wording-model calls, and role/task/previous-wording context in variety prompts. Unsafe model clearances still fall back to checked TOML text.
+
+Simulator follow-up checks produce ten distinct IFR clearance transmissions for identical plans across resets, map the chalks alias to the chocks action, reject compound partial actions, and exercise Ground-to-Tower/traffic-hold/clear-runway flow with ownship 35 m from the taxi endpoint. Native ToLiss control behavior and the revised panel edge still require simulator acceptance. The earlier missed KLAX trigger could not be replayed exactly because no live taxi-state snapshot remained after simulator exit.

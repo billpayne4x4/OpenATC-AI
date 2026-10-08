@@ -1,6 +1,9 @@
 //! Request matching and altitude, route and emergency phrase parsing.
 
-const DEFINITIONS: [(&str, &str); 23] = [
+const DEFINITIONS: [(&str, &str); 26] = [
+    ("landing", "request landing clearance"),
+    ("cross_runway", "request runway crossing"),
+    ("checkin", "check in"),
     ("clearance", "request ifr clearance"),
     ("start", "request start-up"),
     ("start_pushback", "request start-up and pushback"),
@@ -60,6 +63,11 @@ pub(crate) fn interpret(text: &str) -> super::identify::Interpreted {
     }
     // Callsign-bearing transmissions use the same deterministic workflow parser.
     for (phrase, intent) in [
+        ("request landing clearance", "landing"),
+        ("request runway crossing", "cross_runway"),
+        ("request crossing", "cross_runway"),
+        ("check in", "checkin"),
+        ("with you", "checkin"),
         ("request start-up and pushback", "start_pushback"),
         ("request start and pushback", "start_pushback"),
         ("request pushback and start", "start_pushback"),

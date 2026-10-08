@@ -1,0 +1,217 @@
+# Wording examples, not live permissions. See speech/README.md and docs/PHRASEOLOGY.md.
+
+[flight_examples.cross]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["runway_crossing"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, cross runway {rwy}, report vacated.", "{callsign}, runway {rwy}, cleared to cross, report clear.", "{callsign}, cross runway {rwy}. Report when clear of the runway.", "{callsign}, cross runway {rwy}, then hold position.", "{callsign}, cross runway {rwy}. Hold short of all other runways.", "{callsign}, runway {rwy}, crossing approved. Report vacated.", "{callsign}, cross runway {rwy}, report vacated. Read back.", "{callsign}, runway {rwy}, cleared to cross, report clear. Read back.", "{callsign}, cross runway {rwy}. Report when clear of the runway. Read back.", "{callsign}, cross runway {rwy}, then hold position. Read back.", "{callsign}, cross runway {rwy}. Hold short of all other runways. Read back.", "{callsign}, runway {rwy}, crossing approved. Report vacated. Read back."]
+
+[flight_examples.cross_hold]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_not_authorized"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, hold short of runway {rwy}.", "{callsign}, runway {rwy}, hold short.", "{callsign}, negative crossing, hold short of runway {rwy}.", "{callsign}, remain holding short of runway {rwy}.", "{callsign}, do not cross runway {rwy}. Hold short.", "{callsign}, crossing not approved. Hold short of runway {rwy}.", "{callsign}, hold short of runway {rwy}. Read back.", "{callsign}, runway {rwy}, hold short. Read back.", "{callsign}, negative crossing, hold short of runway {rwy}. Read back.", "{callsign}, remain holding short of runway {rwy}. Read back.", "{callsign}, do not cross runway {rwy}. Hold short. Read back.", "{callsign}, crossing not approved. Hold short of runway {rwy}. Read back."]
+
+[flight_examples.cross_traffic]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_traffic_hold"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, hold short of runway {rwy}, traffic on final.", "{callsign}, traffic on final, hold short of runway {rwy}.", "{callsign}, runway {rwy}, hold short, landing traffic.", "{callsign}, remain short of runway {rwy}, traffic approaching.", "{callsign}, hold short of runway {rwy} for arriving traffic.", "{callsign}, crossing delayed, hold short of runway {rwy}.", "{callsign}, hold short of runway {rwy}, traffic on final. Read back.", "{callsign}, traffic on final, hold short of runway {rwy}. Read back.", "{callsign}, runway {rwy}, hold short, landing traffic. Read back.", "{callsign}, remain short of runway {rwy}, traffic approaching. Read back.", "{callsign}, hold short of runway {rwy} for arriving traffic. Read back.", "{callsign}, crossing delayed, hold short of runway {rwy}. Read back."]
+
+[flight_examples.tower_handoff]
+role = "atc"
+service = ["Ground"]
+phase = ["taxi"]
+variant = "common"
+situation = ["holding_point_handoff"]
+slots = ["callsign", "freq", "station"]
+say = ["{callsign}, contact {station} on {freq}.", "{callsign}, contact {station}, {freq}.", "{callsign}, holding-point report received. Contact {station} on {freq}.", "{callsign}, for departure contact {station}, {freq}.", "{callsign}, contact {station} now on {freq}.", "{callsign}, remain holding, contact {station} on {freq}.", "{callsign}, contact {station} on {freq}. Read back.", "{callsign}, contact {station}, {freq}. Read back.", "{callsign}, holding-point report received. Contact {station} on {freq}. Read back.", "{callsign}, for departure contact {station}, {freq}. Read back.", "{callsign}, contact {station} now on {freq}. Read back.", "{callsign}, remain holding, contact {station} on {freq}. Read back."]
+
+[flight_examples.takeoff]
+role = "atc"
+service = ["Tower"]
+phase = ["taxi", "departure"]
+variant = "common"
+situation = ["takeoff_clearance"]
+slots = ["callsign", "rwy", "wind"]
+say = ["{callsign}, runway {rwy}, cleared for takeoff.", "{callsign}, cleared for takeoff, runway {rwy}.", "{callsign}, wind {wind}, runway {rwy}, cleared for takeoff.", "{callsign}, runway {rwy}, wind {wind}, cleared for takeoff.", "{callsign}, wind {wind}, cleared for takeoff runway {rwy}.", "{callsign}, cleared for takeoff runway {rwy}, wind {wind}.", "{callsign}, runway {rwy}, cleared for takeoff. Read back.", "{callsign}, cleared for takeoff, runway {rwy}. Read back.", "{callsign}, wind {wind}, runway {rwy}, cleared for takeoff. Read back.", "{callsign}, runway {rwy}, wind {wind}, cleared for takeoff. Read back.", "{callsign}, wind {wind}, cleared for takeoff runway {rwy}. Read back.", "{callsign}, cleared for takeoff runway {rwy}, wind {wind}. Read back."]
+
+[flight_examples.departure_contact]
+role = "atc"
+service = ["Tower"]
+phase = ["departure"]
+variant = "common"
+situation = ["departure_handoff"]
+slots = ["callsign", "freq", "station"]
+say = ["{callsign}, contact {station}, {freq}.", "{callsign}, contact {station} on {freq}.", "{callsign}, airborne, contact {station} on {freq}.", "{callsign}, contact {station} now, {freq}.", "{callsign}, frequency change to {station}, {freq}.", "{callsign}, contact {station} on {freq}, good day.", "{callsign}, contact {station}, {freq}. Read back.", "{callsign}, contact {station} on {freq}. Read back.", "{callsign}, airborne, contact {station} on {freq}. Read back.", "{callsign}, contact {station} now, {freq}. Read back.", "{callsign}, frequency change to {station}, {freq}. Read back.", "{callsign}, contact {station} on {freq}, good day. Read back."]
+
+[flight_examples.departure_ack]
+role = "atc"
+service = ["Departure"]
+phase = ["departure"]
+variant = "common"
+situation = ["departure_checkin"]
+slots = ["alt", "callsign"]
+say = ["{callsign}, roger, climbing to {alt}.", "{callsign}, roger, assigned altitude {alt}.", "{callsign}, climb to {alt}.", "{callsign}, continue climb to {alt}.", "{callsign}, maintain {alt}.", "{callsign}, report reaching {alt}.", "{callsign}, roger, climbing to {alt}. Read back.", "{callsign}, roger, assigned altitude {alt}. Read back.", "{callsign}, climb to {alt}. Read back.", "{callsign}, continue climb to {alt}. Read back.", "{callsign}, maintain {alt}. Read back.", "{callsign}, report reaching {alt}. Read back."]
+
+[flight_examples.center_contact]
+role = "atc"
+service = ["Center"]
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["sector_handoff"]
+slots = ["callsign", "freq", "station"]
+say = ["{callsign}, contact {station} on {freq}.", "{callsign}, contact {station}, {freq}.", "{callsign}, next frequency {freq}, contact {station}.", "{callsign}, contact {station} now on {freq}.", "{callsign}, frequency change to {station}, {freq}.", "{callsign}, contact {station} on {freq}, good day.", "{callsign}, contact {station} on {freq}. Read back.", "{callsign}, contact {station}, {freq}. Read back.", "{callsign}, next frequency {freq}, contact {station}. Read back.", "{callsign}, contact {station} now on {freq}. Read back.", "{callsign}, frequency change to {station}, {freq}. Read back.", "{callsign}, contact {station} on {freq}, good day. Read back."]
+
+[flight_examples.center_ack]
+role = "atc"
+service = ["Center"]
+phase = ["cruise"]
+variant = "common"
+situation = ["sector_checkin"]
+slots = ["callsign", "level"]
+say = ["{callsign}, roger, maintain {level}.", "{callsign}, maintain {level}, roger.", "{callsign}, level {level} acknowledged.", "{callsign}, roger, reported level {level}.", "{callsign}, report any change from {level}.", "{callsign}, continue at {level}.", "{callsign}, roger, maintain {level}. Read back.", "{callsign}, maintain {level}, roger. Read back.", "{callsign}, level {level} acknowledged. Read back.", "{callsign}, roger, reported level {level}. Read back.", "{callsign}, report any change from {level}. Read back.", "{callsign}, continue at {level}. Read back."]
+
+[flight_examples.level_correction]
+role = "atc"
+service = ["Center"]
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["altitude_noncompliance"]
+slots = ["alt", "callsign"]
+say = ["{callsign}, check your altitude, assigned {alt}.", "{callsign}, maintain assigned {alt}.", "{callsign}, correct your altitude to {alt}.", "{callsign}, verify altitude, cleared {alt}.", "{callsign}, assigned altitude remains {alt}.", "{callsign}, altitude deviation observed, correct to {alt}.", "{callsign}, check your altitude, assigned {alt}. Read back.", "{callsign}, maintain assigned {alt}. Read back.", "{callsign}, correct your altitude to {alt}. Read back.", "{callsign}, verify altitude, cleared {alt}. Read back.", "{callsign}, assigned altitude remains {alt}. Read back.", "{callsign}, altitude deviation observed, correct to {alt}. Read back."]
+
+[flight_examples.altitude_amendment]
+role = "atc"
+service = ["Center"]
+phase = ["departure", "cruise", "arrival"]
+variant = "common"
+situation = ["amended_altitude"]
+slots = ["alt", "callsign"]
+say = ["{callsign}, climb to {alt}.", "{callsign}, descend to {alt}.", "{callsign}, maintain {alt}.", "{callsign}, amended clearance, climb to {alt}.", "{callsign}, revised clearance, descend to {alt}.", "{callsign}, new assigned altitude {alt}.", "{callsign}, climb to {alt}. Read back.", "{callsign}, descend to {alt}. Read back.", "{callsign}, maintain {alt}. Read back.", "{callsign}, amended clearance, climb to {alt}. Read back.", "{callsign}, revised clearance, descend to {alt}. Read back.", "{callsign}, new assigned altitude {alt}. Read back."]
+
+[flight_examples.arrival_contact]
+role = "atc"
+service = ["Center"]
+phase = ["cruise", "arrival"]
+variant = "common"
+situation = ["arrival_handoff"]
+slots = ["callsign", "freq", "station"]
+say = ["{callsign}, contact {station} on {freq}.", "{callsign}, for arrival contact {station}, {freq}.", "{callsign}, contact {station} now on {freq}.", "{callsign}, arrival frequency {freq}, contact {station}.", "{callsign}, frequency change to {station}, {freq}.", "{callsign}, contact {station} on {freq}, good day.", "{callsign}, contact {station} on {freq}. Read back.", "{callsign}, for arrival contact {station}, {freq}. Read back.", "{callsign}, contact {station} now on {freq}. Read back.", "{callsign}, arrival frequency {freq}, contact {station}. Read back.", "{callsign}, frequency change to {station}, {freq}. Read back.", "{callsign}, contact {station} on {freq}, good day. Read back."]
+
+[flight_examples.star_expect]
+role = "atc"
+service = ["Approach"]
+phase = ["arrival"]
+variant = "common"
+situation = ["arrival_star"]
+slots = ["callsign", "rwy", "star"]
+say = ["{callsign}, expect {star} arrival, runway {rwy}.", "{callsign}, runway {rwy}, expect {star} arrival.", "{callsign}, plan {star} arrival for runway {rwy}.", "{callsign}, expect runway {rwy}, {star} arrival.", "{callsign}, arrival information, {star} for runway {rwy}.", "{callsign}, expect {star} for runway {rwy}.", "{callsign}, expect {star} arrival, runway {rwy}. Read back.", "{callsign}, runway {rwy}, expect {star} arrival. Read back.", "{callsign}, plan {star} arrival for runway {rwy}. Read back.", "{callsign}, expect runway {rwy}, {star} arrival. Read back.", "{callsign}, arrival information, {star} for runway {rwy}. Read back.", "{callsign}, expect {star} for runway {rwy}. Read back."]
+
+[flight_examples.ils]
+role = "atc"
+service = ["Approach"]
+phase = ["arrival", "approach"]
+variant = "common"
+situation = ["approach_clearance"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, cleared ILS approach runway {rwy}.", "{callsign}, runway {rwy}, cleared ILS approach.", "{callsign}, cleared for the ILS approach, runway {rwy}.", "{callsign}, cleared ILS runway {rwy}, report established.", "{callsign}, report established, cleared ILS runway {rwy}.", "{callsign}, ILS runway {rwy} approach cleared, report established.", "{callsign}, cleared ILS approach runway {rwy}. Read back.", "{callsign}, runway {rwy}, cleared ILS approach. Read back.", "{callsign}, cleared for the ILS approach, runway {rwy}. Read back.", "{callsign}, cleared ILS runway {rwy}, report established. Read back.", "{callsign}, report established, cleared ILS runway {rwy}. Read back.", "{callsign}, ILS runway {rwy} approach cleared, report established. Read back."]
+
+[flight_examples.established]
+role = "atc"
+service = ["Approach"]
+phase = ["approach"]
+variant = "common"
+situation = ["established_localizer"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, roger, report final runway {rwy}.", "{callsign}, established report received, runway {rwy}.", "{callsign}, continue approach runway {rwy}.", "{callsign}, continue runway {rwy} approach, landing clearance not issued.", "{callsign}, runway {rwy}, continue approach.", "{callsign}, roger, continue approach to runway {rwy}.", "{callsign}, roger, report final runway {rwy}. Read back.", "{callsign}, established report received, runway {rwy}. Read back.", "{callsign}, continue approach runway {rwy}. Read back.", "{callsign}, continue runway {rwy} approach, landing clearance not issued. Read back.", "{callsign}, runway {rwy}, continue approach. Read back.", "{callsign}, roger, continue approach to runway {rwy}. Read back."]
+
+[flight_examples.arrival_tower]
+role = "atc"
+service = ["Approach"]
+phase = ["approach"]
+variant = "common"
+situation = ["arrival_tower_handoff"]
+slots = ["callsign", "freq", "station"]
+say = ["{callsign}, contact {station}, {freq}.", "{callsign}, contact {station} on {freq}.", "{callsign}, for landing contact {station}, {freq}.", "{callsign}, contact {station} now on {freq}.", "{callsign}, continue approach, contact {station} on {freq}.", "{callsign}, contact {station} on {freq}, good day.", "{callsign}, contact {station}, {freq}. Read back.", "{callsign}, contact {station} on {freq}. Read back.", "{callsign}, for landing contact {station}, {freq}. Read back.", "{callsign}, contact {station} now on {freq}. Read back.", "{callsign}, continue approach, contact {station} on {freq}. Read back.", "{callsign}, contact {station} on {freq}, good day. Read back."]
+
+[flight_examples.landing]
+role = "atc"
+service = ["Tower"]
+phase = ["approach"]
+variant = "common"
+situation = ["landing_clearance"]
+slots = ["callsign", "rwy", "wind"]
+say = ["{callsign}, runway {rwy}, cleared to land.", "{callsign}, cleared to land, runway {rwy}.", "{callsign}, wind {wind}, runway {rwy}, cleared to land.", "{callsign}, runway {rwy}, wind {wind}, cleared to land.", "{callsign}, cleared to land runway {rwy}, wind {wind}.", "{callsign}, wind {wind}, cleared to land runway {rwy}.", "{callsign}, runway {rwy}, cleared to land. Read back.", "{callsign}, cleared to land, runway {rwy}. Read back.", "{callsign}, wind {wind}, runway {rwy}, cleared to land. Read back.", "{callsign}, runway {rwy}, wind {wind}, cleared to land. Read back.", "{callsign}, cleared to land runway {rwy}, wind {wind}. Read back.", "{callsign}, wind {wind}, cleared to land runway {rwy}. Read back."]
+
+[flight_examples.landing_wait]
+role = "atc"
+service = ["Tower"]
+phase = ["approach"]
+variant = "common"
+situation = ["landing_clearance_pending"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, continue approach runway {rwy}, landing clearance pending.", "{callsign}, runway {rwy} occupied, continue approach.", "{callsign}, continue approach, runway {rwy}, expect late landing clearance.", "{callsign}, runway {rwy}, landing clearance not issued.", "{callsign}, report final runway {rwy}.", "{callsign}, continue approach runway {rwy}.", "{callsign}, continue approach runway {rwy}, landing clearance pending. Read back.", "{callsign}, runway {rwy} occupied, continue approach. Read back.", "{callsign}, continue approach, runway {rwy}, expect late landing clearance. Read back.", "{callsign}, runway {rwy}, landing clearance not issued. Read back.", "{callsign}, report final runway {rwy}. Read back.", "{callsign}, continue approach runway {rwy}. Read back."]
+
+[flight_examples.go_around]
+role = "atc"
+service = ["Tower"]
+phase = ["approach"]
+variant = "common"
+situation = ["controller_go_around"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, go around, runway {rwy} occupied.", "{callsign}, runway {rwy} unavailable, go around.", "{callsign}, go around, follow the published missed approach for runway {rwy}.", "{callsign}, go around from runway {rwy}.", "{callsign}, go around, report following the runway {rwy} missed approach.", "{callsign}, runway {rwy}, go around.", "{callsign}, go around, runway {rwy} occupied. Read back.", "{callsign}, runway {rwy} unavailable, go around. Read back.", "{callsign}, go around, follow the published missed approach for runway {rwy}. Read back.", "{callsign}, go around from runway {rwy}. Read back.", "{callsign}, go around, report following the runway {rwy} missed approach. Read back.", "{callsign}, runway {rwy}, go around. Read back."]
+
+[flight_examples.vacate]
+role = "atc"
+service = ["Tower"]
+phase = ["landed"]
+variant = "common"
+situation = ["runway_vacate"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, vacate runway {rwy}, report clear.", "{callsign}, report vacated runway {rwy}.", "{callsign}, vacate runway {rwy} when able.", "{callsign}, runway {rwy}, report vacated.", "{callsign}, vacate runway {rwy}, then hold position.", "{callsign}, report clear of runway {rwy}.", "{callsign}, vacate runway {rwy}, report clear. Read back.", "{callsign}, report vacated runway {rwy}. Read back.", "{callsign}, vacate runway {rwy} when able. Read back.", "{callsign}, runway {rwy}, report vacated. Read back.", "{callsign}, vacate runway {rwy}, then hold position. Read back.", "{callsign}, report clear of runway {rwy}. Read back."]
+
+[flight_examples.arrival_ground]
+role = "atc"
+service = ["Tower"]
+phase = ["landed"]
+variant = "common"
+situation = ["arrival_ground_handoff"]
+slots = ["callsign", "freq", "station"]
+say = ["{callsign}, contact {station}, {freq}.", "{callsign}, runway vacated, contact {station} on {freq}.", "{callsign}, contact {station} on {freq}.", "{callsign}, for taxi contact {station}, {freq}.", "{callsign}, contact {station} now on {freq}.", "{callsign}, contact {station} on {freq}, good day.", "{callsign}, contact {station}, {freq}. Read back.", "{callsign}, runway vacated, contact {station} on {freq}. Read back.", "{callsign}, contact {station} on {freq}. Read back.", "{callsign}, for taxi contact {station}, {freq}. Read back.", "{callsign}, contact {station} now on {freq}. Read back.", "{callsign}, contact {station} on {freq}, good day. Read back."]
+
+[flight_examples.gate_taxi]
+role = "atc"
+service = ["Ground"]
+phase = ["landed", "taxi_in"]
+variant = "common"
+situation = ["arrival_gate_taxi"]
+slots = ["callsign", "stand", "via"]
+say = ["{callsign}, taxi to {stand} via {via}.", "{callsign}, via {via}, taxi to {stand}.", "{callsign}, {stand}, taxi via {via}.", "{callsign}, taxi via {via} to {stand}.", "{callsign}, proceed to {stand} via {via}, hold short of all runways.", "{callsign}, taxi to {stand} via {via}, report parked.", "{callsign}, taxi to {stand} via {via}. Read back.", "{callsign}, via {via}, taxi to {stand}. Read back.", "{callsign}, {stand}, taxi via {via}. Read back.", "{callsign}, taxi via {via} to {stand}. Read back.", "{callsign}, proceed to {stand} via {via}, hold short of all runways. Read back.", "{callsign}, taxi to {stand} via {via}, report parked. Read back."]
+
+[flight_examples.gate_hold]
+role = "atc"
+service = ["Ground"]
+phase = ["taxi_in"]
+variant = "common"
+situation = ["arrival_gate_hold"]
+slots = ["callsign", "stand"]
+say = ["{callsign}, hold position, stand {stand} is unavailable.", "{callsign}, stand {stand} unavailable, hold position.", "{callsign}, hold position while awaiting stand {stand}.", "{callsign}, hold position, awaiting access to {stand}.", "{callsign}, do not proceed to {stand}, hold position.", "{callsign}, remain holding, stand {stand} not available.", "{callsign}, hold position, stand {stand} is unavailable. Read back.", "{callsign}, stand {stand} unavailable, hold position. Read back.", "{callsign}, hold position while awaiting stand {stand}. Read back.", "{callsign}, hold position, awaiting access to {stand}. Read back.", "{callsign}, do not proceed to {stand}, hold position. Read back.", "{callsign}, remain holding, stand {stand} not available. Read back."]
+
+[flight_examples.parked]
+role = "atc"
+service = ["Ground"]
+phase = ["taxi_in", "finished"]
+variant = "common"
+situation = ["arrival_parked"]
+slots = ["callsign", "stand"]
+say = ["{callsign}, parked report received at {stand}.", "{callsign}, arrival at {stand} acknowledged.", "{callsign}, roger, parked at {stand}.", "{callsign}, at {stand}, roger.", "{callsign}, parking report received, {stand}.", "{callsign}, parked at {stand}, good day.", "{callsign}, parked report received at {stand}. Read back.", "{callsign}, arrival at {stand} acknowledged. Read back.", "{callsign}, roger, parked at {stand}. Read back.", "{callsign}, at {stand}, roger. Read back.", "{callsign}, parking report received, {stand}. Read back.", "{callsign}, parked at {stand}, good day. Read back."]

@@ -1,6 +1,6 @@
 # Editing what OpenATC says
 
-This is the open, editable English speech library. It contains **476 situations and 1,420 alternative phrases**, expanded from 195 situations and 399 phrases. Change a phrase, add a situation or contribute a reviewed regional example without recompiling the library. Restart the engine to reload edits. Live operational wording is in [runtime/responses.toml](runtime/responses.toml): 191 templates and 381 phrases. See [the editing guide](runtime/README.md).
+This is the open, editable English speech library. It contains **579 situations and 2,202 alternative phrases**, expanded from 195 situations and 399 phrases. Change a phrase, add a situation or contribute a reviewed regional example without recompiling the library. Restart the engine to reload edits. Live operational wording, crew request anchors and control names are in [runtime/responses.toml](runtime/responses.toml). See [the editing guide](runtime/README.md).
 
 Browse [the situation index](INDEX.md) for every ID, file, phase and tag.
 
@@ -13,6 +13,7 @@ speech/
     copilot.toml
     flight_attendant.toml
     ground_services.toml
+    controls_and_checklists.toml
   common/
     profile.toml
     ifr/                 instrument-flight examples
@@ -28,7 +29,7 @@ speech/
   africa/, south_america/, central_america/, caribbean/, pacific/
 ```
 
-Every regional folder has `ifr`, `vfr` and `shared` subfolders. Empty regional folders deliberately use the common baseline; their README states the review limit. Cabin, ground-service and copilot speech have **one global copy** in `crew`: they are not duplicated by region or flight rules. Their flight-phase tags still determine when examples apply. Aircraft controls, checklists and limits belong in aircraft profiles and aircraft procedures, not regional speech.
+Every regional folder has `ifr`, `vfr` and `shared` subfolders. Empty regional folders deliberately use the common baseline; their README states the review limit. Cabin, ground-service and copilot speech have **one global copy** in `crew`: they are not duplicated by region or flight rules. Their flight-phase tags still determine when examples apply. Aircraft mappings, checklist order and expected values belong in aircraft profiles. Spoken challenges, requests and responses belong in speech TOMLs.
 
 The common ATC files describe clearance, departure, enroute, arrival, tower, ground, communications, weather, readbacks, advisories, emergencies and offers. `atc_ground` is the **ground controller**, distinct from `crew/ground_services.toml`, the ramp team.
 
@@ -151,3 +152,13 @@ Settings / General has **Allow AI wording variety** (off by default). Eligible o
 Radio ATC requires a published scenery station in simulated reception range and powered COM1. Delivery, Ground and Tower permissions are distinct; combined services are explicit in the installed `radio-stations.toml`. No tuned station means silence, including emergency/radio-check requests. ATIS is a repeating simulator-weather broadcast, separate from conversational phrases. Its letter advances when the rounded observation changes. Missing airport weather remains unavailable. Cockpit and crew communication retain their separate power/role rules.
 
 The Auto Reply pilot readbacks and runway backtrack/hold instructions also live in runtime TOML. Ordinary taxi, runway taxi/backtrack and takeoff are separate permissions; editing a phrase does not bypass them. See [runtime/README.md](runtime/README.md) for the pilot reply template IDs.
+
+## How the LLM uses examples
+
+All alternatives from matching situations are supplied as wording examples, without a fixed first-four/first-six cutoff. Role, phase, region and flight-rule filters still apply; unrelated regional procedures are not mixed together. The prompts ask for fresh wording from live facts rather than verbatim copying. Standard ATC terms and required readbacks may repeat. Operational wording variety remains optional and conservative: changed instructions or values fall back to the validated TOML response. AI-off responses also use TOML directly. Large custom libraries require a model context window large enough for the matching examples.
+
+Crew request anchors and confirmations are documented in [Aircraft controls](../docs/AIRCRAFT_CONTROLS.md). The `pilot` example role describes captain requests and responses; it is not a selectable AI crew speaker.
+
+ATC response templates rotate independently, with their next choice and previous station/task transmission saved in the engine configuration folder as `phrase-history.json`. Flight resets do not clear this history. With AI wording variety off, replies use the TOML alternatives exactly. With it on, the model receives the controller role, live phase, current task, matching examples and previous wording; operational changes or repeated candidates fall back to the selected TOML reply.
+
+Crossing examples cover controller-initiated clearance, pilot requests, traffic holds, readbacks, runway-vacated reports and onward taxi. Runtime crossing permission and continuation use checked scenery geometry and simulator traffic. Yellow runway guard lights remain flashing; they are not clearance-controlled stop bars.

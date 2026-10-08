@@ -7,6 +7,7 @@ pub mod arrival;
 mod atc;
 pub mod catalog;
 pub mod compliance;
+pub mod crew;
 pub mod dialogue;
 pub mod hazards;
 pub mod identify;
@@ -250,3 +251,6 @@ mod tests {
 
 /// Runway occupancy and final-approach checks using simulator traffic.
 pub mod holding;
+
+/// Offline named-place position references.
+pub mod places;

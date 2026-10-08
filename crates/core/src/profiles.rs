@@ -33,6 +33,8 @@ pub struct AircraftElectrical {
 /// One aircraft family profile.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AircraftProfile {
+    /// Editable crew actions and checklists.
+    pub crew: crate::crew::CrewProfile,
     /// Display name.
     pub name: String,
     /// Author substring that selects this profile.
@@ -172,6 +174,21 @@ pub fn load_aircraft_profile(path: &std::path::Path) -> Result<AircraftProfile, 
         return Err("aircraft min_volts must not be negative".to_owned());
     }
     Ok(AircraftProfile {
+        crew: {
+            let custom: crate::crew::CrewProfile = root
+                .get("crew")
+                .map(|v| v.clone().try_into())
+                .transpose()
+                .map_err(|e| format!("aircraft crew: {e}"))?
+                .unwrap_or_default();
+            let mut profile = crate::crew::standard_profile();
+            profile.controls.extend(custom.controls);
+            profile.checklists = custom.checklists;
+            profile.cabin_commands = custom.cabin_commands;
+            profile.ground_commands = custom.ground_commands;
+            profile.radio_commands = custom.radio_commands;
+            profile
+        },
         name: get("name")?.to_owned(),
         match_author: get("match_author")?.to_owned(),
         match_icao: string_list(root.get("match_icao"), "aircraft", "match_icao")?,

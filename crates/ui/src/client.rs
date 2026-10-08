@@ -16,6 +16,7 @@ type Json = serde_json::Value;
 struct Command {
     path: String,
     body: Json,
+    generation: u64,
 }
 
 /// Reply slot per path, latest wins.
@@ -37,6 +38,7 @@ struct Inner {
     connected: bool,
     latest_telemetry: Option<Telemetry>,
     running: bool,
+    generation: u64,
 }
 
 /// Polls `/telemetry` + `/state` every 200 ms; sends queued commands.
@@ -62,6 +64,7 @@ impl EngineClient {
                 connected: false,
                 latest_telemetry: None,
                 running: true,
+                generation: 0,
             }),
             Condvar::new(),
         ));
@@ -89,12 +92,12 @@ impl EngineClient {
 
     fn poll_loop(inner: &Arc<(Mutex<Inner>, Condvar)>, endpoint: &str, cancelled: &AtomicBool) {
         loop {
-            let telemetry = {
+            let (telemetry, generation) = {
                 let mut guard = inner
                     .0
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                guard.latest_telemetry.take()
+                (guard.latest_telemetry.take(), guard.generation)
             };
             if let Some(telemetry) = telemetry {
                 let body = serde_json::to_value(&telemetry).unwrap_or(Json::Null);
@@ -119,6 +122,9 @@ impl EngineClient {
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if !guard.running {
                     break;
+                }
+                if guard.generation != generation {
+                    continue;
                 }
                 guard.connected = false;
                 match response {
@@ -188,6 +194,7 @@ impl EngineClient {
                 guard.pending.pop_front().unwrap_or(Command {
                     path: String::new(),
                     body: Json::Null,
+                    generation: guard.generation,
                 })
             };
             if command.path.is_empty() {
@@ -225,7 +232,9 @@ impl EngineClient {
             let mut guard = lock
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            guard.replies.insert(command.path, reply);
+            if guard.generation == command.generation {
+                guard.replies.insert(command.path, reply);
+            }
         }
     }
 
@@ -269,10 +278,20 @@ impl EngineClient {
     /// Queue a command; drops with a queue-full error past depth 32.
     pub fn post(&self, path: &str, body: Json) {
         let mut guard = self.lock();
+        if path == "/session/reset" {
+            guard.pending.clear();
+            guard.replies.clear();
+            guard.generation = guard.generation.wrapping_add(1);
+        }
+        if path == "/crew/observe" {
+            guard.pending.retain(|command| command.path != path);
+        }
         if guard.pending.len() < 32 {
+            let generation = guard.generation;
             guard.pending.push_back(Command {
                 path: path.to_owned(),
                 body,
+                generation,
             });
             self.inner.1.notify_one();
         } else {
@@ -284,6 +303,17 @@ impl EngineClient {
                     error: "Request queue full".to_owned(),
                 },
             );
+        }
+    }
+
+    /// Replace cached flight data immediately after an accepted reset.
+    pub fn accept_reset(&self, data: &Json) {
+        if let Ok(snapshot) = serde_json::from_value::<State>(data.clone()) {
+            let mut guard = self.lock();
+            guard.snapshot = snapshot;
+            guard.pending.clear();
+            guard.replies.clear();
+            guard.generation = guard.generation.wrapping_add(1);
         }
     }
 
@@ -316,6 +346,38 @@ impl Drop for EngineClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn response_started_before_reset_cannot_restore_old_flight() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0; 8192];
+            stream.read(&mut buffer).unwrap();
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            let mut old = State::default();
+            old.plan.departure = "OLD".into();
+            let body = serde_json::to_string(&old).unwrap();
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let client = EngineClient::new(&origin);
+        ready_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        client.accept_reset(&serde_json::to_value(State::default()).unwrap());
+        release_tx.send(()).unwrap();
+        server.join().unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(client.state().plan.departure.is_empty());
+    }
+
     #[test]
     fn client_unload_cancels_and_joins_a_stalled_poll() {
         use std::io::Read;

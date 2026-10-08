@@ -97,7 +97,7 @@ pub fn prepare(state: &State, request: &mut Request) {
     // The generic parser can interpret "initial altitude 5000" as an altitude
     // request. Pending readback evidence takes priority over that classification.
     let evidence = if taxi {
-        text.contains("holdshort") || text.contains("taxivia")
+        text.contains("holdshort") || text.contains("taxivia") || text.contains("crossrunway")
     } else {
         [
             "cleared",
@@ -132,6 +132,9 @@ pub fn prepare(state: &State, request: &mut Request) {
                 "readback_field_assigned_runway_stand",
                 &[],
             ));
+        }
+        if !state.taxi_clearance.crossing_runway.is_empty() && !spoken.contains("cross") {
+            missing.push(crate::dialogue::say("readback_field_runway_crossing", &[]));
         }
         if state.taxi_clearance.runway_taxi
             && (!spoken.contains("backtrack") || !spoken.contains("holdposition"))
@@ -224,7 +227,15 @@ pub fn auto_reply(state: &State) -> Option<Request> {
         "taxi".clone_into(&mut request.readback_kind);
         request.clearance_sequence = taxi.sequence;
         request.waypoint.clone_from(&taxi.instructions);
-        request.text = if taxi.runway_taxi {
+        request.text = if !taxi.crossing_runway.is_empty() {
+            crate::dialogue::say(
+                "pilot_crossing_readback",
+                &[
+                    ("runway", taxi.crossing_runway.clone()),
+                    ("callsign", state.plan.callsign.clone()),
+                ],
+            )
+        } else if taxi.runway_taxi {
             crate::dialogue::say(
                 "pilot_runway_taxi_readback",
                 &[

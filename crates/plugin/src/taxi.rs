@@ -254,6 +254,40 @@ fn samples(points: &[Point], ownship: &Point) -> Vec<(Point, f64)> {
     }
     output
 }
+/// Resolve the closest airport from the simulator navigation database.
+pub fn current_airport(latitude: f64, longitude: f64) -> String {
+    let (mut lat, mut lon) = (latitude as f32, longitude as f32);
+    unsafe {
+        let nav = xp::XPLMFindNavAid(
+            ptr::null(),
+            ptr::null(),
+            &raw mut lat,
+            &raw mut lon,
+            ptr::null_mut(),
+            xp::XPLMNavType::Airport,
+        );
+        if nav < 0 {
+            return String::new();
+        }
+        let mut id = [0 as std::ffi::c_char; 64];
+        xp::XPLMGetNavAidInfo(
+            nav,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+            id.as_mut_ptr(),
+            ptr::null_mut(),
+            ptr::null_mut(),
+        );
+        std::ffi::CStr::from_ptr(id.as_ptr())
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,39 +338,5 @@ mod tests {
     #[test]
     fn remote_airport_and_off_route_have_no_arrows() {
         assert!(samples(&[p(0.0, 0.0), p(0.0, 100.0)], &p(200.0, 0.0)).is_empty());
-    }
-}
-
-/// Resolve the closest airport from the simulator navigation database.
-pub fn current_airport(latitude: f64, longitude: f64) -> String {
-    let (mut lat, mut lon) = (latitude as f32, longitude as f32);
-    unsafe {
-        let nav = xp::XPLMFindNavAid(
-            ptr::null(),
-            ptr::null(),
-            &raw mut lat,
-            &raw mut lon,
-            ptr::null_mut(),
-            xp::XPLMNavType::Airport,
-        );
-        if nav < 0 {
-            return String::new();
-        }
-        let mut id = [0 as std::ffi::c_char; 64];
-        xp::XPLMGetNavAidInfo(
-            nav,
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-            id.as_mut_ptr(),
-            ptr::null_mut(),
-            ptr::null_mut(),
-        );
-        std::ffi::CStr::from_ptr(id.as_ptr())
-            .to_string_lossy()
-            .into_owned()
     }
 }

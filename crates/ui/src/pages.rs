@@ -410,7 +410,7 @@ fn transcript_view(ui: &imgui::Ui, interface: &mut Interface, state: &State, hei
     let background_alpha = interface.background_opacity * 0.72;
     let _background = ui.push_style_color(
         imgui::StyleColor::ChildBg,
-        [0.10, 0.12, 0.14, background_alpha],
+        [0.13, 0.17, 0.21, background_alpha],
     );
     let _padding = ui.push_style_var(imgui::StyleVar::WindowPadding([12.0 * scale, 10.0 * scale]));
     ui.child_window("Transcript").size([0.0, height]).border(false).always_use_window_padding(true).build(|| {
@@ -425,16 +425,18 @@ fn transcript_view(ui: &imgui::Ui, interface: &mut Interface, state: &State, hei
             let badge = transcript_badge(entry, airport, state.telemetry.com1_khz);
             let color = match entry.speaker.as_str() {
                 "ATC" => [0.48, 0.77, 0.94, 1.0],
-                "CABIN" => [0.75, 0.83, 0.77, 1.0],
+                "CABIN" | "ATTENDANT" => [0.75, 0.83, 0.77, 1.0],
                 "GROUND" => [0.86, 0.79, 0.59, 1.0],
                 "COPILOT" => [0.76, 0.79, 0.89, 1.0],
                 "SYSTEM" => AMBER,
                 _ => [0.94, 0.95, 0.96, 1.0],
             };
-            transcript_line(ui, &badge, &entry.text, color, scale);
+            if let Some(frequency) = transcript_line(ui, &badge, &entry.text, color, scale, entry.speaker == "ATC", interface.radio_power) {
+                interface.requested_frequency_khz = Some(frequency);
+            }
         }
         for notice in &interface.local_notices {
-            transcript_line(ui, "INFO", &notice.text, AMBER, scale);
+            transcript_line(ui, "INFO", &notice.text, AMBER, scale, false, false);
         }
         if let Some(last_entry) = state.transcript.last()
             && last_entry.sequence != interface.last_transcript_sequence
@@ -455,7 +457,7 @@ fn transcript_badge(
 ) -> String {
     match entry.speaker.as_str() {
         "COPILOT" => "Copilot".to_owned(),
-        "CABIN" => "Attendant".to_owned(),
+        "CABIN" | "ATTENDANT" => "Attendant".to_owned(),
         "GROUND" => "Ground services".to_owned(),
         "SYSTEM" => "INFO".to_owned(),
         "ATC" => {
@@ -488,7 +490,15 @@ fn transcript_badge(
     }
 }
 
-fn transcript_line(ui: &imgui::Ui, badge: &str, text: &str, color: [f32; 4], scale: f32) {
+fn transcript_line(
+    ui: &imgui::Ui,
+    badge: &str,
+    text: &str,
+    color: [f32; 4],
+    scale: f32,
+    links: bool,
+    powered: bool,
+) -> Option<i32> {
     let position = ui.cursor_screen_pos();
     let label_size = ui.calc_text_size(badge);
     let size = [
@@ -498,9 +508,11 @@ fn transcript_line(ui: &imgui::Ui, badge: &str, text: &str, color: [f32; 4], sca
     if ui.content_region_avail()[0] < size[0] + 160.0 * scale {
         let _color = ui.push_style_color(imgui::StyleColor::Text, color);
         ui.text_wrapped(badge);
-        ui.text_wrapped(text);
-        selectable_message(ui, text);
-        return;
+        let (frequency, hovered_link) = linked_transcript_text(ui, text, color, links, powered);
+        if frequency.is_none() && !hovered_link {
+            selectable_message(ui, text);
+        }
+        return frequency;
     }
     let draw = ui.get_window_draw_list();
     draw.add_rect(
@@ -526,11 +538,101 @@ fn transcript_line(ui: &imgui::Ui, badge: &str, text: &str, color: [f32; 4], sca
         color,
         badge,
     );
+    drop(draw);
     ui.dummy(size);
     ui.same_line();
     let _text_color = ui.push_style_color(imgui::StyleColor::Text, color);
-    ui.text_wrapped(text);
-    selectable_message(ui, text);
+    let (frequency, hovered_link) = linked_transcript_text(ui, text, color, links, powered);
+    if frequency.is_none() && !hovered_link {
+        selectable_message(ui, text);
+    }
+    frequency
+}
+
+/// Decimal COM frequencies only; runway numbers and altitudes remain ordinary text.
+fn transcript_frequency(word: &str) -> Option<i32> {
+    let number = word.trim_matches(|c: char| !c.is_ascii_digit());
+    let (whole, decimal) = number.split_once('.')?;
+    if whole.len() != 3
+        || !(1..=3).contains(&decimal.len())
+        || !whole
+            .bytes()
+            .chain(decimal.bytes())
+            .all(|c| c.is_ascii_digit())
+    {
+        return None;
+    }
+    let frequency = whole.parse::<i32>().ok()? * 1000
+        + decimal.parse::<i32>().ok()? * 10_i32.pow(3 - decimal.len() as u32);
+    (118_000..=136_990)
+        .contains(&frequency)
+        .then_some(frequency)
+}
+
+fn linked_transcript_text(
+    ui: &imgui::Ui,
+    text: &str,
+    color: [f32; 4],
+    links: bool,
+    powered: bool,
+) -> (Option<i32>, bool) {
+    if !links
+        || !text
+            .split_whitespace()
+            .any(|word| transcript_frequency(word).is_some())
+    {
+        ui.text_wrapped(text);
+        return (None, false);
+    }
+    let origin = ui.cursor_screen_pos();
+    let width = ui.content_region_avail()[0].max(1.0);
+    let line_height = ui.text_line_height();
+    let space = ui.calc_text_size(" ")[0];
+    let draw = ui.get_window_draw_list();
+    let mut cursor = origin;
+    let mut clicked = None;
+    let mut hovered_link = false;
+    for (index, word) in text.split_whitespace().enumerate() {
+        let size = ui.calc_text_size(word);
+        if cursor[0] > origin[0] && cursor[0] + size[0] > origin[0] + width {
+            cursor = [origin[0], cursor[1] + line_height];
+        }
+        let frequency = transcript_frequency(word);
+        let mut text_color = color;
+        if let Some(frequency) = frequency {
+            ui.set_cursor_screen_pos(cursor);
+            ui.invisible_button(format!("##frequency-{index}"), [size[0], line_height]);
+            let hovered = ui.is_item_hovered();
+            hovered_link |= hovered;
+            text_color = if hovered && powered {
+                [0.76, 0.93, 1.0, 1.0]
+            } else {
+                widgets::ACCENT
+            };
+            if hovered {
+                ui.set_mouse_cursor(Some(imgui::MouseCursor::Hand));
+                ui.tooltip_text(if powered {
+                    format!("Tune COM1 to {:.3} MHz", f64::from(frequency) / 1000.0)
+                } else {
+                    "Turn on the radio to tune COM1".to_owned()
+                });
+            }
+            if powered && ui.is_item_clicked() {
+                clicked = Some(frequency);
+            }
+            draw.add_line(
+                [cursor[0], cursor[1] + line_height - 1.0],
+                [cursor[0] + size[0], cursor[1] + line_height - 1.0],
+                text_color,
+            )
+            .build();
+        }
+        draw.add_text(cursor, text_color, word);
+        cursor[0] += size[0] + space;
+    }
+    ui.set_cursor_screen_pos(origin);
+    ui.dummy([width, cursor[1] - origin[1] + line_height]);
+    (clicked, hovered_link)
 }
 
 fn selectable_message(ui: &imgui::Ui, text: &str) {
@@ -770,13 +872,7 @@ pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         return;
     }
     header_card(ui, interface, state);
-    if state.taxi_clearance.pending_readback {
-        ui.text_colored(
-            AMBER,
-            "TAXI READBACK REQUIRED — guidance starts after acceptance",
-        );
-        ui.text_wrapped(&state.taxi_clearance.instructions);
-    } else if state.taxi_clearance.guidance_complete {
+    if state.taxi_clearance.guidance_complete {
         ui.text_colored(
             AMBER,
             if state.taxi_clearance.backtrack_required {
@@ -1392,8 +1488,47 @@ pub fn settings_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                 "Copilot sets altitude preselect",
                 &mut interface.settings.copilot_flies_ap,
             );
-            ui.text_wrapped("With the autopilot engaged, the copilot sets the cleared altitude and announces it. With it off, or when the dials are unreachable, the copilot advises instead. It never engages the autopilot itself. Heading and speed follow once their instruction sources exist.");
+            ui.text_wrapped("With the autopilot engaged, the copilot sets the cleared altitude and announces it. With it off, or when the dials are unreachable, the copilot advises instead. Automatic clearance assistance does not engage the autopilot. Explicit requests to the copilot can operate mapped controls, including the autopilot. Automatic heading and speed changes still require instruction sources.");
             ui.text_wrapped("These options apply to OpenATC AI's controller. They do not intercept X-Plane's built-in ATC, Next ATC or VATSIM.");
+        }
+        if let Some(_tab_item) = ui.tab_item("Aircraft controls") {
+            widgets::section_title(ui, "CREW CONTROL MAPPINGS");
+            ui.text_wrapped("Stock controls use built-in X-Plane mappings. Third-party controls and checklist order come from the aircraft TOML. Spoken requests and replies come from speech TOMLs. ATTN/CAB selects cabin crew; MECH/INT selects ground; VHF selects radio ATC. Pressing the same call button again clears the selection.");
+            ui.input_text("Find control", &mut interface.crew_control_filter)
+                .build();
+            let state = interface.engine.state();
+            let filter = interface.crew_control_filter.to_lowercase();
+            let available = state.crew_controls.iter().filter(|c| c.available).count();
+            ui.text(format!(
+                "{available} available / {} configured",
+                state.crew_controls.len()
+            ));
+            if let Some(_list) = ui
+                .child_window("crew_control_list")
+                .size([0.0, 0.0])
+                .begin()
+            {
+                for control in state.crew_controls.iter().filter(|c| {
+                    filter.is_empty()
+                        || c.label.to_lowercase().contains(&filter)
+                        || c.id.contains(&filter)
+                        || c.role.contains(&filter)
+                }) {
+                    let status = if control.available {
+                        "Available"
+                    } else {
+                        "Unavailable"
+                    };
+                    ui.text(format!(
+                        "{}  /  {}  /  {status}",
+                        control.label, control.role
+                    ));
+                    if let Some(value) = control.value {
+                        ui.same_line();
+                        ui.text_disabled(format!("{value:.2}"));
+                    }
+                }
+            }
         }
         if let Some(_tab_item) = ui.tab_item("AI") {
             widgets::section_title(ui, "INTENT CLASSIFICATION");
@@ -1406,7 +1541,7 @@ pub fn settings_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                 &mut interface.settings.llm_phrase_variety,
             );
             ui.text_wrapped(
-                "Keeps clearance values fixed; invalid wording falls back to the template.",
+                "Off: ATC uses the TOML phrases as written. On: AI uses the phrases as examples for natural wording. Instructions and values stay fixed; invalid wording falls back to TOML.",
             );
             setting_input(ui, "AI base URL", &mut interface.settings.ai_url, 256);
             setting_input(ui, "AI model", &mut interface.settings.ai_model, 128);
@@ -2024,10 +2159,12 @@ fn discipline_preset_row(ui: &imgui::Ui, interface: &mut Interface) {
             openatc_settings::Congestion::Quiet => "quiet",
         },
     );
-    let preview = match preset.as_str() {
-        "relaxed" => "Relaxed",
-        "real" => "Real",
-        "standard" => "Standard",
+    let compliance_matches = interface.settings.enforce_clearance_constraints
+        == matches!(preset.as_str(), "standard" | "real");
+    let preview = match (preset.as_str(), compliance_matches) {
+        ("relaxed", true) => "Relaxed",
+        ("real", true) => "Strict",
+        ("standard", true) => "Standard",
         _ => "Custom",
     };
     ui.text_disabled("Discipline preset");
@@ -2036,6 +2173,7 @@ fn discipline_preset_row(ui: &imgui::Ui, interface: &mut Interface) {
         if ui.selectable("Relaxed") {
             let settings = &mut interface.settings;
             settings.strict_readbacks = false;
+            settings.enforce_clearance_constraints = false;
             settings.require_frequency = false;
             settings.require_callsign = false;
             settings.strict_phraseology = false;
@@ -2046,6 +2184,7 @@ fn discipline_preset_row(ui: &imgui::Ui, interface: &mut Interface) {
         if ui.selectable("Standard") {
             let settings = &mut interface.settings;
             settings.strict_readbacks = true;
+            settings.enforce_clearance_constraints = true;
             settings.require_frequency = true;
             settings.require_callsign = false;
             settings.strict_phraseology = true;
@@ -2053,9 +2192,10 @@ fn discipline_preset_row(ui: &imgui::Ui, interface: &mut Interface) {
             settings.congestion = openatc_settings::Congestion::Quiet;
             settings.practice_emergencies = false;
         }
-        if ui.selectable("Real") {
+        if ui.selectable("Strict") {
             let settings = &mut interface.settings;
             settings.strict_readbacks = true;
+            settings.enforce_clearance_constraints = true;
             settings.require_frequency = true;
             settings.require_callsign = true;
             settings.strict_phraseology = true;
@@ -2064,14 +2204,21 @@ fn discipline_preset_row(ui: &imgui::Ui, interface: &mut Interface) {
             settings.practice_emergencies = true;
         }
     }
-    ui.text_wrapped("Relaxed accepts casual phrasing and never corrects. Standard is the default: disciplined readbacks and corrections with explanations. Real enforces full procedures with no hints. Editing any toggle below switches this to Custom.");
+    ui.text_wrapped("Relaxed allows casual requests and disables compliance monitoring. Standard checks readbacks, monitors assigned altitude and explains corrections. Strict also requires callsigns and removes teaching hints. Changing a preset setting shows Custom. Radio reception and runway permissions still apply in every preset.");
 }
 
 /// Readback and radio toggles.
 fn readbacks_row(ui: &imgui::Ui, interface: &mut Interface) {
+    widgets::section_title(ui, "CLEARANCE COMPLIANCE");
+    ui.checkbox(
+        "Monitor assigned altitude",
+        &mut interface.settings.enforce_clearance_constraints,
+    );
+    ui.text_wrapped("ATC checks your acknowledged altitude assignment in flight. A continuing deviation receives three corrective calls; the fourth cancels clearance. Returning to the assigned altitude resets the count. Turn this off to disable altitude warnings and cancellation. You can request an amended altitude or route in either mode; ATC must approve the change.");
+
     widgets::section_title(ui, "READBACKS & RADIO");
     ui.checkbox(
-        "Verbatim readbacks required",
+        "Check required readback details",
         &mut interface.settings.strict_readbacks,
     );
     ui.checkbox(
@@ -2162,27 +2309,15 @@ fn session_tab(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             serde_json::json!({"icao": "DEMO", "demo": true}),
         );
     }
+    drop(_demo_disabled);
     widgets::section_title(ui, "ACTIVE FLIGHT");
     ui.text(format!(
         "Stage: {}",
         openatc_core::ops::phase_name(state.phase)
     ));
-    if ui.button("Reset flight...") {
-        interface.confirm_reset = true;
-    }
-    if interface.confirm_reset {
-        ui.text_wrapped("Clear the plan, clearances and transcript for this flight?");
-        if ui.button("Reset") {
-            interface
-                .engine
-                .post("/session/reset", serde_json::Value::Null);
-            interface.confirm_reset = false;
-        }
-        ui.same_line();
-        if ui.button("Cancel") {
-            interface.confirm_reset = false;
-        }
-    }
+    ui.text_wrapped(
+        "Use the New flight icon in the window header to start fresh without disabling the plugin.",
+    );
     ui.text_wrapped("The controller remembers stages while the engine is running. Reset starts a new flight; live telemetry will identify an airborne start.");
 }
 
@@ -2475,6 +2610,74 @@ mod tests {
         let mut interface = Interface::new("http://127.0.0.1:9");
         interface.airport = openatc_core::airport::demo_airport();
         interface
+    }
+
+    #[test]
+    fn chat_frequency_links_accept_only_decimal_com_frequencies() {
+        for (text, expected) in [
+            ("118.1", 118100),
+            ("(121.900),", 121900),
+            ("136.975", 136975),
+            ("123.45", 123450),
+        ] {
+            assert_eq!(transcript_frequency(text), Some(expected));
+        }
+        for text in [
+            "31",
+            "5000",
+            "110.50",
+            "137.0",
+            "118.1000",
+            "FL380",
+            "118.1x2",
+            "17.974573",
+        ] {
+            assert_eq!(transcript_frequency(text), None, "{text}");
+        }
+    }
+
+    #[test]
+    fn clicking_an_atc_frequency_requests_com1_tuning() {
+        let _guard = CONTEXT_LOCK.lock().unwrap();
+        for (links, powered, expected) in [
+            (true, true, Some(121900)),
+            (true, false, None),
+            (false, true, None),
+        ] {
+            let mut ctx = headless();
+            let mut target = [0.0, 0.0];
+            let mut chosen = None;
+            for frame in 0..3 {
+                if frame > 0 {
+                    ctx.io_mut().add_mouse_pos_event(target);
+                    ctx.io_mut()
+                        .add_mouse_button_event(imgui::MouseButton::Left, frame == 2);
+                }
+                let ui = ctx.frame();
+                ui.window("Link test")
+                    .position([20.0, 20.0], imgui::Condition::Always)
+                    .size([440.0, 180.0], imgui::Condition::Always)
+                    .build(|| {
+                        let origin = ui.cursor_screen_pos();
+                        target = [
+                            origin[0] + ui.calc_text_size("Contact ")[0] + 10.0,
+                            origin[1] + 5.0,
+                        ];
+                        let (clicked, _) = linked_transcript_text(
+                            ui,
+                            "Contact 121.900 for ground.",
+                            widgets::ACCENT,
+                            links,
+                            powered,
+                        );
+                        if clicked.is_some() {
+                            chosen = clicked;
+                        }
+                    });
+                ctx.render();
+            }
+            assert_eq!(chosen, expected);
+        }
     }
 
     #[test]

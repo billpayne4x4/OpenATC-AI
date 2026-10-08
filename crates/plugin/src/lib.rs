@@ -4,6 +4,7 @@
 #![allow(unsafe_code)]
 
 mod arrival;
+mod crew;
 mod geometry;
 mod panel;
 mod render;
@@ -25,6 +26,7 @@ use xplane::{
 
 /// Shared plugin state behind the command handlers.
 struct Shared {
+    crew: crew::Runtime,
     interface: Option<Interface>,
     window: Option<window::Floater>,
     window_state: Option<Box<window::WindowState>>,
@@ -36,6 +38,7 @@ struct Shared {
     last_state_sequence: u32,
     /// Clearance sequence the copilot last flew or advised on.
     last_ap_seq: u32,
+    last_reset_generation: u64,
     logged_notice: String,
     logged_role: String,
     enabled: bool,
@@ -125,7 +128,19 @@ fn update_panel(
     let mut locked = shared
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let role = locked.panel.role();
+    let profile = crew::aircraft_profile(locked.panel.profile.as_ref().map(|p| &p.crew));
+    locked.crew.bind(xpapi, acf_path, &profile);
+    let selected = locked
+        .crew
+        .role
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let role = if selected.is_empty() {
+        locked.panel.role()
+    } else {
+        selected
+    };
     let has_role = !role.is_empty();
     let (radio, bus) = locked.panel.power();
     let spoken = if role.is_empty() {
@@ -439,9 +454,36 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
                 .clone_into(&mut interface.notice);
         }
     }
+    let generation = locked
+        .interface
+        .as_ref()
+        .map_or(0, |i| i.flight_reset_generation);
+    if generation != locked.last_reset_generation {
+        locked.last_reset_generation = generation;
+        locked.crew = crew::Runtime::default();
+        locked.last_frequency_sequence = 0;
+        locked.last_state_sequence = 0;
+        locked.last_ap_seq = 0;
+        locked.ground_arrows = taxi::GroundArrows::new();
+        locked.arrival_sampler = arrival::TerrainSampler::new();
+        locked.weather_sampler = weather::Sampler::default();
+    }
+    if locked.interface.as_ref().is_some_and(|i| i.reset_pending) {
+        return;
+    }
     drop(locked);
     update_tune(shared);
     update_autopilot(shared);
+    let mut locked = shared
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let profile = crew::aircraft_profile(locked.panel.profile.as_ref().map(|p| &p.crew));
+    let Shared {
+        crew, interface, ..
+    } = &mut *locked;
+    if let Some(interface) = interface.as_ref() {
+        crew.tick(xpapi, &profile, &interface.engine);
+    }
 }
 
 impl Plugin for OpenAtc {
@@ -463,6 +505,7 @@ impl Plugin for OpenAtc {
         // below shares ownership between callbacks, never threads.
         #[allow(clippy::arc_with_non_send_sync)]
         let shared = Arc::new(Mutex::new(Shared {
+            crew: crew::Runtime::default(),
             interface: None,
             window: None,
             window_state: None,
@@ -473,6 +516,7 @@ impl Plugin for OpenAtc {
             last_frequency_sequence: 0,
             last_state_sequence: 0,
             last_ap_seq: 0,
+            last_reset_generation: 0,
             logged_notice: String::new(),
             logged_role: "init".to_owned(),
             enabled: false,
@@ -513,34 +557,60 @@ impl Plugin for OpenAtc {
         interface
             .engine
             .post("/simulator/root", serde_json::json!({"root": system_path}));
-        // Render backend behind the window refcon, drawing the interface.
-        let draw_shared = self.shared.clone();
-        let mut window_state = Box::new(window::WindowState::new());
-        window_state.render.draw_fn = Some(Box::new(move |ui, frame| {
-            if let Ok(mut shared) = draw_shared.lock()
-                && let Some(interface) = shared.interface.as_mut()
-            {
-                interface.set_window_frame(frame);
-                return interface.draw(ui);
+        let needs_window = self
+            .shared
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .window
+            .is_none();
+        // Disabled windows retain their renderer. Reuse its ImGui context.
+        if needs_window {
+            // Render backend behind the window refcon, drawing the interface.
+            let draw_shared = self.shared.clone();
+            let mut window_state = Box::new(window::WindowState::new());
+            window_state.render.draw_fn = Some(Box::new(move |ui, frame| {
+                if let Ok(mut shared) = draw_shared.lock()
+                    && let Some(interface) = shared.interface.as_mut()
+                {
+                    interface.set_window_frame(frame);
+                    return interface.draw(ui);
+                }
+                openatc_ui::interface::WindowActions::default()
+            }));
+            debug_log("OpenATC AI: enable window");
+            // Keep callback state alive for the lifetime of its SDK window.
+            if let Some((window, state)) = window::Floater::open(window_state) {
+                let mut shared = self
+                    .shared
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                shared.window = Some(window);
+                shared.window_state = Some(state);
+            } else {
+                debug_log("OpenATC AI: window creation failed");
+                return Ok(());
             }
-            openatc_ui::interface::WindowActions::default()
-        }));
-        debug_log("OpenATC AI: enable window");
-        // Floating window owns the state box lifetime from here on.
-        if let Some((window, state)) = window::Floater::open(window_state) {
+        }
+        {
             let mut shared = self
                 .shared
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            shared.window = Some(window);
-            shared.window_state = Some(state);
             shared.interface = Some(interface);
-        } else {
-            debug_log("OpenATC AI: window creation failed");
-            return Ok(());
+            shared.supervisor = supervise::Supervisor::new();
+            shared.crew = crew::Runtime::default();
+            shared.last_frequency_sequence = 0;
+            shared.last_state_sequence = 0;
+            shared.last_ap_seq = 0;
+            shared.last_reset_generation = 0;
+            if let Some(window) = shared.window.as_ref() {
+                window.set_visible(true);
+            }
         }
         debug_log("OpenATC AI: enable commands");
-        setup_commands(self, xpapi);
+        if self.commands.is_empty() {
+            setup_commands(self, xpapi);
+        }
         debug_log("OpenATC AI: enable flight loop");
         // Half-second flight loop with the shared state.
         let tick_shared = self.shared.clone();
@@ -587,6 +657,9 @@ impl Plugin for OpenAtc {
             window.set_visible(false);
         }
         shared.interface = None;
+        shared.crew = crew::Runtime::default();
+        shared.refs = None;
+        shared.com1 = None;
     }
 
     fn receive_message(
@@ -713,6 +786,7 @@ struct ToggleItem {
 impl xplane::menu::ClickHandler for ToggleItem {
     fn item_clicked(&mut self, _x: &mut xplane::XPAPI, _item: &xplane::menu::ActionItem) {
         if let Ok(shared) = self.shared.lock()
+            && shared.enabled
             && let Some(window) = shared.window.as_ref()
         {
             window.set_visible(!window.is_visible());

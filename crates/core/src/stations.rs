@@ -226,7 +226,8 @@ pub fn serves(service: &str, intent: &str) -> bool {
         "start" | "pushback" | "start_pushback" | "taxi" | "gate" | "progressive" => {
             service == "Ground"
         }
-        "ready" | "backtrack" => service == "Tower",
+        "cross_runway" => service == "Ground" || service == "Tower",
+        "ready" | "backtrack" | "landing" => service == "Tower",
         _ => [
             "Clearance",
             "Ground",
@@ -343,7 +344,8 @@ impl Coverage {
         }
         distance
     }
-    fn contains(&self, t: &Telemetry) -> bool {
+    /// Whether telemetry lies inside the published horizontal and altitude bounds.
+    pub fn contains(&self, t: &Telemetry) -> bool {
         if self.points.len() < 3 || t.altitude_feet < self.floor || t.altitude_feet > self.ceiling {
             return false;
         }

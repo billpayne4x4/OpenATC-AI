@@ -20,7 +20,7 @@ files = {
     repo / "intents.toml": plugin / "intents.toml",
     repo / "README.md": plugin / "README.md",
 }
-for folder in ("aircraft", "prompts", "speech", "assets/taxi-arrow", "assets/licenses", "assets/branding", "assets/fonts", "docs"):
+for folder in ("aircraft", "prompts", "speech", "assets/taxi-arrow", "assets/licenses", "assets/branding", "assets/fonts", "assets/geography", "assets/controls", "docs"):
     for source in (repo / folder).rglob("*"):
         if source.is_file():
             files[source] = plugin / source.relative_to(repo)

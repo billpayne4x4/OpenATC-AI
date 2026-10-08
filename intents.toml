@@ -534,3 +534,39 @@ examples = [
   { text = "Backtrack runway {rwy}, stop and hold position at the departure end, {callsign}.", kind = "readback" },
 ]
 fallback = ""
+
+[intent.landing]
+title = "Request landing clearance"
+group = "Arrival"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request landing clearance"]
+pattern = "exact"
+slots = []
+examples = [{text = "request landing clearance", kind = "request"}]
+fallback = "Request landing clearance."
+
+[intent.cross_runway]
+title = "Request runway crossing"
+group = "Ground"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["request runway crossing"]
+pattern = "exact"
+slots = []
+examples = [{text = "request runway crossing", kind = "request"}]
+fallback = "Request runway crossing."
+
+[intent.checkin]
+title = "Check in"
+group = "Radio"
+catalogue = true
+parameter = false
+roles = ["atc", "copilot"]
+exact = ["check in"]
+pattern = "exact"
+slots = []
+examples = [{text = "check in", kind = "request"}]
+fallback = "Checking in."

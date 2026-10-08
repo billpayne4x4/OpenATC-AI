@@ -176,3 +176,34 @@ mod tests {
         assert_eq!(check_compliance(&dark, "", &expectation), None);
     }
 }
+
+/// Repeated deviations cancel only after three corrective calls.
+#[derive(Clone, Debug, Default)]
+pub struct WarningCount {
+    /// Number of corrective calls for the current unresolved deviation.
+    pub corrections: u8,
+}
+impl WarningCount {
+    /// Record a continuing deviation; true means the fourth call cancels permission.
+    pub fn continuing(&mut self) -> bool {
+        self.corrections = self.corrections.saturating_add(1);
+        self.corrections > 3
+    }
+    /// Compliance resets the warning sequence.
+    pub fn resolved(&mut self) {
+        self.corrections = 0;
+    }
+}
+#[cfg(test)]
+mod warning_tests {
+    #[test]
+    fn three_corrections_then_cancel_and_reset() {
+        let mut count = super::WarningCount::default();
+        for _ in 0..3 {
+            assert!(!count.continuing());
+        }
+        assert!(count.continuing());
+        count.resolved();
+        assert!(!count.continuing());
+    }
+}

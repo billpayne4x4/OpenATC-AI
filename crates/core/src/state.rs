@@ -392,6 +392,9 @@ pub struct Transmission {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Request {
+    /// Internal controller initiative; never accepted from an HTTP request.
+    #[serde(skip)]
+    pub controller_initiated: bool,
     /// Intent key (`taxi`, `altitude`, …).
     pub intent: String,
     /// Raw request text.
@@ -487,6 +490,8 @@ pub struct Point {
 #[serde(rename_all = "camelCase", default)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct TaxiClearance {
+    /// Explicit permission for this runway crossing only.
+    pub crossing_runway: String,
     /// Airport ICAO.
     pub airport: String,
     /// Destination (runway or `PARKING`).
@@ -535,6 +540,15 @@ pub struct TaxiClearance {
 #[serde(rename_all = "camelCase")]
 #[allow(clippy::struct_excessive_bools)] // Independent saved permissions and flight flags.
 pub struct State {
+    /// Pending simulator-thread crew actions.
+    #[serde(default)]
+    pub crew_actions: Vec<crate::crew::Action>,
+    /// Aircraft controls and live availability.
+    #[serde(default)]
+    pub crew_controls: Vec<crate::crew::Capability>,
+    /// Controller permissions were withdrawn after unresolved noncompliance.
+    #[serde(default)]
+    pub clearance_cancelled: bool,
     /// Flight plan.
     pub plan: FlightPlan,
     /// Latest telemetry.
@@ -596,6 +610,9 @@ fn default_sequence() -> u32 {
 impl Default for State {
     fn default() -> Self {
         Self {
+            crew_actions: Vec::new(),
+            crew_controls: Vec::new(),
+            clearance_cancelled: false,
             plan: FlightPlan::default(),
             telemetry: Telemetry::default(),
             phase: PhaseCode::Parked,

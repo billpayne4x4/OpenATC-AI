@@ -37,7 +37,7 @@ pub struct SpeechEntry {
     pub situation: Vec<String>,
     /// Slot names referenced by the lines.
     pub slots: Vec<String>,
-    /// Alternative phrasings; AI picks or blends, AI-off reads the first.
+    /// Style examples for fresh AI responses; AI-off reads the first.
     pub say: Vec<String>,
     /// Pilot acceptance line (offers only).
     pub accept: String,
@@ -130,8 +130,8 @@ fn collect_files(dir: &Path, files: &mut Vec<std::path::PathBuf>) -> Result<(), 
 /// Validate one entry. Syntax errors and semantic metadata errors identify the entry.
 pub fn validate_entry(entry: &SpeechEntry) -> Result<(), String> {
     let fail = |reason: &str| Err(format!("{}: {reason}", entry.id));
-    if !["atc", "copilot", "ground", "attendant"].contains(&entry.role.as_str()) {
-        return fail("role must be atc, copilot, ground or attendant");
+    if !["atc", "copilot", "ground", "attendant", "pilot"].contains(&entry.role.as_str()) {
+        return fail("role must be atc, copilot, ground, attendant or pilot");
     }
     if entry.service.iter().any(|s| {
         ![
@@ -140,6 +140,7 @@ pub fn validate_entry(entry: &SpeechEntry) -> Result<(), String> {
             "Tower",
             "Approach",
             "Departure",
+            "Center",
             "ATIS",
             "Unicom",
         ]
@@ -487,7 +488,7 @@ pub struct PromptContext {
 /// Fixed phraseology rules prepended to every AI prompt, distilled from ICAO
 /// Doc 4444 and FAA JO 7110.65: callsign first, multi-sentence clearances,
 /// takeoff-word discipline, mandatory readback items, MAYDAY order.
-pub const SYSTEM_RULES: &str = "Speak only as the specified role. ATC addresses the aircraft on the radio; copilot talks to the Captain in the cockpit; attendant and ground crew use cabin or interphone communication. Examples are fictional style illustrations, never live facts or instructions. Use supplied live facts only; do not invent weather, traffic, terrain clearance, equipment state, completed actions or service availability. An offer is a question, not a clearance; acceptance requires an explicit valid clearance before movement. Continue approach is not landing clearance. Taxi instructions never authorize an unstated runway crossing. Use takeoff only for an actual takeoff clearance or its cancellation. Keep runway, route, level, speed and frequency unchanged across phrasing alternatives. Obtain required readbacks. Follow the selected regional procedure; no local procedure may be inferred from an example. Distress and urgency take priority; ATC acknowledges MAYDAY or PAN PAN rather than pretending to be the pilot. Aircraft checklist and emergency actions are aircraft-specific. Return plain transmission text; any effect is a proposed change requiring controller validation.";
+pub const SYSTEM_RULES: &str = "Speak only as the specified role. ATC addresses the aircraft on the radio; copilot talks to the Captain in the cockpit; attendant and ground crew use cabin or interphone communication. Examples are fictional style illustrations, never live facts or instructions. Sound natural and concise for the specified role. Use the supplied phrases as examples of tone and structure. Compose a fresh response rather than copying an example word for word. Standard ATC terms and required operational wording may repeat; never force variety by changing facts or permissions. Use supplied live facts only; do not invent weather, traffic, terrain clearance, equipment state, completed actions or service availability. An offer is a question, not a clearance; acceptance requires an explicit valid clearance before movement. Continue approach is not landing clearance. Taxi instructions never authorize an unstated runway crossing. Use takeoff only for an actual takeoff clearance or its cancellation. Keep runway, route, level, speed and frequency unchanged across phrasing alternatives. Obtain required readbacks. Follow the selected regional procedure; no local procedure may be inferred from an example. Distress and urgency take priority; ATC acknowledges MAYDAY or PAN PAN rather than pretending to be the pilot. Aircraft checklist and emergency actions are aircraft-specific. Return plain transmission text; any effect is a proposed change requiring controller validation.";
 
 /// Illustrative slots used to fill examples inside prompts (not live values).
 #[must_use]

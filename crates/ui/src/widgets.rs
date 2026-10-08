@@ -50,6 +50,8 @@ pub enum ToolbarIcon {
     Headset,
     /// Clipboard: flight plan.
     FlightPlan,
+    /// Blank page with a plus: new flight.
+    NewFile,
     /// Hamburger: page menu.
     Menu,
     /// Pin: keep expanded.
@@ -123,6 +125,21 @@ fn draw_toolbar_glyph(
     match icon {
         ToolbarIcon::Messages => draw_symbol(draw, 0, center, color, 11.0 * scale),
         ToolbarIcon::FlightPlan => draw_symbol(draw, 1, center, color, 10.0 * scale),
+        ToolbarIcon::NewFile => {
+            for (a, b) in [
+                ([-8.0, -11.0], [3.0, -11.0]),
+                ([3.0, -11.0], [8.0, -6.0]),
+                ([8.0, -6.0], [8.0, 11.0]),
+                ([8.0, 11.0], [-8.0, 11.0]),
+                ([-8.0, 11.0], [-8.0, -11.0]),
+                ([3.0, -11.0], [3.0, -6.0]),
+                ([3.0, -6.0], [8.0, -6.0]),
+                ([-4.0, 3.0], [4.0, 3.0]),
+                ([0.0, -1.0], [0.0, 7.0]),
+            ] {
+                line(a, b);
+            }
+        }
         ToolbarIcon::Headset => {
             draw.add_circle(point(0.0, -1.0), 8.0 * scale, color)
                 .thickness(1.6 * scale)
@@ -355,8 +372,8 @@ pub fn configure_style(style: &mut imgui::Style) {
     let paint = |style: &mut imgui::Style, slot: StyleColor, color: [f32; 4]| {
         style.colors[slot as usize] = color;
     };
-    paint(style, StyleColor::WindowBg, [0.09, 0.125, 0.165, 0.96]);
-    paint(style, StyleColor::ChildBg, [0.07, 0.105, 0.145, 0.88]);
+    paint(style, StyleColor::WindowBg, [0.205, 0.25, 0.29, 0.96]);
+    paint(style, StyleColor::ChildBg, [0.13, 0.17, 0.215, 0.80]);
     paint(style, StyleColor::Border, [0.22, 0.31, 0.39, 0.55]);
     paint(style, StyleColor::FrameBg, [0.09, 0.11, 0.14, 1.0]);
     paint(style, StyleColor::Button, [0.16, 0.22, 0.285, 0.98]);

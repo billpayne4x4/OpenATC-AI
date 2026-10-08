@@ -85,13 +85,18 @@ fn ground_request_available(state: &State, intent: &str) -> Option<bool> {
     if intent == "taxi" {
         return Some(
             !airborne
-                && (state.phase == PhaseCode::Clearance || state.phase == PhaseCode::Pushback)
+                && (state.phase == PhaseCode::Clearance
+                    || state.phase == PhaseCode::Pushback
+                    || (state.phase == PhaseCode::Taxi && state.taxi_clearance.guidance_complete))
                 && state.clearance.is_some()
                 && !pending,
         );
     }
     if intent == "ready" {
         return Some(ready_available(state));
+    }
+    if intent == "landing" {
+        return Some(airborne && matches!(state.phase, PhaseCode::Arrival | PhaseCode::Approach));
     }
     if intent == "gate" {
         return Some(
@@ -102,7 +107,9 @@ fn ground_request_available(state: &State, intent: &str) -> Option<bool> {
     }
     if intent == "progressive" || intent == "cross_runway" {
         return Some(
-            !airborne && (state.phase == PhaseCode::Taxi || state.phase == PhaseCode::TaxiIn),
+            !airborne
+                && (state.phase == PhaseCode::Taxi || state.phase == PhaseCode::TaxiIn)
+                && (intent == "progressive" || state.taxi_clearance.guidance_complete),
         );
     }
     if intent == "altimeter" || intent == "weather" || intent == "frequency" || intent == "checkin"
@@ -115,7 +122,8 @@ fn ground_request_available(state: &State, intent: &str) -> Option<bool> {
 /// Departure-readiness check used by `request_available`: approved taxi route,
 /// stopped at its end (demo scenes skip the position check).
 fn ready_available(state: &State) -> bool {
-    if (state.taxi_clearance.runway_taxi && !state.taxi_clearance.guidance_complete)
+    if !state.taxi_clearance.crossing_runway.is_empty()
+        || (state.taxi_clearance.runway_taxi && !state.taxi_clearance.guidance_complete)
         || state.taxi_clearance.backtrack_required
         || (!state.taxi_clearance.hold_short_runway.is_empty()
             && state.taxi_clearance.hold_short_runway != state.plan.runway)
@@ -221,7 +229,12 @@ pub fn update_flight_phase(state: &mut State, telemetry: &Telemetry) -> Result<(
         let here = airport_point(&reference, telemetry.latitude, telemetry.longitude);
         if let Some(end) = state.taxi_clearance.points.last()
             && telemetry.ground_speed_knots < 2.0
-            && (here.east - end.east).hypot(here.north - end.north) <= 25.
+            && (here.east - end.east).hypot(here.north - end.north)
+                <= if state.taxi_clearance.crossing_runway.is_empty() {
+                    45.0
+                } else {
+                    10.0
+                }
         {
             state.taxi_clearance.guidance_complete = true;
         }

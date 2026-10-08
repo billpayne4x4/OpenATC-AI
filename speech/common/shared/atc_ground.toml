@@ -446,3 +446,55 @@ variant = "common"
 situation = ["start_and_pushback_approved"]
 slots = ["callsign"]
 say = ["{callsign}, start-up and pushback approved. Report ready to taxi.", "{callsign}, approved for start-up and pushback. Report ready to taxi."]
+
+[ground.crossing_controller_initiated]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_controller_initiated"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, cross runway {rwy}, report vacated.", "{callsign}, runway {rwy}, cleared to cross. Report clear.", "{callsign}, cross runway {rwy}. Report when clear of the runway.", "{callsign}, cross runway {rwy}, then hold position.", "{callsign}, cross runway {rwy}. Hold short of all other runways.", "{callsign}, cleared to cross runway {rwy}, report vacated."]
+
+[ground.crossing_pilot_request]
+role = "pilot"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_pilot_request"]
+slots = ["callsign", "rwy", "via"]
+say = ["{callsign}, holding short of runway {rwy} at {via}, request crossing.", "{callsign}, request to cross runway {rwy} at {via}.", "Holding short of runway {rwy} at {via}, {callsign}, request crossing.", "{callsign}, ready to cross runway {rwy} at {via}.", "{callsign}, runway {rwy}, holding at {via}, request crossing clearance.", "Request runway {rwy} crossing at {via}, {callsign}."]
+
+[ground.crossing_vacated]
+role = "pilot"
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_vacated"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, runway {rwy} vacated.", "{callsign}, clear of runway {rwy}.", "Runway {rwy} vacated, {callsign}.", "{callsign}, completely clear of runway {rwy}.", "Clear of runway {rwy}, {callsign}.", "{callsign}, crossing complete, runway {rwy} vacated."]
+
+[ground.crossing_onward_taxi]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_onward_taxi"]
+slots = ["callsign", "via", "rwy"]
+say = ["{callsign}, taxi via {via}, hold short of runway {rwy}.", "{callsign}, continue taxi via {via}. Hold short of runway {rwy}.", "{callsign}, runway {rwy}, taxi via {via}, hold short.", "{callsign}, taxi to the holding point runway {rwy} via {via}.", "{callsign}, continue via {via} to the holding point runway {rwy}. Hold short.", "{callsign}, via {via}, taxi to runway {rwy}, hold short."]
+
+[ground.crossing_unclear_readback]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_unclear_readback"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, say again the runway crossing clearance.", "{callsign}, confirm crossing runway {rwy}.", "{callsign}, read back the runway number.", "{callsign}, negative, runway {rwy}. Say again your crossing readback.", "{callsign}, hold position. Say again the crossing clearance.", "{callsign}, confirm runway {rwy}, cleared to cross."]
+
+[ground.crossing_hold_occupied]
+role = "atc"
+service = ["Ground", "Tower"]
+phase = ["taxi", "taxi_in"]
+variant = "common"
+situation = ["crossing_hold_occupied"]
+slots = ["callsign", "rwy"]
+say = ["{callsign}, hold short of runway {rwy}, runway occupied.", "{callsign}, runway {rwy} occupied. Hold short.", "{callsign}, remain holding short of runway {rwy}, traffic on the runway.", "{callsign}, crossing delayed, runway {rwy} occupied.", "{callsign}, hold short of runway {rwy}. Stand by for crossing.", "{callsign}, negative crossing. Hold short of runway {rwy}."]

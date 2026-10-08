@@ -1,0 +1,211 @@
+# Crew wording examples. Completed-action examples require a verified live readback.
+# Pilot entries illustrate requests and responses; they are never spoken as crew.
+
+
+[crew_controls.pilot_heading]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["heading", "request"]
+slots = []
+say = ["Set heading two seven zero.", "Heading one eight zero, please.", "Set the heading bug to zero nine zero.", "Select heading three one zero.", "Set heading two four zero on the FCU.", "Heading three six zero, please."]
+
+[crew_controls.pilot_altitude]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["altitude", "request"]
+slots = []
+say = ["Set altitude five thousand feet.", "Set the altitude preselect to ten thousand feet.", "Select flight level two four zero.", "Set three thousand feet on the FCU.", "Altitude seven thousand feet, please.", "Set the cleared altitude in the altitude window."]
+
+[crew_controls.pilot_speed]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["speed", "request"]
+slots = []
+say = ["Set speed two hundred knots.", "Select two one zero knots.", "Speed one eight zero, please.", "Set two five zero in the speed window.", "Select managed speed.", "Set selected speed mode."]
+
+[crew_controls.pilot_autopilot]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["autopilot", "request"]
+slots = []
+say = ["Engage autopilot one.", "Autopilot one on, please.", "Disconnect the autopilot.", "Switch autopilot one off.", "Press the approach button.", "Select the localizer button."]
+
+[crew_controls.pilot_autothrust]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["autothrust", "request"]
+slots = []
+say = ["Arm autothrust.", "Autothrust on, please.", "Switch autothrust off.", "Disengage autothrust.", "Check autothrust status.", "Confirm whether autothrust is armed."]
+
+[crew_controls.pilot_gear]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["gear", "request"]
+slots = []
+say = ["Gear down.", "Landing gear down, please.", "Positive climb, gear up.", "Retract the landing gear.", "Check the gear indication.", "Confirm the gear lever position."]
+
+[crew_controls.pilot_flaps]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["flaps", "request"]
+slots = []
+say = ["Flaps one.", "Select flaps two.", "Flaps three, please.", "Select full flaps.", "Flaps up.", "Check the flap lever position."]
+
+[crew_controls.pilot_lights]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["lights", "request"]
+slots = []
+say = ["Beacon on.", "Wing lights off, please.", "Seat belt signs on.", "Switch the seat belt signs off.", "Runway turnoff lights on.", "Check the beacon switch."]
+
+[crew_controls.pilot_checklists]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["checklists", "request"]
+slots = []
+say = ["Before start checklist.", "Read the before start checklist and wait for my responses.", "Perform the before start checklist.", "After takeoff checklist, please.", "Read the parking checklist.", "Stop the checklist."]
+
+[crew_controls.pilot_captain_responses]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["captain_responses", "request"]
+slots = []
+say = ["Set.", "Checked.", "On.", "Off.", "Armed.", "Disarmed.", "Up.", "Down.", "Checked and set.", "Stand by on that item."]
+
+[crew_controls.pilot_cabin_lights]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["cabin_lights", "request"]
+slots = []
+say = ["Cabin lights on, please.", "Turn the cabin lights off.", "Set cabin brightness to fifty percent.", "Dim the cabin lights.", "Cabin brightness twenty-five percent.", "Please confirm the cabin light setting."]
+
+[crew_controls.pilot_cabin_slides]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["cabin_slides", "request"]
+slots = []
+say = ["Cabin crew, arm slides and cross-check.", "Doors to automatic and cross-check.", "Disarm slides and cross-check.", "Doors to manual and cross-check.", "Confirm slides armed.", "Cross-check the slides, please."]
+
+[crew_controls.pilot_ground_power]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["ground_power", "request"]
+slots = []
+say = ["Connect external power, please.", "Ground, remove external power.", "Add the chocks.", "Remove the chocks, please.", "Confirm the chocks are in place.", "Is external power connected?"]
+
+[crew_controls.pilot_pushback]
+role = "pilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["pushback", "request"]
+slots = []
+say = ["Push back thirty metres, then turn with the tail to the right.", "Pushback fifty metres, tail sixty degrees left.", "Push back eighty metres, tail one hundred twenty degrees right.", "Pushback thirty metres straight back.", "Set fifty metres and a ninety-degree tail-right turn.", "Stand by for pushback."]
+
+[crew_controls.copilot_heading]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["heading", "response"]
+slots = []
+say = ["Heading set to two seven zero.", "Heading one eight zero set.", "Heading bug checked, zero nine zero.", "Selected heading set.", "Heading window checked.", "Heading target set, Captain."]
+
+[crew_controls.copilot_altitude]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["altitude", "response"]
+slots = []
+say = ["Five thousand feet set.", "Altitude preselect set and checked.", "Ten thousand feet in the window.", "Flight level two four zero set.", "Altitude target set, Captain.", "Cleared altitude selected and checked."]
+
+[crew_controls.copilot_speed]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["speed", "response"]
+slots = []
+say = ["Two hundred knots set.", "Speed selected, two one zero.", "Speed window checked.", "Managed speed selected.", "Selected speed mode set.", "Speed target set, Captain."]
+
+[crew_controls.copilot_autopilot]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["autopilot", "response"]
+slots = []
+say = ["Autopilot one engaged.", "Autopilot one checked, on.", "Autopilot disconnected.", "Autopilot one off.", "Approach button pressed; check the mode annunciation.", "Localizer button pressed; check the flight mode annunciation."]
+
+[crew_controls.copilot_gear]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["gear", "response"]
+slots = []
+say = ["Gear lever down.", "Landing gear selected down.", "Gear lever up.", "Gear selected up, Captain.", "Gear lever position checked.", "Gear indication is not confirmed; please check it."]
+
+[crew_controls.copilot_flaps]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["flaps", "response"]
+slots = []
+say = ["Flaps one selected.", "Flaps two set.", "Flaps three selected.", "Full flaps selected.", "Flaps up.", "Flap lever checked."]
+
+[crew_controls.copilot_checklists]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["checklists", "response"]
+slots = []
+say = ["Before start checklist. Seat belt signs?", "Beacon?", "Landing gear?", "That item is not confirmed. Please check it.", "Stand by. We have not completed that item.", "Checklist stopped at your request.", "Before start checklist complete.", "After takeoff checklist complete.", "Parking checklist complete.", "Confirm the setting before we continue."]
+
+[crew_controls.copilot_limitations]
+role = "copilot"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["limitations", "response"]
+slots = []
+say = ["That control is not available in this aircraft profile.", "I cannot confirm that indication.", "The button was pressed. Please check the indication.", "The requested setting did not take effect.", "Please give me one control and its setting.", "Unable to complete that item. The checklist is stopped."]
+
+[crew_controls.attendant_lights]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["lights", "response"]
+slots = []
+say = ["Cabin lights on.", "Cabin lights off.", "Cabin brightness set to fifty percent.", "Cabin lights dimmed.", "Cabin light setting checked.", "I cannot confirm the light setting."]
+
+[crew_controls.attendant_slides]
+role = "attendant"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["slides", "response"]
+slots = []
+say = ["Slides armed and cross-checked.", "Slides disarmed and cross-checked.", "Slide arming confirmed.", "Slide disarming confirmed.", "Cross-check complete; slides armed.", "Cross-check complete; slides disarmed.", "I cannot confirm all slide indications.", "Cross-check is not complete. Please check the door page."]
+
+[crew_controls.ground_services]
+role = "ground"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["services", "response"]
+slots = []
+say = ["Chocks in place.", "Chocks removed.", "External power connected.", "External power disconnected.", "Ground power connection checked.", "I cannot confirm the chocks.", "External power is not confirmed connected.", "That service is unavailable at present."]
+
+[crew_controls.ground_pushback]
+role = "ground"
+phase = ["parked", "clearance", "pushback", "taxi", "departure", "cruise", "arrival", "approach", "landed", "taxi_in"]
+variant = "common"
+situation = ["pushback", "response"]
+slots = []
+say = ["Confirm pushback distance and tail direction.", "Set the ToLiss pushback distance and turn angle before starting.", "I cannot set the pushback parameters through the current aircraft interface.", "Pushback parameters are not confirmed. Do not start on my account.", "The aircraft pushback system will handle movement.", "Please set the parking brake when the tug stops."]

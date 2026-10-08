@@ -244,4 +244,12 @@ slots = ["callsign", "dest", "via", "alt", "sq", "rwy"]
 say = [
  "{callsign}, cleared to {dest} via {via}. Initial altitude {alt}, squawk {sq}. Departure runway {rwy}.",
  "{callsign}, cleared to {dest}, route {via}, initial altitude {alt}, squawk {sq}. Runway {rwy} for departure.",
+ "{callsign}, cleared to {dest} via {via}, initial altitude {alt}. Squawk {sq}, departure runway {rwy}.",
+ "{callsign}, cleared to {dest}. Route {via}, initial altitude {alt}, squawk {sq}, runway {rwy} for departure.",
+ "{callsign}, cleared to {dest} via {via}. Runway {rwy} for departure, initial altitude {alt}, squawk {sq}.",
+ "{callsign}, cleared to {dest}, routing {via}. Initial altitude {alt}. Squawk {sq}. Departure runway {rwy}.",
+ "{callsign}, clearance to {dest} via {via}. Initial altitude {alt}, squawk {sq}, departure runway {rwy}.",
+ "{callsign}, cleared to {dest} via {via}, departure runway {rwy}. Initial altitude {alt}, squawk {sq}.",
+ "{callsign}, cleared to {dest}, route {via}. Squawk {sq}, initial altitude {alt}, runway {rwy} for departure.",
+ "{callsign}, cleared to {dest} via {via}. Your initial altitude is {alt}. Squawk {sq}, departure runway {rwy}.",
 ]

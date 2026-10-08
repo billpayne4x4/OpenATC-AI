@@ -8,11 +8,20 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('engine',type=Path);parser.add_argument('speech',type=Path)
 args=parser.parse_args()
 captured=[]
+slow_started=threading.Event()
+slow_release=threading.Event()
+slow_model=False
 class Model(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
     def do_POST(self):
         body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path.endswith('/audio/speech'):
+            self.send_response(503);self.end_headers();self.wfile.write(b'test provider unavailable')
+            return
         captured.append(body)
+        if slow_model:
+            slow_started.set()
+            slow_release.wait(timeout=10)
         # Deliberately corrupt operational data: engine must reject this wording.
         data=json.dumps({'choices':[{'message':{'content':'Cleared to FAKE. Climb to 99000 feet, squawk 7777.'}}]}).encode()
         self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
@@ -44,6 +53,13 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         '1050 118000 Test ATIS\n1052 121800 Test Delivery\n1053 121900 Test Ground\n1054 118700 Test Tower\n1055 119000 Test Approach\n1056 119100 Test Departure\n'+
         '1201 0.003 -0.003 both 1\n1201 0.001 -0.001 both 2\n1201 0.001 0.000 both 3\n1201 0 0 both 4\n1202 1 2 twoway taxiway_C Alpha\n1202 2 3 twoway taxiway_C Alpha\n1202 3 4 twoway taxiway_C Alpha\n1300 0.003 -0.003 90 gate jets Stand 1\n'+
         '1 0 0 0 DEST Destination International\n'+runway.replace('09 0 0','09 0 0.1').replace('27 0 0.02','27 0 0.12')+'1050 118100 Destination ATIS\n1054 118700 Destination Tower\n'+'1 0 0 0 RWYO Runway Only\n'+runway+'1053 122000 Runway Only Ground\n1054 122100 Runway Only Tower\n110 1 0.2 0 Apron\n111 -0.001 0.007\n111 -0.001 0.009\n111 0.001 0.009\n113 0.001 0.007\n99\n')
+    parallel = ('1 0 0 0 PARA Parallel Runways\n'
+        '100 45 1 1 0.25 0 3 0 25R 0 0 0 0 2 0 0 0 07L 0 0.02 0 0 2 0 0 0\n'
+        '100 45 1 1 0.25 0 3 0 25L -0.002 0 0 0 2 0 0 0 07R -0.002 0.02 0 0 2 0 0 0\n'
+        '1053 124500 Parallel Ground\n1054 124600 Parallel Tower\n'
+        '1201 0.003 0.002 both 1\n1201 0.001 0.002 both 2\n1201 -0.001 0.002 both 3\n1201 -0.001 0 both 4\n'
+        '1202 1 2 twoway taxiway_C Alpha\n1202 2 3 twoway taxiway_C Alpha\n1204 departure 25R,07L\n1202 3 4 twoway taxiway_C Bravo\n')
+    apt.write_text(apt.read_text().replace('99\n', parallel+'99\n'))
     custom=root/'Custom Scenery/Unrelated/Earth nav data/apt.dat';custom.parent.mkdir(parents=True)
     custom.write_text('1 0 0 0 OTHER Unrelated scenery\n'+runway+'99\n')
     (root/'Custom Scenery/scenery_packs.ini').write_text('SCENERY_PACK Custom Scenery/Unrelated/\n')
@@ -63,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
             telemetry.update(com1Khz=freq,**kwargs);ok('telemetry',telemetry)
         def req(intent,**kwargs):return ok('request',dict({'intent':intent,'text':intent,'role':'atc'},**kwargs))
         tune(123450)
-        stations=ok('stations/nearby',{})['stations'];assert len(stations)==10,stations
+        stations=ok('stations/nearby',{})['stations'];assert len(stations)==12,stations
         for intent in ['radio_check','clearance','emergency']:
             result=req(intent);assert result['result']['silent'] and not result['result']['message'];assert not result['state']['transcript']
         plan={'departure':'TEST','destination':'DEST','callsign':'VH-BIL','runway':'09','arrivalRunway':'09','initialAltitudeFeet':5000,'cruiseFeet':25000,'route':'DCT DEST'}
@@ -98,7 +114,7 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         assert call('request/auto-reply',{})[0]==400
         assert acknowledged['result']['accepted'] and acknowledged['state']['taxiClearance']['approved'],acknowledged
         endpoint=taxi['points'][-1]
-        tune(121900,latitude=taxi['referenceLatitude']+endpoint['north']/111320,longitude=taxi['referenceLongitude']+endpoint['east']/(111320*math.cos(math.radians(taxi['referenceLatitude']))),groundSpeedKnots=0)
+        tune(121900,latitude=taxi['referenceLatitude']+(endpoint['north']+35)/111320,longitude=taxi['referenceLongitude']+endpoint['east']/(111320*math.cos(math.radians(taxi['referenceLatitude']))),groundSpeedKnots=0)
         assert ok('state')['taxiClearance']['guidanceComplete']
         notice=ok('state')['transcript'][-1]['text'];assert '118.700' in notice and 'Tower' in notice,notice
         # Tower protects the runway against incoming traffic; pause must not issue clearances.
@@ -127,16 +143,49 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         ok('weather/simulator',dict(weather,airport='DEST',latitude=dest['latitude'],longitude=dest['longitude'],sampleAltitudeFeet=0,pressureHpa=1020))
         assert '1020' in ok('atis',{})['text']
         assert ok('weather',{'stations':'DEST'})['source']=='simulator'
+        tune(121800)
+        positioned=req('position');assert positioned['result']['accepted']
+        assert '0.003000' not in positioned['result']['message']
+        assert '102.' not in positioned['result']['message']
         # Reset and enable phrase variety against a deliberately unsafe fake model.
         ok('session/reset',{})
         tune(121800);ok('plan',plan)
         settings=ok('state')['settings'];settings.update(aiEnabled=True,llmPhraseVariety=True,aiModel='fake',aiUrl=f'http://127.0.0.1:{model.server_port}',congestion='off')
+        settings['llmPhraseVariety']=False
+        ok('settings',settings)
+        before=len(captured)
+        strict=req('clearance');assert strict['result']['accepted'];assert 'read back' not in strict['result']['message'].lower()
+        assert len(captured)==before, 'strict phrases must not reach the wording model'
+        ok('session/reset',{});tune(121800);ok('plan',plan)
+        strict_next=req('clearance');assert strict_next['result']['accepted']
+        assert strict_next['result']['message'] != strict['result']['message'], 'Clearance wording must rotate across flight resets'
+        assert len(captured)==before
+        clearance_wordings=set()
+        for _ in range(10):
+            ok('session/reset',{});tune(121800);ok('plan',plan)
+            strict_next=req('clearance');assert strict_next['result']['accepted']
+            clearance_wordings.add(strict_next['result']['message'])
+        assert len(clearance_wordings)==10,clearance_wordings
+        assert len(captured)==before
+        history=json.loads((config/'phrase-history.json').read_text())
+        assert strict_next['result']['message'] in history['last'].values(),history
+        ok('session/reset',{});tune(121800);ok('plan',plan)
+        settings['llmPhraseVariety']=True
         ok('settings',settings)
         result=req('clearance');assert result['result']['accepted'];assert '99000' not in result['result']['message'];assert '5000' in result['result']['message'];assert captured
-        assert 'Style examples' in captured[-1]['messages'][0]['content']
+        wording_prompt=captured[-1]['messages'][0]['content']
+        assert 'Style examples' in wording_prompt
+        assert 'clearance-delivery controller' in wording_prompt
+        assert 'current task is clearance' in wording_prompt
+        assert strict_next['result']['message'] in wording_prompt,wording_prompt
+        settings['ttsUrl']=f'http://127.0.0.1:{model.server_port}';ok('settings',settings)
+        failed_phrase='Position approximately three miles northwest of Vientiane.'
+        assert call('speech/speak', {'text':failed_phrase,'speaker':'atc'})[0]==400
+        diagnostic=(folder/'engine.log').read_text()
+        assert failed_phrase in diagnostic and '503' in diagnostic, diagnostic
         settings['aiEnabled']=False;ok('settings',settings)
         clearance=result['state']['clearance']
-        assert req('readback',altitudeFeet=5000,waypoint='DCT DEST',clearanceSequence=clearance['sequence'])['result']['accepted']
+        readback_result=req('readback',altitudeFeet=5000,waypoint='DCT DEST',clearanceSequence=clearance['sequence']);assert readback_result['result']['accepted'];assert '121.900' in readback_result['result']['message'] and 'when ready' in readback_result['result']['message'].lower(),readback_result
         tune(121900)
         combined=req('start_pushback');assert combined['result']['accepted'] and combined['state']['startupApproved'] and combined['state']['pushbackApproved']
         directed=next(t for t in reversed(combined['state']['transcript']) if t['speaker']=='ATC' and not t.get('background',False))
@@ -175,6 +224,55 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         copilot=[t for t in automatic['state']['transcript'] if t['speaker']=='COPILOT'];assert copilot and all(not t['position'] for t in copilot),copilot
         assert all('Read back' not in t['text'] for t in copilot),copilot
         assert not any(t.get('background',False) for t in ok('state')['transcript']), 'Live sessions must not fabricate background aircraft'
-        print('Radio engine: station roles, silence, clearance/readback/start/pushback/taxi, reusable-ack rejection, Tower runway-backtrack/readback/endpoint gating, airport weather, ATIS letters/destination, unsafe LLM fallback passed')
+        # Ground proactively clears the actual intervening runway, then resumes taxi.
+        ok('session/reset',{})
+        settings=ok('state')['settings'];settings.update(copilotReplies=False,copilotAutoRespond=False);ok('settings',settings)
+        tune(124500,latitude=0.003,longitude=0.002,traffic=[],groundSpeedKnots=0)
+        ok('plan',dict(plan,departure='PARA',runway='25L'))
+        cleared=req('clearance');assert cleared['result']['accepted'],cleared
+        pending=cleared['state']['clearance']
+        assert req('readback',altitudeFeet=pending['altitudeFeet'],waypoint=pending['route'],clearanceSequence=pending['sequence'])['result']['accepted']
+        taxi=req('taxi');assert taxi['result']['accepted'],taxi
+        assert taxi['state']['taxiClearance']['holdShortRunway']=='25R',taxi
+        assert ok('request/auto-reply',{})['result']['accepted']
+        tune(124500,latitude=0.001,traffic=None)
+        held=ok('state')['taxiClearance']
+        assert not held['crossingRunway'] and held['waitingForTraffic'],held
+        tune(124500,latitude=0.001,traffic=[{'latitude':0,'longitude':0.002,'altitudeFeet':0,'onGround':True,'trackDegrees':270,'groundSpeedKnots':5}])
+        assert not ok('state')['taxiClearance']['crossingRunway'], 'An occupied runway must not be cleared for crossing'
+        tune(124500,traffic=[])
+        crossing=ok('state');assert crossing['taxiClearance']['crossingRunway']=='25R',crossing
+        assert crossing['taxiClearance']['destination']=='25L'
+        assert crossing['taxiClearance']['pendingReadback'] and not crossing['taxiClearance']['approved']
+        assert not any(t['speaker']==plan['callsign'] and t['text']=='cross_runway' for t in crossing['transcript'])
+        assert not req('ready')['result']['accepted']
+        assert ok('request/auto-reply',{})['result']['accepted']
+        tune(124500,latitude=0)
+        assert ok('state')['taxiClearance']['crossingRunway']=='25R', 'Crossing must not finish on the runway'
+        tune(124500,latitude=-0.001)
+        onward=ok('state')['taxiClearance']
+        assert not onward['crossingRunway'] and onward['holdShortRunway']=='25L',onward
+        assert onward['pendingReadback'] and not onward['approved']
+        assert ok('request/auto-reply',{})['result']['accepted']
+        previous=ok('state')
+        cleared=ok('session/reset',{})
+        assert not cleared['transcript'] and not cleared['plan']['departure'] and not cleared['plan']['destination'],cleared
+        assert cleared['clearance'] is None and not cleared['taxiClearance']['approved'] and not cleared['taxiClearance']['points'],cleared
+        assert not cleared['crewActions'] and not cleared['recommendedFrequencyKhz'],cleared
+        assert not cleared['startupApproved'] and not cleared['pushbackApproved'],cleared
+        assert cleared['telemetry']['latitude']==previous['telemetry']['latitude']
+        assert cleared['nextSequence']==previous['nextSequence'], 'Old transmission IDs must not be reused'
+        assert ok('session/reset',{})['transcript']==[]
+        settings=ok('state')['settings'];settings.update(aiEnabled=True,llmPhraseVariety=True);ok('settings',settings)
+        tune(121800,latitude=0.003,longitude=-0.003,traffic=[]);ok('plan',plan)
+        slow_model=True
+        delayed=[]
+        worker=threading.Thread(target=lambda: delayed.append(call('request',{'intent':'clearance','text':'Request IFR clearance','role':'atc'})))
+        worker.start();assert slow_started.wait(timeout=5), 'model request did not start'
+        assert ok('session/reset',{})['transcript']==[]
+        slow_release.set();worker.join(timeout=10)
+        assert delayed and delayed[0][0]==400,delayed
+        assert ok('state')['transcript']==[], 'Late model output must not restore the old conversation'
+        print('Radio engine: station roles, silence, clearance/readback/start/pushback/taxi, reusable-ack rejection, Tower runway-backtrack/readback/endpoint gating, proactive Ground crossing/traffic hold/readback/onward taxi, airport weather, ATIS letters/destination, phrase rotation/history, role-aware variety prompts, unsafe LLM fallback passed')
     finally:
         engine.terminate();engine.wait(timeout=5);log.close();model.shutdown()

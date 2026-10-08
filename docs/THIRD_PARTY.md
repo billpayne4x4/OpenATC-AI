@@ -13,3 +13,7 @@ The Rust plugin vendors xplane 0.1.0-alpha.1 (MPL 2.0), with a corrected SDK dat
 The Rust companion engine uses reqwest with default features disabled and rustls/webpki roots for HTTPS. It does not dynamically link OpenSSL; preserve the Rust TLS dependencies’ license notices when distributing.
 
 The Rust UI uses arboard (MIT/Apache-2.0) for native text clipboard access. Linux uses the Rust x11rb transport without linking Xlib into the plugin. Clipboard ownership lives until the UI closes.
+
+## GeoNames settlement data
+
+`assets/geography/places.tsv` is derived from the GeoNames cities1000 download (8 October 2026). Geographical data © GeoNames, https://www.geonames.org/, under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. Reduced to ASCII names, coordinates, country codes and population; see the asset README for coverage. This dataset is separate from the MIT application license.

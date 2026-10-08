@@ -160,8 +160,7 @@ pub struct SpeakRequest<'a> {
     pub delivery: &'a str,
 }
 
-/// Recording and playback state. Status messages let the UI
-/// needs no changes.
+/// Audio recording, playback and status for the interface.
 pub struct Speech {
     context: *mut MaContext,
     capture: Arc<Mutex<Capture>>,

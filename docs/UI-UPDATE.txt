@@ -1,57 +1,20 @@
-OpenATC AI — ATC window update
+OpenATC AI window controls
 
-Installation
-Extract this archive into your existing project root, next to your root Cargo.toml, allowing its crates/ files to replace the existing files. Keep the new crates/ui/assets/fonts/ directory: the font is embedded at compile time. Rebuild and install the plugin using your existing build/install workflow. This is a source archive, not a compiled lin.xpl.
+Build and installation
+Build the Rust workspace from the project root, then install with scripts/install-rust-plugin.py and the path to X-Plane 12. See README.md for the commands. Close X-Plane before replacing its installed plugin binaries.
 
-The uploaded archive did not contain the root Cargo.toml or Cargo.lock. Your existing workspace files are required and are not replaced by this update.
+Header
+The speech bubble opens communications, the headset opens nearby radio stations, and the clipboard opens Planning. The other page icons open Taxi, Arrival, Airports and Settings. On the right, the page-with-plus icon starts a New flight after confirmation. It clears OpenATC's plan, conversation, clearances, guidance and pending crew actions. Settings, remembered controller voices and aircraft controls are kept.
 
-Controls
-The speech bubble opens communications, the headset opens airport frequencies, and the clipboard opens the flight plan. The menu opens Taxi, Arrival, Airports and Settings. The right-hand controls pin the expanded view, toggle communication-only mode, and pop the plugin window out or return it to the simulator. Drag the blank/title area of the toolbar to move the in-simulator window.
+Pin keeps the window expanded. The chevron toggles the compact communications view. Pop out moves the panel into a separate simulator window. Drag the title area to move the window, or the lower-right grip to resize it.
 
-Unpin the window to enable automatic communication-only mode after the existing Fade delay. Hovering over the window or using push-to-talk expands it again. A manually collapsed window remains compact until the pointer leaves and returns. Draft messages, request editors and recording keep the controls open. The divider between the transcript and request controls changes their relative heights.
+With Pin off, Fade delay controls automatic collapse. Hovering over the panel or using push-to-talk expands it. A manually collapsed panel stays compact until the pointer leaves and returns. Recording and request editors keep it open. Drag the divider to change the space shared by the conversation and requests.
 
-On the frequency page, load the required airport and select a station to tune COM1. Radio power must be available. The desktop preview displays frequencies; tuning is performed by the simulator plugin. Existing copilot settings still govern automatic tuning.
+Channels
+Channels lists published stations within simulated reception range. The initial filter uses the current airport; clear it to see other receivable stations. Select a station to tune COM1. Click list headers to sort in ascending or descending order. Underlined ATC frequencies in the conversation also tune COM1 when radio power is available. Airport searches remain on Airports.
 
-Implementation
-- Correct panel bounds and consistent drawing/mouse coordinates.
-- X-Plane projection, modelview and viewport datarefs account for display scaling and window placement.
-- Custom resizable header with vector icons and tooltips.
-- White pilot messages, blue controller messages and distinct crew badges.
-- Full-width, scrolling request rows and an adjustable transcript divider.
-- Expanded/compact window heights and background opacity transitions.
-- Embedded DejaVu Sans, rasterised at higher resolution; the font licence is included.
-- Matching desktop font and layout scaling.
-- Correct ImGui guard lifetimes for tabs, tables and the audio-device dropdown.
-- Request/voice editors and reset confirmation remain within the plugin panel.
-- Debounced saving of the existing UI/settings fields.
-- Text input uses the supplied character rather than converting the virtual-key code to text.
+Taxi
+The route stops at each clearance limit. An intervening runway has its own hold-short instruction and requires an explicit crossing clearance and correct readback. Ground or Tower can issue that clearance when stopped at the hold and reported traffic is clear. Once the aircraft clears the runway, the controller gives onward taxi instructions. Taxi arrows show only accepted guidance. Existing yellow runway guard lights keep flashing; they are not clearance-controlled red stop bars.
 
-Modified source files
-crates/plugin/src/lib.rs
-crates/plugin/src/render.rs
-crates/plugin/src/window.rs
-crates/ui/src/interface.rs
-crates/ui/src/pages.rs
-crates/ui/src/widgets.rs
-crates/desktop/src/main.rs
-
-New files
-crates/plugin/src/geometry.rs
-crates/ui/assets/fonts/DejaVuSans.ttf
-crates/ui/assets/fonts/LICENSE-DejaVu.txt
-
-Validation status
-Source/API review, delimiter checks, embedded-asset checks, crate-manifest parsing and checks for prematurely dropped ImGui guards were completed. No Rust compiler or X-Plane instance was available in the editing environment. Compilation, Rust unit tests and in-simulator behaviour have NOT been verified.
-
-The geometry module includes five unit tests for normal/double display density, negative monitor coordinates, viewport offsets, popped-out framebuffers and invalid transforms. The existing headless UI test now also covers the radio page, compact/expanded layouts, several window sizes and UI scales. These tests were added/extended but could not be run here.
-
-From your original project root, the checks/build commands are:
-
-```bash
-rustc --edition=2024 --test crates/plugin/src/geometry.rs -o /tmp/openatc-ui-geometry-tests
-/tmp/openatc-ui-geometry-tests
-cargo test -p openatc-ui -- --test-threads=1
-cargo build --release -p openatc-plugin -p openatc-desktop
-```
-
-In X-Plane, check dragging, resizing, each header button, small/large text scales, mouse alignment, compact mode, push-to-talk expansion, and pop-out/return before relying on the updated interface during a flight. Simulator and platform behaviour still require that runtime check.
+New flight and re-enable
+Use New flight to start over without disabling the plugin or restarting the AI server. The plugin now reuses its window renderer when disabled and re-enabled, avoiding a second active ImGui context. Live simulator reset and re-enable still need user acceptance testing.

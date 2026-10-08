@@ -466,7 +466,8 @@ fn distance_nm(latitude_a: f64, longitude_a: f64, latitude_b: f64, longitude_b: 
 }
 
 /// True when a local point lies on (or just beside) a runway strip.
-fn within_runway(airport: &Airport, point: &Point) -> bool {
+/// Whether a point lies within a physical runway corridor.
+pub fn within_runway(airport: &Airport, point: &Point) -> bool {
     for runway in &airport.runways {
         let east = runway.second.east - runway.first.east;
         let north = runway.second.north - runway.first.north;
@@ -777,6 +778,33 @@ pub fn calculate_taxi_route(
         target = node;
         hold_short = runway;
     }
+    // A reachable node can be close to the departure threshold while still
+    // stopping before a different parallel runway.
+    if !to_parking
+        && let Some(end) = nodes.get(&target)
+        && let Some(runway) = airport.runways.iter().min_by(|a, b| {
+            segment_distance(*end, a.first, a.second)
+                .total_cmp(&segment_distance(*end, b.first, b.second))
+        })
+        && segment_distance(*end, runway.first, runway.second) <= 150.0
+        && airport
+            .runways
+            .iter()
+            .find(|r| r.first_name == destination || r.second_name == destination)
+            .is_some_and(|r| {
+                segment_distance(*end, r.first, r.second)
+                    > segment_distance(*end, runway.first, runway.second) + 20.0
+            })
+    {
+        let destination_number = destination.get(..2).unwrap_or(destination);
+        hold_short = if runway.first_name.starts_with(destination_number) {
+            runway.first_name.clone()
+        } else if runway.second_name.starts_with(destination_number) {
+            runway.second_name.clone()
+        } else {
+            runway.first_name.clone()
+        };
+    }
     let (points, via) = taxi_path(&nodes, &previous, start, target);
     let needs_backtrack = target_distance > 500.0 && !to_parking && hold_short == destination;
     let instructions = if via.is_empty() && !hold_short.is_empty() {
@@ -820,6 +848,7 @@ pub fn calculate_taxi_route(
         pending_readback: false,
         backtrack_required: needs_backtrack,
         runway_taxi: false,
+        crossing_runway: String::new(),
         entry_runway: String::new(),
         holding_channel: 0,
         waiting_for_traffic: false,
@@ -1854,6 +1883,131 @@ fn clear_runway_connector(
     !airport.taxi_hold_lines.iter().any(|h| {
         intersection(first, second, h[0], h[1]).is_some()
             && segment_distance(h[0], runway.first, runway.second) > 150.0
+    })
+}
+
+/// Authorize one transverse published-network crossing, ending clear of that runway.
+/// Longitudinal runway taxi, unknown links and other runways are excluded.
+pub fn calculate_crossing_route(
+    airport: &Airport,
+    telemetry: &Telemetry,
+    runway: &str,
+) -> Result<TaxiClearance, String> {
+    let fail = || crate::dialogue::say("crossing_route_unavailable", &[]);
+    let r = airport
+        .runways
+        .iter()
+        .find(|r| r.first_name == runway || r.second_name == runway)
+        .ok_or_else(fail)?;
+    let start_point = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    let dx = r.second.east - r.first.east;
+    let dn = r.second.north - r.first.north;
+    let length = dx.hypot(dn);
+    if length < 100.0 {
+        return Err(fail());
+    }
+    let across =
+        |p: Point| ((p.east - r.first.east) * dn - (p.north - r.first.north) * dx) / length;
+    let side = across(start_point);
+    if side.abs() < r.width / 2.0 + 10.0 {
+        return Err(fail());
+    }
+    let nodes: BTreeMap<_, _> = airport.nodes.iter().map(|n| (n.id, n.point)).collect();
+    let start = nodes
+        .iter()
+        .filter(|(_, p)| flat_distance(&start_point, p) < 50.0 && across(**p) * side > 0.0)
+        .min_by(|a, b| {
+            flat_distance(&start_point, a.1).total_cmp(&flat_distance(&start_point, b.1))
+        })
+        .map(|(id, _)| *id)
+        .ok_or_else(fail)?;
+    let mut graph: BTreeMap<i64, Vec<(i64, f64, String)>> = BTreeMap::new();
+    for e in &airport.edges {
+        let (Some(a), Some(b)) = (nodes.get(&e.first), nodes.get(&e.second)) else {
+            continue;
+        };
+        if e.size < 'C' || flat_distance(a, b) > 300.0 {
+            continue;
+        }
+        let edge_length = flat_distance(a, b);
+        let transverse = ((b.east - a.east) * dx + (b.north - a.north) * dn).abs() / length;
+        if e.runway && transverse > edge_length * 0.7 {
+            continue;
+        }
+        if airport
+            .runways
+            .iter()
+            .filter(|other| other.first_name != r.first_name || other.second_name != r.second_name)
+            .any(|other| {
+                let steps = (edge_length / 10.0).ceil().max(1.0);
+                let mut step = 0.0;
+                while step <= steps {
+                    let point = Point {
+                        east: a.east + (b.east - a.east) * step / steps,
+                        north: a.north + (b.north - a.north) * step / steps,
+                        height: 0.0,
+                    };
+                    if segment_distance(point, other.first, other.second) < other.width / 2.0 + 15.0
+                    {
+                        return true;
+                    }
+                    step += 1.0;
+                }
+                false
+            })
+        {
+            continue;
+        }
+        let crossing_names: Vec<_> = e
+            .active_runways
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if crossing_names.iter().any(|n| {
+            n.trim_start_matches('0') != r.first_name.trim_start_matches('0')
+                && n.trim_start_matches('0') != r.second_name.trim_start_matches('0')
+        }) {
+            continue;
+        }
+        graph
+            .entry(e.first)
+            .or_default()
+            .push((e.second, edge_length, e.name.clone()));
+        if !e.one_way {
+            graph
+                .entry(e.second)
+                .or_default()
+                .push((e.first, edge_length, e.name.clone()));
+        }
+    }
+    let (costs, previous) = shortest_paths(&graph, start);
+    let target = costs
+        .iter()
+        .filter(|(id, cost)| {
+            **cost < 500.0
+                && across(nodes[id]) * side < 0.0
+                && across(nodes[id]).abs() > r.width / 2.0 + 50.0
+        })
+        .min_by(|a, b| a.1.total_cmp(b.1))
+        .map(|(id, _)| *id)
+        .ok_or_else(fail)?;
+    let (points, _via) = taxi_path(&nodes, &previous, start, target);
+    if !points
+        .windows(2)
+        .any(|pair| across(pair[0]) * across(pair[1]) <= 0.0)
+    {
+        return Err(fail());
+    }
+    Ok(TaxiClearance {
+        airport: airport.icao.clone(),
+        destination: runway.to_owned(),
+        crossing_runway: runway.to_owned(),
+        instructions: crate::dialogue::say("crossing_clearance", &[("runway", runway.to_owned())]),
+        via: String::new(),
+        points,
+        reference_latitude: airport.reference_latitude,
+        reference_longitude: airport.reference_longitude,
+        ..Default::default()
     })
 }
 

@@ -147,3 +147,11 @@ Workspace layout: Cargo.toml, Cargo.lock, models.toml, .cargo configuration and 
 ## Local files
 
 `target/` and `packages/` are generated output. Assistant configuration, instruction files, histories and scratch plans are ignored, as are downloaded model weights and personal environment overrides. Application prompts, speech, `models.toml`, `.cargo/` and CI workflows remain project files. The patched `vendor/xplane` source is included. Ignore rules do not untrack existing files.
+
+## Relocatable AI service data
+
+After `cargo build --locked --release -p openatc-ai -p openatc-stt`, run `python3 scripts/install-ai-runtime.py /path/to/openatc-ai` to install both binaries and the required `bin/espeak-ng-data` directory. Copy the entire installation when moving it to another computer. Without that data, the phonemizer can refer to the original Cargo build path and fail on unfamiliar words or numbers. Restart the service after replacing its data.
+
+## Starting another flight
+
+Use the page-with-plus New flight icon in the plugin header. It clears the active plan, conversation, clearances, taxi route, checklist progress and pending crew actions after confirmation. Settings and controller voices remain available. This reset uses the running engine; it does not unload the plugin or restart the AI server. Automated reset and late-response checks are covered by the radio and crew integration scripts. Live simulator reset and re-enable remain acceptance checks.
