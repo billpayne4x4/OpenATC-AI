@@ -155,3 +155,5 @@ Build workflows run only for `v*` version tags or from **Actions → Native plat
 From Linux, shared code can be checked with Rust's Windows and macOS targets. Full builds also need native audio, SDK and inference dependencies: installing a Rust target alone is insufficient. See [platform validation](docs/VALIDATION.md#platform-build-validation) for the checks performed and their limits.
 
 Windows native CI runs Cargo commands in PowerShell and selects the Visual Studio linker explicitly. Git Bash also supplies a `link.exe` utility, which must not be used to link MSVC binaries. The initial Windows CI failure occurred before application compilation; the corrected workflow still needs a native rerun.
+
+The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The initial Intel Mac failure was in dependency setup; the source-build fallback needs a native CI rerun.

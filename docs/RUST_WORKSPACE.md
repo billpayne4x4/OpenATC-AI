@@ -161,3 +161,5 @@ Use the page-with-plus New flight icon in the plugin header. It clears the activ
 `.github/workflows/platform-builds.yml` builds both products on native GitHub runners, manually or on `v*` tags. Windows uses MSVC, the target supported by the X-Plane SDK bindings. Macs are built separately for Intel and Apple Silicon. The builds use CPU inference defaults; CUDA builds, signing, installers and universal Mac bundles are not covered.
 
 `vendor/xplane-sys` retains the upstream SDK bindings and licenses, with the macOS framework search directive corrected to `cargo:rustc-link-search=framework=...`. The Cargo patch keeps that fix reproducible rather than changing a developer's registry cache.
+
+The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The initial Intel Mac failure was in dependency setup; the source-build fallback needs a native CI rerun.

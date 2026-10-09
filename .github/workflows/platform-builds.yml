@@ -49,16 +49,43 @@ jobs:
         run: |
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
-      - name: Test shared code
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+      - uses: actions/checkout@v4
+        if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server'
+        with:
+          repository: microsoft/onnxruntime
+          ref: v1.28.0
+          path: build-deps/onnxruntime
+          submodules: recursive
+      - name: Build ONNX Runtime for Intel Mac
+        if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server'
+        run: |
+          cd build-deps/onnxruntime
+          ./build.sh --config Release --build_shared_lib --parallel 3 --skip_tests --compile_no_warning_as_error --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64 CMAKE_INSTALL_RPATH=@loader_path
+          runtime="$PWD/build/MacOS/Release"
+          test -f "$runtime/libonnxruntime.dylib"
+          echo "ORT_LIB_PATH=$runtime" >> "$GITHUB_ENV"
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
+          echo 'RUSTFLAGS=-C link-arg=-Wl,-rpath,@loader_path' >> "$GITHUB_ENV"
+      - name: Test shared code on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http
-      - name: Build plugin and companion engine
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
-        if: matrix.product == 'plugin'
+      - name: Test shared code on Linux and macOS
+        if: runner.os != 'Windows'
+        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http
+      - name: Build Windows plugin and companion engine
+        if: runner.os == 'Windows' && matrix.product == 'plugin'
+        shell: pwsh
         run: cargo build --locked --release -p openatc-plugin -p openatc-engine
-      - name: Build AI server and speech sidecar
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
-        if: matrix.product == 'ai-server'
+      - name: Build Linux and macOS plugin and companion engine
+        if: runner.os != 'Windows' && matrix.product == 'plugin'
+        run: cargo build --locked --release -p openatc-plugin -p openatc-engine
+      - name: Build Windows AI server and speech sidecar
+        if: runner.os == 'Windows' && matrix.product == 'ai-server'
+        shell: pwsh
+        run: cargo build --locked --release -p openatc-ai -p openatc-stt
+      - name: Build Linux and macOS AI server and speech sidecar
+        if: runner.os != 'Windows' && matrix.product == 'ai-server'
         run: cargo build --locked --release -p openatc-ai -p openatc-stt
       - name: Collect build outputs
         run: |
