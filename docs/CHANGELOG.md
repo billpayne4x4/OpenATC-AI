@@ -1,5 +1,9 @@
 # Unreleased
 
+## Intel Mac build time — 9 October 2026
+
+Disabled ONNX Runtime unit-test compilation for the Intel Mac AI-server build. The shared runtime and its model support remain enabled.
+
 ## Aircraft crew controls and checklist exchanges — 8 October 2026
 
 Added standard X-Plane controls with third-party TOML overrides, a searchable live-availability page, and 463 additional ToLiss cockpit button mappings. Fixed purser/MECH routing by observing actual commands instead of reading nonexistent datarefs. Added bounded control requests, optional validated JSON interpretation, verified setting replies, button-dispatch replies, cabin lighting/slides, chocks/external power and both checklist directions. All spoken requests/challenges/responses are in speech TOML, with 168 new examples. ToLiss pushback distance/angle remain unavailable through identified public controls; no tug is started with stale parameters.
@@ -74,7 +78,7 @@ Build and install the Rust implementation:
 
 ```sh
 cargo build --release -p openatc-plugin -p openatc-engine
-python3 scripts/install-rust-plugin.py "/path/to/X-Plane 12"
+cargo xtask install-plugin "/path/to/X-Plane 12"
 ```
 
 The installer validates speech offline and retains a full backup outside the plugin directory. Personal settings and remote AI services are preserved. Restart X-Plane to load a new plugin build.
@@ -253,7 +257,7 @@ Rust TTS slice live: kokoro via prebuilt ORT + source-built espeak-ng (zero syst
 deps), same `voices-v1.0.bin` table and voice map, pause semantics and seeded FX chain
 ported from the gateway (perceptual parity, proven by closed-loop STT round-trip).
 TTS base repointed at it; Python gateway service stopped + disabled, venv + test dir
-deleted from the services host (~3.9 GB reclaimed, `scripts/` kept as rollback reference).
+deleted from the services host (~3.9 GB reclaimed, legacy scripts were retained at that time; they have since been removed).
 Full Rust round-trip proven: TTS then STT with zero Python in the path.
 
 # 0.2.1
@@ -290,7 +294,7 @@ At the approved taxi endpoint, stopped within 25 m, the engine checks the actual
 
 Live sessions no longer generate fictional callsigns or canned background clearances; that TOML chatter is demo-only. Actual simulator traffic still gates runway entry and departure. Copilot readbacks are controlled by the readback setting, use complete structured Auto Reply facts, and carry the Copilot label without a controller-station name. Routine auto-response does not parrot taxi prompts. Taxi prompts do not request nonexistent taxiway names, and controller acknowledgments use short ATC wording. Duplicate plugin holding-light objects were removed. The installed simulator exposes global airport-light controls and a read-only wigwag brightness value, not an established per-holding-point native control; existing scenery lights are preserved.
 
-Legacy cleanup: removed top-level `src/`, `include/`, CMake configuration and obsolete C++ test executables. Shared JSON/TOML fixtures remain in `tests/fixtures/`. `scripts/fedora-build.sh` and GitHub CI use Cargo; `scripts/package.py linux-x64` packages the built Rust plugin through the installer. CI currently targets Linux; Windows/macOS packaging remains unverified. Native third-party dependencies remain.
+Legacy cleanup: removed top-level `src/`, `include/`, CMake configuration and obsolete C++ test executables. Shared JSON/TOML fixtures remain in `tests/fixtures/`. `cargo xtask build` and GitHub CI use Cargo; `cargo xtask package linux-x64` packages the built Rust plugin through the installer. CI currently targets Linux; Windows/macOS packaging remains unverified. Native third-party dependencies remain.
 
 Workspace layout: Cargo.toml, Cargo.lock, models.toml, .cargo configuration and crates/ now live at the repository root. Build with cargo from the root; outputs are under target/. Build/CI/install/package paths and embedded resource/fixture paths were updated. packages/ and target/ are ignored; the patched vendor/xplane source is explicitly included. Local old-crate archives were moved outside the repository.
 
@@ -394,3 +398,14 @@ Typed ATC requests add missing controller and callsign addressing. Spoken transm
 - Add native Linux, Windows, Intel Mac and Apple Silicon build checks for the plugin/engine and AI/STT server.
 - Correct the vendored X-Plane SDK's macOS framework search directive and remove an unused Windows import.
 - Document the difference between Linux cross-target checks, native builds and simulator testing.
+
+### Rust developer tooling
+
+Replaced the Python installers, ZIP packager, Linux dependency checker, artifact collector and radio/crew/speech integration suites with `cargo xtask`. Retained backups, local station edits, legacy speech migration, license notices and ZIP executable permissions. Native AI artifacts now include eSpeak data and shared libraries. Removed the obsolete Python speech gateway, C++ font generator, standalone SDK downloader and old engine harness; removed `scripts/`. Moved the portable Linux service example to `packaging/systemd/`. ONNX Runtime's upstream Intel Mac source build remains a build-time Python dependency.
+
+### Windows plugin build and startup
+
+- Exclude Windows CRT functions from the generated X-Plane SDK bindings.
+- Use a detached Windows process for companion-engine startup and resolve its `.exe` filename.
+- Load native OpenGL libraries on Windows/macOS, with Windows extension lookup through `wglGetProcAddress`.
+- Store Windows companion settings and logs in the local application-data directory.

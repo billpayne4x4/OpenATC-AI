@@ -120,3 +120,7 @@ The `mockall` feature of this crate is intended to be enabled when unit testing 
 crate that uses this crate. All functions will be mocked, using
 [mockall.](https://github.com/asomers/mockall) This crate currently exposes
 `mockall = "~0.12"`.
+
+## OpenATC maintenance changes
+
+The build script uses Cargo's framework search directive on macOS and restricts generated functions to the XPLM/XP API. Windows headers also expose CRT functions, which must retain their native ABI rather than being converted to the SDK's `C-unwind` ABI. The SDK headers and libraries are unchanged.

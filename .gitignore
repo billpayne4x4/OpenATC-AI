@@ -45,7 +45,7 @@ voices-*.bin
 Log.txt
 *.log
 *.tmp
-# Built plugin binaries (rebuild via scripts/fedora-build.sh)
+# Built plugin binaries (rebuild via cargo xtask build)
 *.xpl
 # Crash dumps (huge; keep only while diagnosing; root-anchored so crates named
 # core are not swallowed)

@@ -4815,6 +4815,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "xtask"
+version = "0.1.0"
+dependencies = [
+ "openatc-platform",
+ "reqwest",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "toml 0.8.23",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
 name = "yoke"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

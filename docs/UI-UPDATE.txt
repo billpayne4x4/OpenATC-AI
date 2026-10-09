@@ -1,7 +1,7 @@
 OpenATC AI window controls
 
 Build and installation
-Build the Rust workspace from the project root, then install with scripts/install-rust-plugin.py and the path to X-Plane 12. See README.md for the commands. Close X-Plane before replacing its installed plugin binaries.
+Build the Rust workspace from the project root, then install with cargo xtask install-plugin and the path to X-Plane 12. See README.md for the commands. Close X-Plane before replacing its installed plugin binaries.
 
 Header
 The speech bubble opens communications, the headset opens nearby radio stations, and the clipboard opens Planning. The other page icons open Taxi, Arrival, Airports and Settings. On the right, the page-with-plus icon starts a New flight after confirmation. It clears OpenATC's plan, conversation, clearances, guidance and pending crew actions. Settings, remembered controller voices and aircraft controls are kept.

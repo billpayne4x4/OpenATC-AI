@@ -110,7 +110,7 @@ cd rust
 cargo test -p openatc-core --test shipped_config --test speech_library
 cargo run -p openatc-engine -- --check-speech ../speech
 # HTTP selection check against a local fake model, with isolated settings:
-python3 ../scripts/test-speech-engine.py target/release/open-atc-engine ../speech
+cargo xtask test-speech target/release/open-atc-engine speech
 ```
 
 On an installed Linux plugin:

@@ -19,3 +19,5 @@ The Rust UI uses arboard (MIT/Apache-2.0) for native text clipboard access. Linu
 `assets/geography/places.tsv` is derived from the GeoNames cities1000 download (8 October 2026). Geographical data © GeoNames, https://www.geonames.org/, under CC BY 4.0, https://creativecommons.org/licenses/by/4.0/. Reduced to ASCII names, coordinates, country codes and population; see the asset README for coverage. This dataset is separate from the MIT application license.
 
 The vendored `xplane-sys` 4.0.109 bindings retain their upstream MIT/Apache-2.0 licenses. Their build script corrects the macOS framework search directive; the SDK files are unchanged.
+
+The maintained SDK binding patch generates only XPLM/XP functions, excluding Windows CRT declarations from the SDK's `C-unwind` ABI. The plugin launches its Windows companion as a detached process and loads OpenGL from the host's native library; Windows extension symbols use `wglGetProcAddress`. Windows engine configuration and logs default to `%LOCALAPPDATA%/openatc`, with `OPENATC_CONFIG_DIR` available as an override.

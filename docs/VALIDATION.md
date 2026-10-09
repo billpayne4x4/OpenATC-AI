@@ -75,8 +75,8 @@ Reproduce the focused checks:
 ```sh
 cargo test -p openatc-http -p openatc-core -p openatc-engine -p openatc-audio -p openatc-ui
 cargo clippy --manifest-path Cargo.toml -p openatc-http -p openatc-core -p openatc-engine -p openatc-audio -p openatc-ui --all-targets -- -D warnings -A clippy::too_many_lines
-python3 scripts/test-radio-engine.py target/release/open-atc-engine speech
-python3 scripts/test-speech-engine.py target/release/open-atc-engine speech
+cargo xtask test-radio target/release/open-atc-engine speech
+cargo xtask test-speech target/release/open-atc-engine speech
 target/release/open-atc-engine --check-speech speech
 ```
 
@@ -116,7 +116,7 @@ Python scripts passed syntax compilation. Shell scripts passed `bash -n`. Source
 ## Not executed
 
 - Full CMake engine, desktop or X-Plane plugin builds. CMake and development dependencies were unavailable in the authoring environment, and dependency/SDK downloads returned HTTP 403.
-- The JSON/SimBrief parser executable and engine HTTP integration tests supplied in `tests/integration_tests.cpp` and `scripts/test_engine.py`.
+- The JSON/SimBrief parser executable and engine HTTP integration tests supplied in the former CMake-era test harnesses (now replaced by Rust tests).
 - Actual `ldd`/`nm` auditing of a newly built plugin, installation into X-Plane or simulator startup.
 - Rendered UI inspection, audio-device capture/playback, STT/TTS round trips, real SimBrief OFP downloads or weather API calls.
 - Windows/macOS compilation or CI execution.
@@ -133,7 +133,7 @@ The Linux audit rejects missing dependencies, X11/XCB/GLX and legacy GL dependen
 
 ## Runtime checks after building
 
-1. Run the Fedora plugin build and `python3 scripts/test_engine.py build/wayland` as shown in the README.
+1. Run the Fedora plugin build and `cargo xtask test-radio target/release/open-atc-engine speech` as shown in the README.
  2. Install the staged plugin with X-Plane closed, then launch X-Plane (the plugin starts its bundled engine itself; `~/.config/openatc/engine.log` shows its output). Check `Log.txt` for OpenATC startup and loader errors.
 3. At a loaded airport, confirm that parked controls exclude altitude/direct-to, aircraft position matches the surface map, and taxi is unavailable before clearance readback.
 4. Import the latest SimBrief OFP and compare its route/procedures, fuel and payload with the SimBrief output before accepting it.
@@ -187,6 +187,18 @@ Full plugin/engine and AI cross-target attempts encounter missing native tools o
 
 Windows native CI runs Cargo commands in PowerShell and selects the Visual Studio linker explicitly. Git Bash also supplies a `link.exe` utility, which must not be used to link MSVC binaries. The initial Windows CI failure occurred before application compilation; the corrected workflow still needs a native rerun.
 
-The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The initial Intel Mac failure was in dependency setup; the source-build fallback needs a native CI rerun.
+The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The source build disables ONNX Runtime unit-test compilation with `onnxruntime_BUILD_UNIT_TESTS=OFF`; `--skip_tests` alone only skips running those tests. Runtime model support is unchanged. This configuration still needs a native Intel Mac CI run.
 
 Workflow changes must pass `actionlint -shellcheck= -pyflakes= .github/workflows/build.yml .github/workflows/platform-builds.yml` before upload, plus `bash -n` for Bash steps. YAML parsing alone does not check GitHub expression contexts. On 2026-10-09, both workflows passed actionlint 1.7.12; the validator also rejected a temporary copy containing the original invalid `runner.os` shell expression. Windows and Unix Cargo steps now use explicit shells selected by their step conditions. Native compilation and runtime checks still require the hosted runners.
+
+## Rust tooling migration
+
+`cargo xtask test-radio`, `test-crew` and `test-speech` replace the maintained Python integration suites and exercise the actual engine with isolated fixtures and a fake model. `cargo xtask audit-linux` checks Linux dependencies and plugin exports; `cargo xtask package linux-x64` creates the installer-backed archive. `cargo test --locked -p xtask` checks atomic file replacement, permissions and nested resource copies. The older CMake/Python validation sections above are historical records, not current build instructions.
+
+Migration checks on 2026-10-09 passed: all three Rust HTTP integration suites against the release engine; core/engine/UI/plugin regression tests; xtask unit tests and Clippy; Linux dependency/export audits; plugin ZIP creation, integrity, executable permissions, license notices and SHA-256; staged plugin installation with backup, station-file preservation and legacy speech migration; staged AI installation and artifact collection with eSpeak data. Both workflow files passed actionlint 1.7.12. The real simulator installation and running AI service were not changed. Native Windows/macOS execution of the new tools still needs CI.
+
+## Windows SDK regression
+
+The five reported CRT-symbol errors (`memcmp`, `memcpy`, `memmove`, `memset`, `strlen`) were reproduced on Linux with Windows-target bindgen and minimal test headers declaring those CRT functions. After restricting generated functions to XPLM/XP, the Windows-target `xplane` wrapper check passed. A separate Windows-target metadata check compiled the production supervisor and OpenGL resolver modules against the SDK and HTTP crates. These checks use synthetic Windows headers and do not replace a native Windows build or simulator test. Linux plugin/engine release builds and plugin/UI/engine regression tests were also run.
+
+Windows build review: the plugin launcher, OpenGL loader and SDK bindings pass the Windows-target metadata check with temporary minimal headers. Plugin tests (14) and artifact-tool tests (2) pass on Linux. Full Windows compilation remains unverified locally because MSVC native build tools are unavailable; the Actions job performs the native build. Its PowerShell engine checks now stop on each failed command rather than allowing a later success to mask it.

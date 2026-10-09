@@ -11,9 +11,6 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -22,15 +19,18 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Rust tests
-        run: cargo test --locked -p openatc-core -p openatc-engine -p openatc-ui -p openatc-plugin
+        run: cargo test --locked -p openatc-core -p openatc-engine -p openatc-ui -p openatc-plugin -p xtask
       - name: Compile plugin and companion engine
         run: cargo build --locked --release -p openatc-plugin -p openatc-engine
       - name: Audit Linux link dependencies
-        run: python scripts/check_linux_dependencies.py target/release/libopenatc_plugin.so target/release/open-atc-engine
+        run: cargo xtask audit-linux target/release/libopenatc_plugin.so target/release/open-atc-engine
       - name: Engine integration test
-        run: python scripts/test-radio-engine.py target/release/open-atc-engine speech
+        run: |
+          cargo xtask test-radio target/release/open-atc-engine speech
+          cargo xtask test-crew target/release/open-atc-engine speech
+          cargo xtask test-speech target/release/open-atc-engine speech
       - name: Package Rust plugin
-        run: python scripts/package.py linux-x64
+        run: cargo xtask package linux-x64
       - uses: actions/upload-artifact@v4
         with:
           name: open-atc-linux-x64

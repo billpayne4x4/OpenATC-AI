@@ -128,7 +128,10 @@ impl Supervisor {
                     std::path::Path::new(&file)
                         .parent()
                         .and_then(|dir| dir.parent())
-                        .map(|dir| dir.join("bin").join("open-atc-engine"))
+                        .map(|dir| {
+                            dir.join("bin")
+                                .join(format!("open-atc-engine{}", std::env::consts::EXE_SUFFIX))
+                        })
                 })
                 .unwrap_or_default();
             self.binary = Some(path.clone());
@@ -187,6 +190,7 @@ pub(super) fn plugin_file_path() -> Option<String> {
 }
 
 /// Double-fork the engine detached with stdout/stderr appended to the log.
+#[cfg(unix)]
 fn spawn_detached(binary: &Path) -> bool {
     let log_path = engine_log_path();
     // Record the simulator PID before forking; detached engines still belong
@@ -245,8 +249,58 @@ fn spawn_detached(binary: &Path) -> bool {
     }
 }
 
+/// Start the companion without a console window and retain its simulator owner.
+#[cfg(windows)]
+fn spawn_detached(binary: &Path) -> bool {
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    let path = PathBuf::from(engine_log_path());
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return false;
+        }
+    }
+    let Ok(log) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    else {
+        return false;
+    };
+    let Ok(stderr) = log.try_clone() else {
+        return false;
+    };
+    Command::new(binary)
+        .arg(format!("--plugin-parent-pid={}", std::process::id()))
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log))
+        .stderr(Stdio::from(stderr))
+        .creation_flags(0x0000_0008 | 0x0000_0200) // Detached process, new process group.
+        .spawn()
+        .is_ok()
+}
+
 /// Companion-engine log path in the user configuration directory.
 fn engine_log_path() -> String {
+    if let Some(dir) = std::env::var_os("OPENATC_CONFIG_DIR") {
+        return PathBuf::from(dir)
+            .join("engine.log")
+            .to_string_lossy()
+            .into_owned();
+    }
+    #[cfg(windows)]
+    if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
+        return PathBuf::from(dir)
+            .join("openatc/engine.log")
+            .to_string_lossy()
+            .into_owned();
+    }
+    if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
+        return PathBuf::from(dir)
+            .join("openatc/engine.log")
+            .to_string_lossy()
+            .into_owned();
+    }
     if let Some(home) = std::env::var_os("HOME") {
         return PathBuf::from(home)
             .join(".config/openatc/engine.log")

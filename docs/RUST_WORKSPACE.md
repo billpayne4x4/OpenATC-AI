@@ -59,7 +59,7 @@ Linux plugin installation after a release build:
 
 ```sh
 cargo build --release -p openatc-plugin -p openatc-engine
-python3 scripts/install-rust-plugin.py "/path/to/X-Plane 12"
+cargo xtask install-plugin "/path/to/X-Plane 12"
 ```
 
 Close X-Plane before installing. The installer backs up the existing OpenATC folder outside the simulator's plugin directory and installs binaries plus configuration and taxi arrow assets. Personal settings remain in the user configuration directory.
@@ -89,7 +89,7 @@ cargo test -p openatc-core --test shipped_config --test speech_library
 cargo run -p openatc-engine -- --check-speech ../speech
 ```
 
-The checker is offline and starts no service. `python3 scripts/test-speech-engine.py target/release/open-atc-engine ../speech` exercises the real HTTP selection path with an isolated engine and a local fake model; it does not call the configured AI server. Speech changes load on engine restart. Set `OPENATC_SPEECH_DIR` or copy the entire library to the personal config speech directory to preserve edits across updates. The installer backs up the plugin and disables old flat TOMLs as `.legacy` copies before installing the recursive library. Authority references, regional review status and safe authoring rules are in the editing guide. Crew prompts no longer claim they transmitted a radio request or completed an unverified action.
+The checker is offline and starts no service. `cargo xtask test-speech target/release/open-atc-engine speech` exercises the real HTTP selection path with an isolated engine and a local fake model; it does not call the configured AI server. Speech changes load on engine restart. Set `OPENATC_SPEECH_DIR` or copy the entire library to the personal config speech directory to preserve edits across updates. The installer backs up the plugin and disables old flat TOMLs as `.legacy` copies before installing the recursive library. Authority references, regional review status and safe authoring rules are in the editing guide. Crew prompts no longer claim they transmitted a radio request or completed an unverified action.
 
 ## Radio and departure sprint — 7 October 2026
 
@@ -109,7 +109,7 @@ Build and install the Rust implementation:
 
 ```sh
 cargo build --release -p openatc-plugin -p openatc-engine
-python3 scripts/install-rust-plugin.py "/path/to/X-Plane 12"
+cargo xtask install-plugin "/path/to/X-Plane 12"
 ```
 
 The installer validates speech offline and retains a full backup outside the plugin directory. Personal settings and remote AI services are preserved. Restart X-Plane to load a new plugin build.
@@ -140,7 +140,7 @@ At the approved taxi endpoint, stopped within 25 m, the engine checks the actual
 
 Live sessions no longer generate fictional callsigns or canned background clearances; that TOML chatter is demo-only. Actual simulator traffic still gates runway entry and departure. Copilot readbacks are controlled by the readback setting, use complete structured Auto Reply facts, and carry the Copilot label without a controller-station name. Routine auto-response does not parrot taxi prompts. Taxi prompts do not request nonexistent taxiway names, and controller acknowledgments use short ATC wording. Duplicate plugin holding-light objects were removed. The installed simulator exposes global airport-light controls and a read-only wigwag brightness value, not an established per-holding-point native control; existing scenery lights are preserved.
 
-Legacy cleanup: removed top-level `src/`, `include/`, CMake configuration and obsolete C++ test executables. Shared JSON/TOML fixtures remain in `tests/fixtures/`. `scripts/fedora-build.sh` and GitHub CI use Cargo; `scripts/package.py linux-x64` packages the built Rust plugin through the installer. CI currently targets Linux; Windows/macOS packaging remains unverified. Native third-party dependencies remain.
+Legacy cleanup: removed top-level `src/`, `include/`, CMake configuration and obsolete C++ test executables. Shared JSON/TOML fixtures remain in `tests/fixtures/`. `cargo xtask build` and GitHub CI use Cargo; `cargo xtask package linux-x64` packages the built Rust plugin through the installer. CI currently targets Linux; Windows/macOS packaging remains unverified. Native third-party dependencies remain.
 
 Workspace layout: Cargo.toml, Cargo.lock, models.toml, .cargo configuration and crates/ now live at the repository root. Build with cargo from the root; outputs are under target/. Build/CI/install/package paths and embedded resource/fixture paths were updated. packages/ and target/ are ignored; the patched vendor/xplane source is explicitly included. Local old-crate archives were moved outside the repository.
 
@@ -150,7 +150,7 @@ Workspace layout: Cargo.toml, Cargo.lock, models.toml, .cargo configuration and 
 
 ## Relocatable AI service data
 
-After `cargo build --locked --release -p openatc-ai -p openatc-stt`, run `python3 scripts/install-ai-runtime.py /path/to/openatc-ai` to install both binaries and the required `bin/espeak-ng-data` directory. Copy the entire installation when moving it to another computer. Without that data, the phonemizer can refer to the original Cargo build path and fail on unfamiliar words or numbers. Restart the service after replacing its data.
+After `cargo build --locked --release -p openatc-ai -p openatc-stt`, run `cargo xtask install-ai /path/to/openatc-ai` to install both binaries and the required `bin/espeak-ng-data` directory. Copy the entire installation when moving it to another computer. Without that data, the phonemizer can refer to the original Cargo build path and fail on unfamiliar words or numbers. Restart the service after replacing its data.
 
 ## Starting another flight
 
@@ -162,4 +162,10 @@ Use the page-with-plus New flight icon in the plugin header. It clears the activ
 
 `vendor/xplane-sys` retains the upstream SDK bindings and licenses, with the macOS framework search directive corrected to `cargo:rustc-link-search=framework=...`. The Cargo patch keeps that fix reproducible rather than changing a developer's registry cache.
 
-The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The initial Intel Mac failure was in dependency setup; the source-build fallback needs a native CI rerun.
+The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The source build disables ONNX Runtime unit-test compilation with `onnxruntime_BUILD_UNIT_TESTS=OFF`; `--skip_tests` alone only skips running those tests. Runtime model support is unchanged. This configuration still needs a native Intel Mac CI run.
+
+## Rust build and test tools
+
+`xtask/` is the workspace's developer tool. The root Cargo alias runs it with the lockfile, and the commands are listed in `xtask/README.md`. Installation and packaging share the same Rust file-copy implementation. Integration suites are split into radio, crew and speech modules with synthetic scenery fixtures and an isolated engine process. No first-party Python or shell scripts remain. The Linux service example lives in `packaging/systemd/`. The only CI Python requirement is inside the upstream ONNX Runtime source build for Intel Macs.
+
+The maintained SDK binding patch generates only XPLM/XP functions, excluding Windows CRT declarations from the SDK's `C-unwind` ABI. The plugin launches its Windows companion as a detached process and loads OpenGL from the host's native library; Windows extension symbols use `wglGetProcAddress`. Windows engine configuration and logs default to `%LOCALAPPDATA%/openatc`, with `OPENATC_CONFIG_DIR` available as an override.

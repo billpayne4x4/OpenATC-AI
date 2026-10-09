@@ -60,7 +60,7 @@ jobs:
         if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server'
         run: |
           cd build-deps/onnxruntime
-          ./build.sh --config Release --build_shared_lib --parallel 3 --skip_tests --compile_no_warning_as_error --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=x86_64 CMAKE_INSTALL_RPATH=@loader_path
+          ./build.sh --config Release --build_shared_lib --parallel 3 --skip_tests --compile_no_warning_as_error --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF CMAKE_OSX_ARCHITECTURES=x86_64 CMAKE_INSTALL_RPATH=@loader_path
           runtime="$PWD/build/MacOS/Release"
           test -f "$runtime/libonnxruntime.dylib"
           echo "ORT_LIB_PATH=$runtime" >> "$GITHUB_ENV"
@@ -69,10 +69,10 @@ jobs:
       - name: Test shared code on Windows
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http
+        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http -p xtask
       - name: Test shared code on Linux and macOS
         if: runner.os != 'Windows'
-        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http
+        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http -p xtask
       - name: Build Windows plugin and companion engine
         if: runner.os == 'Windows' && matrix.product == 'plugin'
         shell: pwsh
@@ -87,26 +87,31 @@ jobs:
       - name: Build Linux and macOS AI server and speech sidecar
         if: runner.os != 'Windows' && matrix.product == 'ai-server'
         run: cargo build --locked --release -p openatc-ai -p openatc-stt
-      - name: Collect build outputs
+      - name: Exercise Windows companion engine
+        if: runner.os == 'Windows' && matrix.product == 'plugin'
+        shell: pwsh
         run: |
-          python - <<'PY'
-          import os, pathlib, shutil
-          root = pathlib.Path('target/release')
-          output = pathlib.Path('build-artifacts')
-          output.mkdir()
-          windows = os.environ['RUNNER_OS'] == 'Windows'
-          suffix = '.exe' if windows else ''
-          if '${{ matrix.product }}' == 'plugin':
-              names = ['openatc_plugin.dll' if windows else ('libopenatc_plugin.dylib' if os.environ['RUNNER_OS'] == 'macOS' else 'libopenatc_plugin.so'), 'open-atc-engine' + suffix]
-          else:
-              names = ['openatc-ai' + suffix, 'openatc-stt' + suffix]
-          for name in names:
-              shutil.copy2(root / name, output / name)
-          for library in root.glob('*.dll' if windows else ('*.dylib' if os.environ['RUNNER_OS'] == 'macOS' else '*.so*')):
-              shutil.copy2(library, output / library.name)
-          PY
+          cargo xtask test-radio target/release/open-atc-engine.exe speech
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo xtask test-crew target/release/open-atc-engine.exe speech
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo xtask test-speech target/release/open-atc-engine.exe speech
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise Linux and macOS companion engine
+        if: runner.os != 'Windows' && matrix.product == 'plugin'
+        run: |
+          cargo xtask test-radio target/release/open-atc-engine speech
+          cargo xtask test-crew target/release/open-atc-engine speech
+          cargo xtask test-speech target/release/open-atc-engine speech
+      - name: Collect Windows build outputs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo xtask collect-artifacts ${{ matrix.product }} build-artifacts
+      - name: Collect Linux and macOS build outputs
+        if: runner.os != 'Windows'
+        run: cargo xtask collect-artifacts ${{ matrix.product }} build-artifacts
       - uses: actions/upload-artifact@v4
         with:
           name: native-${{ matrix.platform }}-${{ matrix.product }}
-          path: build-artifacts/*
+          path: build-artifacts/
           if-no-files-found: error

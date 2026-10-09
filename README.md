@@ -15,7 +15,7 @@ Install a current stable Rust toolchain, Python 3, a C/C++ compiler, Clang/libcl
 
 ```sh
 cargo build --locked --release -p openatc-plugin -p openatc-engine
-python3 scripts/install-rust-plugin.py "/path/to/X-Plane 12"
+cargo xtask install-plugin "/path/to/X-Plane 12"
 ```
 
 Plain `cargo build` and `cargo test` cover the core, engine, UI and plugin. Build optional desktop or AI services with their explicit package targets; `--workspace` builds all members. The Rust source lives in `crates/*/src/`.
@@ -82,7 +82,7 @@ Validate edits without launching X-Plane or AI services:
 ```sh
 target/release/open-atc-engine --check-speech speech
 cargo test --locked -p openatc-core --test shipped_config --test speech_library
-python3 scripts/test-radio-engine.py target/release/open-atc-engine speech
+cargo xtask test-radio target/release/open-atc-engine speech
 ```
 
 Restart the companion engine after changing speech or station duties. `OPENATC_SPEECH_DIR` or a complete speech copy in your personal configuration directory provides a custom phrasebook independent of installation updates.
@@ -94,8 +94,8 @@ The Cargo workspace lives at the repository root; first-party implementation is 
 ```sh
 cargo fmt --all -- --check
 cargo test --locked -p openatc-core -p openatc-engine -p openatc-ui -p openatc-plugin
-python3 scripts/check_linux_dependencies.py target/release/libopenatc_plugin.so target/release/open-atc-engine
-python3 scripts/package.py linux-x64
+cargo xtask audit-linux target/release/libopenatc_plugin.so target/release/open-atc-engine
+cargo xtask package linux-x64
 ```
 
 The package is written under `packages/`. Both `packages/` and `target/` are ignored, along with local assistant configuration, instruction files, histories, generated plans, model downloads, logs and personal environment overrides. `.env.example` and `.env.sample` remain eligible for inclusion. Product AI code, `models.toml`, `prompts/`, `speech/`, Cargo configuration and CI workflows remain project files. The patched `vendor/xplane` source is explicitly included. Ignore rules do not remove files that were previously tracked; maintainers handle that when preparing their commit.
@@ -156,4 +156,10 @@ From Linux, shared code can be checked with Rust's Windows and macOS targets. Fu
 
 Windows native CI runs Cargo commands in PowerShell and selects the Visual Studio linker explicitly. Git Bash also supplies a `link.exe` utility, which must not be used to link MSVC binaries. The initial Windows CI failure occurred before application compilation; the corrected workflow still needs a native rerun.
 
-The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The initial Intel Mac failure was in dependency setup; the source-build fallback needs a native CI rerun.
+The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `ort-sys` 2.0.0-rc.13 does not supply Intel Mac prebuilt libraries. Cargo links that shared library, includes it in the build artifact, and uses `@loader_path` so the server can find it beside the executable. Other platform jobs retain their existing dependency setup. The source build disables ONNX Runtime unit-test compilation with `onnxruntime_BUILD_UNIT_TESTS=OFF`; `--skip_tests` alone only skips running those tests. Runtime model support is unchanged. This configuration still needs a native Intel Mac CI run.
+
+### Rust developer tools
+
+Build, install, package and integration-test commands now use `cargo xtask`; see [the command reference](xtask/README.md). The Python scripts and obsolete speech gateway were removed, along with `scripts/`. OpenATC users do not need Python. Intel Mac server CI still needs Python to compile ONNX Runtime using its upstream build script. A portable systemd user-unit example is in `packaging/systemd/openatc-ai.service`.
+
+The maintained SDK binding patch generates only XPLM/XP functions, excluding Windows CRT declarations from the SDK's `C-unwind` ABI. The plugin launches its Windows companion as a detached process and loads OpenGL from the host's native library; Windows extension symbols use `wglGetProcAddress`. Windows engine configuration and logs default to `%LOCALAPPDATA%/openatc`, with `OPENATC_CONFIG_DIR` available as an override.

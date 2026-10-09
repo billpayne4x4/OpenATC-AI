@@ -7,6 +7,7 @@ mod arrival;
 mod crew;
 mod debug_jump;
 mod geometry;
+mod gl;
 mod panel;
 mod render;
 mod supervise;
@@ -534,13 +535,12 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
     let Shared {
         crew, interface, ..
     } = &mut *locked;
-    if let Some(interface) = interface.as_ref() {
-        if !interface.speech.busy()
-            && interface.speech_queue.is_empty()
-            && !interface.auto_reply_pending
-        {
-            crew.tick(xpapi, &profile, &interface.engine);
-        }
+    if let Some(interface) = interface.as_ref()
+        && !interface.speech.busy()
+        && interface.speech_queue.is_empty()
+        && !interface.auto_reply_pending
+    {
+        crew.tick(xpapi, &profile, &interface.engine);
     }
 }
 

@@ -1,0 +1,45 @@
+I
+1200 Version
+1 0 0 0 TEST Test International
+100 45 1 1 0.25 0 3 0 09 0 0 0 0 2 0 0 0 27 0 0.02 0 0 2 0 0 0
+1050 118000 Test ATIS
+1052 121800 Test Delivery
+1053 121900 Test Ground
+1054 118700 Test Tower
+1055 119000 Test Approach
+1056 119100 Test Departure
+1201 0.003 -0.003 both 1
+1201 0.001 -0.001 both 2
+1201 0.001 0.000 both 3
+1201 0 0 both 4
+1202 1 2 twoway taxiway_C Alpha
+1202 2 3 twoway taxiway_C Alpha
+1202 3 4 twoway taxiway_C Alpha
+1300 0.003 -0.003 90 gate jets Stand 1
+1 0 0 0 DEST Destination International
+100 45 1 1 0.25 0 3 0 09 0 0.1 0 0 2 0 0 0 27 0 0.12 0 0 2 0 0 0
+1050 118100 Destination ATIS
+1054 118700 Destination Tower
+1 0 0 0 RWYO Runway Only
+100 45 1 1 0.25 0 3 0 09 0 0 0 0 2 0 0 0 27 0 0.02 0 0 2 0 0 0
+1053 122000 Runway Only Ground
+1054 122100 Runway Only Tower
+110 1 0.2 0 Apron
+111 -0.001 0.007
+111 -0.001 0.009
+111 0.001 0.009
+113 0.001 0.007
+1 0 0 0 PARA Parallel Runways
+100 45 1 1 0.25 0 3 0 25R 0 0 0 0 2 0 0 0 07L 0 0.02 0 0 2 0 0 0
+100 45 1 1 0.25 0 3 0 25L -0.002 0 0 0 2 0 0 0 07R -0.002 0.02 0 0 2 0 0 0
+1053 124500 Parallel Ground
+1054 124600 Parallel Tower
+1201 0.003 0.002 both 1
+1201 0.001 0.002 both 2
+1201 -0.001 0.002 both 3
+1201 -0.001 0 both 4
+1202 1 2 twoway taxiway_C Alpha
+1202 2 3 twoway taxiway_C Alpha
+1204 departure 25R,07L
+1202 3 4 twoway taxiway_C Bravo
+99

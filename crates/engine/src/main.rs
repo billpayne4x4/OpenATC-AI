@@ -94,6 +94,10 @@ fn config_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("OPENATC_CONFIG_DIR") {
         return PathBuf::from(dir);
     }
+    #[cfg(windows)]
+    if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
+        return PathBuf::from(dir).join("openatc");
+    }
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
         return PathBuf::from(dir).join("openatc");
     }

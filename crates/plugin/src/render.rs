@@ -2,7 +2,7 @@
 
 use crate::geometry::FrameLayout;
 use openatc_ui::interface::{WindowActions, WindowFrame};
-use std::ffi::{CString, c_char, c_int, c_void};
+use std::ffi::{CString, c_char, c_int};
 use std::time::Instant;
 
 /// Panel draw callback. Everything here runs on the simulator main thread,
@@ -194,23 +194,18 @@ impl RenderState {
         actions
     }
 
-    /// Resolve libGL and build the glow renderer with the sim context current.
+    /// Load the host OpenGL library with the simulator context current.
     fn init_gl(&mut self) -> bool {
         if self.gl.is_none() {
-            let library = unsafe { libloading::Library::new("libOpenGL.so.0").ok() };
+            let library = unsafe { libloading::Library::new(crate::gl::library_name()).ok() };
             let Some(library) = library else {
-                Self::log("OpenATC AI: libOpenGL.so.0 unavailable");
+                Self::log("OpenATC AI: host OpenGL library unavailable");
                 return false;
             };
-            // The library handle must outlive the context; leak it like the
             // Keep the library loaded while its function pointers remain in use.
             let library: &'static libloading::Library = Box::leak(Box::new(library));
             let gl = unsafe {
-                glow::Context::from_loader_function(|name| {
-                    library
-                        .get::<*const c_void>(name.as_bytes())
-                        .map_or(std::ptr::null(), |symbol| *symbol)
-                })
+                glow::Context::from_loader_function(|name| crate::gl::symbol(library, name))
             };
             self.gl = Some(gl);
         }
