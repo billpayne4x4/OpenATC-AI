@@ -34,24 +34,30 @@ jobs:
       - name: Install Linux build tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev cmake pkg-config libssl-dev
-      - name: Find Windows libclang
+      - name: Configure Windows native tools
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $clang = 'C:\Program Files\LLVM\bin'
           if (!(Test-Path "$clang\libclang.dll")) { throw 'libclang.dll is missing' }
           "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
+          $linker = (Get-Command link.exe -ErrorAction Stop).Source
+          if ($linker -notmatch 'Microsoft Visual Studio') { throw "Expected the MSVC linker, found $linker" }
+          "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER=$linker" >> $env:GITHUB_ENV
       - name: Find Apple SDK and libclang
         if: runner.os == 'macOS'
         run: |
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
       - name: Test shared code
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http
       - name: Build plugin and companion engine
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         if: matrix.product == 'plugin'
         run: cargo build --locked --release -p openatc-plugin -p openatc-engine
       - name: Build AI server and speech sidecar
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         if: matrix.product == 'ai-server'
         run: cargo build --locked --release -p openatc-ai -p openatc-stt
       - name: Collect build outputs
