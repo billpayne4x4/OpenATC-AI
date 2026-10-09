@@ -8,7 +8,7 @@ use openatc_core::{altitude_text, feet_to_meters, meters_to_feet, resolve_units}
 use std::fmt::Write as _;
 
 /// Request button identifiers and display titles.
-const REQUEST_BUTTONS: [(&str, &str); 23] = [
+const REQUEST_BUTTONS: [(&str, &str); 26] = [
     ("clearance", "Request IFR clearance"),
     ("start", "Request start-up"),
     ("pushback", "Request pushback"),
@@ -24,6 +24,9 @@ const REQUEST_BUTTONS: [(&str, &str); 23] = [
     ("standby", "Stand by"),
     ("unable", "Unable"),
     ("frequency", "Request frequency change"),
+    ("checkin", "Check in with controller"),
+    ("cross_runway", "Request runway crossing"),
+    ("landing", "Request landing clearance"),
     ("position", "Confirm position"),
     ("altitude", "Request altitude..."),
     ("direct", "Request direct-to..."),
@@ -129,17 +132,43 @@ fn units_name(interface: &Interface) -> String {
     format!("{:?}", interface.settings.units).to_lowercase()
 }
 
+/// Active surface clearance and simulator airport take precedence over transmitter distance.
+fn default_station_airport(interface: &Interface, state: &State) -> String {
+    if state.telemetry.on_ground
+        && (state.taxi_clearance.approved || state.taxi_clearance.pending_readback)
+        && !state.taxi_clearance.airport.is_empty()
+    {
+        return state.taxi_clearance.airport.clone();
+    }
+    for airport in [
+        &interface.airport,
+        &interface.local_airport,
+        &interface.arrival.airport,
+    ] {
+        if !airport.icao.is_empty()
+            && openatc_core::airport::contains_aircraft(airport, &state.telemetry)
+        {
+            return airport.icao.clone();
+        }
+    }
+    if !interface.current_airport.is_empty() {
+        return interface.current_airport.clone();
+    }
+    interface
+        .nearby_stations
+        .iter()
+        .filter(|s| s.service != "Center")
+        .min_by(|a, b| a.distance_nm.total_cmp(&b.distance_nm))
+        .map_or_else(String::new, |s| s.airport.clone())
+}
+
 /// Radio page: airport loader, station table and copilot toggles.
 pub fn radio_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
-    if !interface.station_filter_initialized
-        && let Some(station) = interface
-            .nearby_stations
-            .iter()
-            .filter(|s| s.service != "Center")
-            .min_by(|a, b| a.distance_nm.total_cmp(&b.distance_nm))
-    {
-        interface.station_filter.clone_from(&station.airport);
-        interface.station_filter_initialized = true;
+    if !interface.station_filter_manual {
+        let airport = default_station_airport(interface, state);
+        if !airport.is_empty() {
+            interface.station_filter = airport;
+        }
     }
     radio_header(ui, interface, state);
     ui.text_disabled("Filter stations / airport");
@@ -148,12 +177,12 @@ pub fn radio_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         .input_text("##station-filter", &mut interface.station_filter)
         .build()
     {
-        interface.station_filter_initialized = true;
+        interface.station_filter_manual = true;
     }
     ui.same_line();
     if ui.button("Show all") {
         interface.station_filter.clear();
-        interface.station_filter_initialized = true;
+        interface.station_filter_manual = true;
     }
     radio_list(ui, interface, state);
     radio_footer(ui, interface);
@@ -813,15 +842,45 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     }
 }
 
+fn quick_request_available(
+    state: &State,
+    station: Option<&openatc_core::stations::Station>,
+    intent: &str,
+) -> bool {
+    let Some(station) = station else {
+        return false;
+    };
+    if !request_available(state, intent) || !openatc_core::stations::station_serves(station, intent)
+    {
+        return false;
+    }
+    if intent == "checkin" {
+        return !state.telemetry.on_ground;
+    }
+    if intent == "cross_runway" {
+        return state.taxi_clearance.approved
+            && !state.taxi_clearance.pending_readback
+            && state.taxi_clearance.crossing_runway.is_empty()
+            && !state.taxi_clearance.hold_short_runway.is_empty()
+            && state.taxi_clearance.hold_short_runway != state.plan.runway;
+    }
+    if intent == "progressive" {
+        return !state.taxi_clearance.points.is_empty();
+    }
+    true
+}
+
 fn request_grid(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let scale = ui.current_font_size() / 18.0;
     ui.set_next_item_width((ui.content_region_avail()[0] - 160.0 * scale).max(100.0 * scale));
     widgets::edit_text(ui, "Filter requests", &mut interface.search, 128);
     let filter = interface.search.to_lowercase();
+    let nearby = openatc_core::stations::nearby(&interface.nearby_stations, &state.telemetry);
+    let station = openatc_core::stations::tuned(&nearby, state.telemetry.com1_khz);
     ui.child_window("Requests").size([0.0, 0.0]).build(|| {
         let _alignment = ui.push_style_var(imgui::StyleVar::ButtonTextAlign([0.0, 0.5]));
         for (intent, title) in REQUEST_BUTTONS {
-            if !request_available(state, intent)
+            if !quick_request_available(state, station, intent)
                 || (!filter.is_empty() && !title.to_lowercase().contains(&filter))
             {
                 continue;
@@ -845,6 +904,25 @@ fn request_grid(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                         text: title.to_owned(),
                         ..Default::default()
                     };
+                    if intent == "checkin"
+                        && let Some(station) = station
+                    {
+                        request.text = openatc_core::dialogue::say(
+                            "pilot_controller_checkin",
+                            &[
+                                ("station", station.name.clone()),
+                                ("callsign", state.plan.callsign.clone()),
+                                (
+                                    "altitude",
+                                    altitude_text(
+                                        state.telemetry.altitude_feet,
+                                        openatc_core::UnitSystem::Imperial,
+                                        true,
+                                    ),
+                                ),
+                            ],
+                        );
+                    }
                     if intent == "readback" && state.taxi_clearance.pending_readback {
                         request.clearance_sequence = state.taxi_clearance.sequence;
                         request
@@ -1129,6 +1207,12 @@ pub fn taxi_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     ) {
         interface.save_settings();
     }
+    if ui.checkbox(
+        "Holding point marker",
+        &mut interface.settings.show_holding_point,
+    ) {
+        interface.save_settings();
+    }
     if !interface.settings.show_ground_taxi_arrows {
         ui.same_line();
         ui.text_disabled("Simulator ground guidance is off");
@@ -1136,7 +1220,12 @@ pub fn taxi_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     if interface.taxi_arrival {
         arrival_parking(ui, interface, state);
     }
-    if state.taxi_clearance.approved && state.taxi_clearance.airport == interface.airport.icao {
+    if (state.taxi_clearance.approved || state.taxi_clearance.pending_readback)
+        && state.taxi_clearance.airport == interface.airport.icao
+    {
+        if state.taxi_clearance.pending_readback {
+            ui.text_disabled("Taxi clearance awaiting readback");
+        }
         ui.text_wrapped(&state.taxi_clearance.instructions);
     } else {
         ui.text_disabled("No approved taxi route for this airport. Request taxi on the ATC page.");
@@ -1163,7 +1252,7 @@ fn taxi_layers(ui: &imgui::Ui, interface: &mut Interface) {
     for (index, (label, value)) in [
         ("Taxiways", &mut interface.settings.show_taxiways),
         ("Parking", &mut interface.settings.show_parking),
-        ("Approved route", &mut interface.settings.show_taxi_route),
+        ("Taxi route", &mut interface.settings.show_taxi_route),
         ("Aircraft", &mut interface.settings.show_ownship),
         ("Labels", &mut interface.settings.show_labels),
     ]
@@ -1819,7 +1908,7 @@ fn controller_voices(ui: &imgui::Ui, interface: &mut Interface) {
     if ui.button("Test voices...") {
         interface.show_voice_popup = true;
     }
-    ui.text_wrapped("New airspaces draw a voice from the pool, skipping recently used ones, and remember it across restarts. Empty pool uses the fallback voice.");
+    ui.text_wrapped("Controllers keep their voices across restarts. English voices only; non-English entries are excluded. Empty pools use six English voices. Distinct voices are preferred until the pool is exhausted.");
     delivery_combo(
         ui,
         "Controller delivery",
@@ -2137,6 +2226,10 @@ fn realism_tab(ui: &imgui::Ui, interface: &mut Interface) {
     ui.checkbox(
         "Show illuminated taxi arrows on simulator ground",
         &mut interface.settings.show_ground_taxi_arrows,
+    );
+    ui.checkbox(
+        "Show holding point on map and simulator ground",
+        &mut interface.settings.show_holding_point,
     );
     ui.text_wrapped("Guidance follows the approved taxi route and stops at the clearance limit. Ground arrows are available in X-Plane while on the ground.");
 }
@@ -2540,6 +2633,58 @@ fn sort_table<T>(ui: &imgui::Ui, rows: &mut [T], key: impl Fn(&T, usize) -> Stri
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn quick_requests_follow_phase_controller_and_combined_duties() {
+        use openatc_core::state::{Clearance, PhaseCode};
+        use openatc_core::stations::Station;
+        let mut state = State::default();
+        let delivery = Station {
+            service: "Clearance".into(),
+            ..Default::default()
+        };
+        let ground = Station {
+            service: "Ground".into(),
+            ..Default::default()
+        };
+        let mut tower = Station {
+            service: "Tower".into(),
+            ..Default::default()
+        };
+        assert!(quick_request_available(
+            &state,
+            Some(&delivery),
+            "clearance"
+        ));
+        assert!(!quick_request_available(&state, Some(&ground), "clearance"));
+        assert!(!quick_request_available(&state, None, "radio_check"));
+        state.phase = PhaseCode::Clearance;
+        state.clearance = Some(Clearance {
+            acknowledged: true,
+            ..Default::default()
+        });
+        assert!(quick_request_available(&state, Some(&ground), "taxi"));
+        assert!(!quick_request_available(&state, Some(&delivery), "taxi"));
+        assert!(!quick_request_available(&state, Some(&tower), "taxi"));
+        tower.services.push("Ground".into());
+        assert!(quick_request_available(&state, Some(&tower), "taxi"));
+        assert!(!quick_request_available(&state, Some(&tower), "checkin"));
+        state.phase = PhaseCode::Cruise;
+        state.telemetry.on_ground = false;
+        let center = Station {
+            service: "Center".into(),
+            ..Default::default()
+        };
+        assert!(quick_request_available(&state, Some(&center), "checkin"));
+        assert!(quick_request_available(&state, Some(&center), "altitude"));
+        assert!(!quick_request_available(&state, Some(&ground), "checkin"));
+        assert!(!quick_request_available(&state, Some(&tower), "altitude"));
+        assert!(!quick_request_available(&state, Some(&center), "taxi"));
+        let atis = Station {
+            service: "ATIS".into(),
+            ..Default::default()
+        };
+        assert!(!quick_request_available(&state, Some(&atis), "radio_check"));
+    }
     use super::*;
     use std::sync::Mutex;
 
@@ -2680,6 +2825,48 @@ mod tests {
         }
     }
 
+    #[test]
+    fn airport_surface_wins_over_nearby_heliport_reference() {
+        use openatc_core::state::Point;
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.current_airport = "57CA".into();
+        interface.airport.icao = "KLAX".into();
+        interface.airport.pavement_triangles = vec![[
+            Point {
+                east: -100.0,
+                north: -100.0,
+                ..Default::default()
+            },
+            Point {
+                east: 100.0,
+                north: -100.0,
+                ..Default::default()
+            },
+            Point {
+                east: 0.0,
+                north: 100.0,
+                ..Default::default()
+            },
+        ]];
+        let mut state = State::default();
+        state.telemetry.on_ground = true;
+        state.telemetry.position_valid = true;
+        assert_eq!(default_station_airport(&interface, &state), "KLAX");
+        state.telemetry.longitude = 1.0;
+        assert_eq!(default_station_airport(&interface, &state), "57CA");
+    }
+    #[test]
+    fn station_filter_uses_airport_instead_of_closest_transmitter() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.current_airport = "KLAX".into();
+        let mut state = State::default();
+        assert_eq!(default_station_airport(&interface, &state), "KLAX");
+        interface.current_airport = "KHHR".into();
+        state.telemetry.on_ground = true;
+        state.taxi_clearance.airport = "KLAX".into();
+        state.taxi_clearance.approved = true;
+        assert_eq!(default_station_airport(&interface, &state), "KLAX");
+    }
     #[test]
     fn taxi_defaults_to_current_airport_and_respects_plan_selectors() {
         let mut interface = interface_with_airport();

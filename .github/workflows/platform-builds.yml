@@ -1,0 +1,79 @@
+name: Native platform builds
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    name: ${{ matrix.platform }} / ${{ matrix.product }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux-x64, windows-x64, macos-intel, macos-arm64]
+        product: [plugin, ai-server]
+        include:
+          - platform: linux-x64
+            runner: ubuntu-24.04
+          - platform: windows-x64
+            runner: windows-2022
+          - platform: macos-intel
+            runner: macos-15-intel
+          - platform: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev cmake pkg-config libssl-dev
+      - name: Find Windows libclang
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $clang = 'C:\Program Files\LLVM\bin'
+          if (!(Test-Path "$clang\libclang.dll")) { throw 'libclang.dll is missing' }
+          "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
+      - name: Find Apple SDK and libclang
+        if: runner.os == 'macOS'
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
+      - name: Test shared code
+        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http
+      - name: Build plugin and companion engine
+        if: matrix.product == 'plugin'
+        run: cargo build --locked --release -p openatc-plugin -p openatc-engine
+      - name: Build AI server and speech sidecar
+        if: matrix.product == 'ai-server'
+        run: cargo build --locked --release -p openatc-ai -p openatc-stt
+      - name: Collect build outputs
+        run: |
+          python - <<'PY'
+          import os, pathlib, shutil
+          root = pathlib.Path('target/release')
+          output = pathlib.Path('build-artifacts')
+          output.mkdir()
+          windows = os.environ['RUNNER_OS'] == 'Windows'
+          suffix = '.exe' if windows else ''
+          if '${{ matrix.product }}' == 'plugin':
+              names = ['openatc_plugin.dll' if windows else ('libopenatc_plugin.dylib' if os.environ['RUNNER_OS'] == 'macOS' else 'libopenatc_plugin.so'), 'open-atc-engine' + suffix]
+          else:
+              names = ['openatc-ai' + suffix, 'openatc-stt' + suffix]
+          for name in names:
+              shutil.copy2(root / name, output / name)
+          for library in root.glob('*.dll' if windows else ('*.dylib' if os.environ['RUNNER_OS'] == 'macOS' else '*.so*')):
+              shutil.copy2(library, output / library.name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}-${{ matrix.product }}
+          path: build-artifacts/*
+          if-no-files-found: error

@@ -351,7 +351,7 @@ fn draw_map(
         }
     }
     if interface.settings.show_taxi_route
-        && state.taxi_clearance.approved
+        && (state.taxi_clearance.approved || state.taxi_clearance.pending_readback)
         && state.taxi_clearance.airport == airport.icao
     {
         draw_route(draw, interface, state, airport, &project);
@@ -465,7 +465,11 @@ fn draw_route(
         draw.add_line(
             project(&points[index - 1]),
             project(&points[index]),
-            rgba(64, 223, 168, 255),
+            if state.taxi_clearance.pending_readback {
+                rgba(255, 192, 87, 255)
+            } else {
+                rgba(64, 223, 168, 255)
+            },
         )
         .thickness(4.0)
         .build();
@@ -501,8 +505,33 @@ fn draw_route(
             }
         }
     }
-    if let Some(endpoint) = points.last() {
+    if let Some(endpoint) = points.last().filter(|_| {
+        interface.settings.show_holding_point
+            && (state.taxi_clearance.pending_readback
+                || matches!(
+                    state.phase,
+                    openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::TaxiIn
+                ))
+            && !state.taxi_clearance.hold_short_runway.is_empty()
+            && state.taxi_clearance.crossing_runway.is_empty()
+    }) {
+        let endpoint = state
+            .taxi_clearance
+            .holding_marker_point
+            .as_ref()
+            .unwrap_or(endpoint);
+        let edge = project(&Point {
+            east: endpoint.east + openatc_core::airport::HOLDING_MARKER_RADIUS_METRES,
+            ..*endpoint
+        });
         let endpoint = project(endpoint);
+        draw.add_circle(
+            endpoint,
+            (edge[0] - endpoint[0]).hypot(edge[1] - endpoint[1]),
+            rgba(255, 192, 87, 45),
+        )
+        .filled(true)
+        .build();
         draw.add_circle(endpoint, 9.0, rgba(255, 192, 87, 255))
             .thickness(3.0)
             .build();
@@ -515,7 +544,7 @@ fn draw_route(
         .filled(true)
         .rounding(4.0)
         .build();
-        draw.add_text(label, rgba(255, 192, 87, 255), "STOP");
+        draw.add_text(label, rgba(255, 192, 87, 255), "HOLD");
     }
 }
 

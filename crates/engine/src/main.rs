@@ -6,6 +6,7 @@ mod lifecycle;
 mod radio;
 mod routes;
 mod support;
+mod surface;
 
 use openatc_core::airport::Airport;
 use openatc_core::regions::{Region, load_regions};
@@ -24,6 +25,8 @@ pub const VERSION: &str = "0.2.1";
 pub struct EngineState {
     /// Invalidates work started before a new-flight reset.
     pub session_generation: u64,
+    /// Prepared crew radio exchange and its owning flight generation.
+    pub pending_copilot_reply: Option<(u64, openatc_core::state::Request)>,
     /// Previous phrase choices and transmitted wording.
     pub phrase_history: radio::PhraseHistory,
     /// Aircraft crew controls, live readbacks and checklist progress.
@@ -256,6 +259,7 @@ async fn main() {
     };
     let shared: Shared = Arc::new(RwLock::new(EngineState {
         session_generation: 0,
+        pending_copilot_reply: None,
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
         flow: flight::FlightFlow::default(),
@@ -285,10 +289,16 @@ async fn main() {
         .route("/state", get(routes::full_state))
         .route("/settings", post(routes::post_settings))
         .route("/simulator/root", post(routes::post_simulator_root))
+        .route("/debug/cancel-actions", post(routes::debug_cancel_actions))
         .route("/crew/observe", post(crew::observe))
         .route("/crew/ack", post(crew::acknowledge))
         .route("/request", post(routes::post_request))
         .route("/request/auto-reply", post(routes::post_auto_reply))
+        .route("/request/copilot-reply", post(routes::post_copilot_reply))
+        .route(
+            "/request/copilot-prepare",
+            post(routes::post_copilot_prepare),
+        )
         .route("/plan", post(routes::post_plan))
         .route("/plan/parking", post(routes::post_parking))
         .route("/simbrief", post(routes::post_simbrief))

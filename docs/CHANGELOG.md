@@ -349,3 +349,48 @@ Removed the ATC-page taxi readback banner and its duplicate instruction display.
 Added a page-with-plus New flight icon in the window header with reset confirmation. Reset clears the plan, conversation, permissions, guidance, checklist progress, pending crew actions and local recording/playback state. Operator settings, phrase history, controller voices and live aircraft state are preserved. Previous queued commands, stale snapshots and delayed model responses cannot restore the old flight after reset. The simulator host clears its pending crew callbacks and guidance caches. Reset does not restart the remote AI server or change aircraft controls.
 
 Re-enabling now reuses the existing window and ImGui renderer instead of creating a second active context. Command handlers and the Plugins menu are registered once. Disable releases flight-local crew bindings and datarefs, and enable rebuilds them. Live X-Plane re-enable and header reset remain simulator acceptance checks.
+
+### Controller voices and crossing completion — 9 October 2026
+
+Controller assignments persist across engine restarts. English-only pools discard other languages and duplicate aliases. New assignments prefer voices not already assigned; existing duplicate assignments are repaired when unused voices are available. Distinct saved assignments remain unchanged. Once the pool is exhausted, recent assignments are avoided where possible. Empty pools now provide six English voices instead of one.
+
+An approved runway crossing completes once the aircraft is fully clear on the far side, including while moving. The next taxi clearance continues to the original departure runway and requires readback. This replaces the crossing endpoint stop requirement; ordinary holding points still require a stop.
+
+### Vacated reports, taxi map and holding-point handoff
+
+Recognise runway-vacated reports, including “VACTED”, and reply with the onward taxi instruction rather than a generic phase error or readback acknowledgement. New taxi geometry appears immediately on the map in amber while awaiting readback; approved guidance remains green. Simulator arrows still require approval. Holding-point recognition includes nearby scenery holding lines when the final graph node is offset. Surface telemetry monitoring now lives in its own engine module, with a shared derived clearance lifecycle. Automatic handoff replies retain the assigned controller voice.
+
+### Optional holding-point graphic
+
+Added an opt-in holding-point highlight and detection area on the map, with a terrain-following illuminated amber H marker in the simulator. The setting defaults off and is independent of taxi arrows. Holding detection and map radius share the same constant. Markers clear with route replacement, new flight, disable and departure permission.
+
+The simulator holding marker now includes a translucent 24-metre amber disc with a clearer rim and enlarged H/bar. Terrain footprint probes cover the enlarged graphic. This changes visual guidance only; detection distances remain unchanged.
+
+Successful runway-crossing readbacks now activate the crossing silently. Removed the redundant crossing-readback acknowledgement template. Incorrect readbacks remain pending and receive correction; verified crossing completion produces the next taxi instruction.
+
+The Channels automatic filter uses the active surface-clearance airport, then the simulator airport, before falling back to the nearest station. It refreshes when airport data arrives; manually entered filters and Show all are preserved. This avoids a nearby airport transmitter selecting the wrong filter.
+
+Holding-point graphics use the final taxi approach and a nearby scenery hold-line intersection to choose the approach side. The translucent disc is 30 metres across; its edge is placed four metres before the line, accounting for oblique approaches. Where no line is available, it is set back from the route endpoint. This is visual guidance derived from available scenery, not aircraft nose-position measurement.
+
+Removed the H and bar from the simulator holding-point graphic, leaving the translucent amber circle and rim.
+
+Fixed holding-circle flicker by removing coplanar overlap between the translucent disc and rim. Their geometry now shares a boundary.
+
+Channels now checks loaded airport pavement/runway containment before using simulator reference-point proximity. Channels also loads the planned airport geometry for verification. The holding circle uses a single textured quad with a 256-pixel alpha mask instead of segmented fill/rim geometry.
+
+Added debug-only header surface jumps to holding point and cleared departure runway. Address outgoing controller speech with the callsign and prevent acknowledged departure clearances from redirecting to Delivery. Restrict surface automatic readiness to taxi phases.
+
+Copilot radio replies now originate in the simulator after its speech queue drains, rather than being applied inside the engine request handler. The same endpoint handles onward taxi instructions and takeoff acknowledgements. Automatic tuning and cockpit actions wait for playback and pending copilot replies. Final holding-point telemetry does not invent a pilot ready report; holding recognition no longer requires zero taxi speed. Channels also loads local airport geometry (page 6) to identify the occupied airport. Regression checks cover deferred readback, takeoff acknowledgement, moving holding detection and installed KLAX positions; live ToLiss audio timing still needs simulator testing.
+
+Radio turn-taking uses a two-step copilot exchange: record and play the readback, then apply it after playback finishes. Telemetry marks the radio busy during playback, recording or pending crew replies, delaying automatic surface and airborne calls. A previously reported ready aircraft can receive takeoff clearance after blocking traffic clears. Crossing eligibility follows holding-point detection without a conflicting stopped-aircraft gate. Unknown runway status produces an explained standby instruction and retries when confirmation becomes available. The debug header uses a vector fast-forward icon with the same dimensions as other controls. Unit and engine regressions cover prepared readbacks, occupied-radio suppression, moving hold recognition and traffic-clearance retry; embedded simulator layout and live audio need user verification.
+
+ATC quick requests follow the live flight phase and the published duties of the receivable tuned controller, including combined duties. ATIS and untuned frequencies do not expose controller requests. In flight, **Check in with controller** sends the tuned station name, callsign and current altitude using editable speech TOML. Crossing and landing requests are included when appropriate.
+
+Typed ATC requests add missing controller and callsign addressing. Spoken transmissions retain the words recognized by speech-to-text. AI intent recovery tolerates clear request-word typos and recognition errors; operational values and readback checks remain authoritative. Crew requests can contain up to eight explicit actions, such as “remove chocks and external power.” Clauses inherit the action verb where appropriate. All targets are validated against the aircraft profile before the batch becomes visible to the simulator; each action needs confirmation, and failure cancels the remaining actions. Duplicate controls and unsupported clauses are rejected. The LLM can return a bounded actions array using mapped control IDs, never raw simulator refs. Settings → Voices → Pilot (own transmissions) → Speak my transmitted requests enables synthesized playback of the pilot requests. It is off by default. Engine regression tests use mocked model responses and simulator acknowledgements; live control effects remain a simulator check.
+
+### Platform build validation
+
+- Run builds only on version tags or manually.
+- Add native Linux, Windows, Intel Mac and Apple Silicon build checks for the plugin/engine and AI/STT server.
+- Correct the vendored X-Plane SDK's macOS framework search directive and remove an unused Windows import.
+- Document the difference between Linux cross-target checks, native builds and simulator testing.

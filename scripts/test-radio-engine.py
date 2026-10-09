@@ -22,6 +22,10 @@ class Model(BaseHTTPRequestHandler):
         if slow_model:
             slow_started.set()
             slow_release.wait(timeout=10)
+        if body.get('messages',[{}])[0].get('content','').startswith('Classify the pilot message'):
+            data=json.dumps({'choices':[{'message':{'content':json.dumps({'intent':'taxi','altitudeFeet':0,'waypoint':''})}}]}).encode()
+            self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+            return
         # Deliberately corrupt operational data: engine must reject this wording.
         data=json.dumps({'choices':[{'message':{'content':'Cleared to FAKE. Climb to 99000 feet, squawk 7777.'}}]}).encode()
         self.send_response(200);self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
@@ -90,7 +94,7 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         ok('plan',wrong)
         rejected=req('clearance');assert not rejected['result']['accepted']
         assert 'Your flight departs DEST' in rejected['result']['message'],rejected
-        assert rejected['state']['transcript'][-1]['text']==rejected['result']['message'],rejected
+        assert rejected['state']['transcript'][-1]['text'].endswith(rejected['result']['message']),rejected
         ok('plan',plan)
         result=req('clearance');assert result['result']['accepted'],result
         message=result['result']['message'];assert all(v in message for v in ['VH-BIL','DEST','5000','2105','09','DCT DEST']),message
@@ -105,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         result=req('start');assert result['result']['accepted'] and result['state']['startupApproved'] and not result['state']['pushbackApproved']
         result=req('pushback');assert result['result']['accepted'] and result['state']['pushbackApproved']
         assert req('start')['result']['accepted']
-        result=req('taxi');assert result['result']['accepted'],result
+        result=req('conversation',text=f"Test Ground, {plan['callsign']}, reqest taxy");assert result['result']['accepted'],result
         taxi=result['state']['taxiClearance']
         assert len(taxi['points'])>1 and taxi['pendingReadback'] and not taxi['approved'],result
         assert not any(t['speaker']=='COPILOT' for t in result['state']['transcript']), 'Manual taxi reply must not have a duplicate copilot parrot'
@@ -121,6 +125,8 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         incoming={'latitude':0,'longitude':-0.02,'altitudeFeet':500,'trackDegrees':90,'onGround':False}
         tune(118700,paused=True,traffic=[incoming]);assert ok('state')['phase']==2
         tune(118700,paused=False,traffic=[incoming])
+        assert ok('state')['phase']==2
+        req('ready')
         held=ok('state');assert held['phase']==2 and held['taxiClearance']['approved'] and 'traffic on final' in held['transcript'][-1]['text'].lower(),held
         count=len(held['transcript']);tune(118700,traffic=[incoming]);assert len(ok('state')['transcript'])==count
         tune(118700,traffic=[]);depart=ok('state');assert depart['phase']==3 and not depart['taxiClearance']['approved'],depart
@@ -186,13 +192,19 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         settings['aiEnabled']=False;ok('settings',settings)
         clearance=result['state']['clearance']
         readback_result=req('readback',altitudeFeet=5000,waypoint='DCT DEST',clearanceSequence=clearance['sequence']);assert readback_result['result']['accepted'];assert '121.900' in readback_result['result']['message'] and 'when ready' in readback_result['result']['message'].lower(),readback_result
+        delivery_voice=next(t['voice'] for t in reversed(readback_result['state']['transcript']) if t['speaker']=='ATC')
         tune(121900)
         combined=req('start_pushback');assert combined['result']['accepted'] and combined['state']['startupApproved'] and combined['state']['pushbackApproved']
+        ground_voice=next(t['voice'] for t in reversed(combined['state']['transcript']) if t['speaker']=='ATC')
+        assert ground_voice != delivery_voice, 'Ground and Delivery must differ while unused English voices remain'
         directed=next(t for t in reversed(combined['state']['transcript']) if t['speaker']=='ATC' and not t.get('background',False))
         assert directed['pilotReply'] and plan['callsign'] in directed['pilotReply'],directed
         acknowledgment={'intent':'acknowledge','role':'atc','text':directed['pilotReply'],'clearanceSequence':directed['sequence']}
         assert ok('request',acknowledgment)['result']['accepted']
         assert not ok('request',acknowledgment)['result']['accepted'], 'An acknowledgment must not be reusable'
+        repeated=req('radio_check')
+        assert any(t['speaker']=='ATC' for t in repeated['state']['transcript']),repeated
+        assert next(t['voice'] for t in reversed(repeated['state']['transcript']) if t['speaker']=='ATC') == ground_voice
         # No taxi graph or hold marking: Ground must hand off, Tower grants runway taxi.
         ok('session/reset',{})
         runway_plan=dict(plan,departure='RWYO')
@@ -212,15 +224,38 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         endpoint=path['points'][-1]
         tune(122100,latitude=path['referenceLatitude']+endpoint['north']/111320,longitude=path['referenceLongitude']+endpoint['east']/(111320*math.cos(math.radians(path['referenceLatitude']))))
         assert ok('state')['taxiClearance']['guidanceComplete']
-        assert ok('state')['phase']==3, 'Tower automatically clears departure after runway taxi is complete and traffic is clear'
+        assert ok('state')['phase']==2, 'Reaching the holding point does not report ready for the pilot'
+        assert req('ready')['result']['accepted']
+        assert ok('state')['phase']==3
+        count=len(ok('state')['transcript'])
+        for _ in range(5): tune(122100)
+        stationary=ok('state')
+        assert len(stationary['transcript'])==count, 'No new handoff while stopped with takeoff clearance'
+        assert all(plan['callsign'] in t['text'] for t in stationary['transcript'] if t['speaker']=='ATC' and not t.get('background'))
+        settings=ok('state')['settings'];settings['copilotReplies']=True;ok('settings',settings)
+        ok('request/copilot-prepare',{});ok('request/copilot-reply',{})
+        takeoff_reply=ok('state')['transcript'][-1]
+        assert takeoff_reply['speaker']=='COPILOT' and 'cleared for takeoff' in takeoff_reply['text'].lower(),takeoff_reply
+        settings['copilotReplies']=False;ok('settings',settings)
+        repeat_clearance=req('clearance')
+        assert not repeat_clearance['result']['accepted'] and 'contact' not in repeat_clearance['result']['message'].lower(),repeat_clearance
+
+        tune(122100,onGround=False,altitudeFeet=1500,groundSpeedKnots=180)
+        checkin=req('checkin',text=f"Tower, {plan['callsign']}, 1500 feet.")
+        assert checkin['result']['accepted'] and '1500' in checkin['result']['message'],checkin
+
         tune(123450)
         before=len(captured);assert req('conversation')['result']['silent'];assert len(captured)==before
         # Copilot readback mode consumes each clearance once with complete pilot facts.
         ok('session/reset',{})
         settings=ok('state')['settings'];settings.update(copilotReplies=True,copilotAutoRespond=True,congestion='off');ok('settings',settings)
-        tune(121800,latitude=0.003,longitude=-0.003,traffic=[]);ok('plan',plan)
-        automatic=req('clearance');assert automatic['state']['clearance']['acknowledged'],automatic
-        tune(121900);automatic=req('taxi');assert automatic['state']['taxiClearance']['approved'] and not automatic['state']['taxiClearance']['pendingReadback'],automatic
+        tune(121800,latitude=0.003,longitude=-0.003,traffic=[],onGround=True,groundSpeedKnots=0);ok('plan',plan)
+        automatic=req('clearance');assert not automatic['state']['clearance']['acknowledged'],automatic
+        ok('request/copilot-prepare',{});assert not ok('state')['clearance']['acknowledged']
+        ok('request/copilot-reply',{});assert ok('state')['clearance']['acknowledged']
+        tune(121900);automatic=req('taxi');assert automatic['state']['taxiClearance']['pendingReadback'],automatic
+        ok('request/copilot-prepare',{});ok('request/copilot-reply',{});automatic={'state':ok('state')}
+        assert automatic['state']['taxiClearance']['approved']
         copilot=[t for t in automatic['state']['transcript'] if t['speaker']=='COPILOT'];assert copilot and all(not t['position'] for t in copilot),copilot
         assert all('Read back' not in t['text'] for t in copilot),copilot
         assert not any(t.get('background',False) for t in ok('state')['transcript']), 'Live sessions must not fabricate background aircraft'
@@ -235,25 +270,47 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         taxi=req('taxi');assert taxi['result']['accepted'],taxi
         assert taxi['state']['taxiClearance']['holdShortRunway']=='25R',taxi
         assert ok('request/auto-reply',{})['result']['accepted']
-        tune(124500,latitude=0.001,traffic=None)
+        before_hold=len(ok('state')['transcript'])
+        tune(124500,latitude=0.001,traffic=[],groundSpeedKnots=8,radioBusy=True)
+        assert len(ok('state')['transcript'])==before_hold, 'ATC must wait while pilot or copilot occupies the radio'
+        tune(124500,radioBusy=False,radioSequenceSeen=0)
+        assert len(ok('state')['transcript'])==before_hold, 'Wait until the simulator has observed the preceding ATC message'
+        tune(124500,latitude=0.001,traffic=None,radioBusy=False,radioSequenceSeen=None)
+
         held=ok('state')['taxiClearance']
         assert not held['crossingRunway'] and held['waitingForTraffic'],held
         tune(124500,latitude=0.001,traffic=[{'latitude':0,'longitude':0.002,'altitudeFeet':0,'onGround':True,'trackDegrees':270,'groundSpeedKnots':5}])
         assert not ok('state')['taxiClearance']['crossingRunway'], 'An occupied runway must not be cleared for crossing'
-        tune(124500,traffic=[])
+        tune(124500,traffic=[],groundSpeedKnots=8)
         crossing=ok('state');assert crossing['taxiClearance']['crossingRunway']=='25R',crossing
         assert crossing['taxiClearance']['destination']=='25L'
         assert crossing['taxiClearance']['pendingReadback'] and not crossing['taxiClearance']['approved']
         assert not any(t['speaker']==plan['callsign'] and t['text']=='cross_runway' for t in crossing['transcript'])
         assert not req('ready')['result']['accepted']
-        assert ok('request/auto-reply',{})['result']['accepted']
+        before_crossing_readback=len([t for t in ok('state')['transcript'] if t['speaker']=='ATC'])
+        crossing_ack=ok('request/auto-reply',{})
+        assert crossing_ack['result']['accepted'] and not crossing_ack['result']['message'],crossing_ack
+        assert len([t for t in crossing_ack['state']['transcript'] if t['speaker']=='ATC'])==before_crossing_readback
+        assert crossing_ack['state']['taxiClearance']['approved']
         tune(124500,latitude=0)
         assert ok('state')['taxiClearance']['crossingRunway']=='25R', 'Crossing must not finish on the runway'
-        tune(124500,latitude=-0.001)
+        tune(124500,latitude=-0.0012,groundSpeedKnots=8)
         onward=ok('state')['taxiClearance']
         assert not onward['crossingRunway'] and onward['holdShortRunway']=='25L',onward
         assert onward['pendingReadback'] and not onward['approved']
+        vacated=req('conversation',text='VACTED')
+        assert vacated['result']['message']==onward['instructions'],vacated
+        assert 'readback correct' not in vacated['result']['message'].lower()
         assert ok('request/auto-reply',{})['result']['accepted']
+        endpoint=onward['points'][-1]
+        tune(124500,latitude=onward['referenceLatitude']+endpoint['north']/111320,
+             longitude=onward['referenceLongitude']+endpoint['east']/(111320*math.cos(math.radians(onward['referenceLatitude']))),groundSpeedKnots=0)
+        held=ok('state')
+        assert held['taxiClearance']['guidanceComplete'],held
+        assert any('124.600' in t['text'] and 'Tower' in t['text'] for t in held['transcript']),held
+
+        controller_entries=[t for t in ok('state')['transcript'] if t['speaker']=='ATC']
+        assert all(t['voice'] in ['alloy','echo','fable','onyx','nova','shimmer'] for t in controller_entries),controller_entries
         previous=ok('state')
         cleared=ok('session/reset',{})
         assert not cleared['transcript'] and not cleared['plan']['departure'] and not cleared['plan']['destination'],cleared
@@ -264,7 +321,7 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         assert cleared['nextSequence']==previous['nextSequence'], 'Old transmission IDs must not be reused'
         assert ok('session/reset',{})['transcript']==[]
         settings=ok('state')['settings'];settings.update(aiEnabled=True,llmPhraseVariety=True);ok('settings',settings)
-        tune(121800,latitude=0.003,longitude=-0.003,traffic=[]);ok('plan',plan)
+        tune(121800,latitude=0.003,longitude=-0.003,traffic=[],groundSpeedKnots=0);ok('plan',plan)
         slow_model=True
         delayed=[]
         worker=threading.Thread(target=lambda: delayed.append(call('request',{'intent':'clearance','text':'Request IFR clearance','role':'atc'})))
@@ -273,6 +330,22 @@ with tempfile.TemporaryDirectory(prefix='openatc-radio-') as temporary:
         slow_release.set();worker.join(timeout=10)
         assert delayed and delayed[0][0]==400,delayed
         assert ok('state')['transcript']==[], 'Late model output must not restore the old conversation'
+        # Saved English assignments survive a complete engine restart.
+        roster=json.loads((config/'controllers.json').read_text())
+        settings=ok('state')['settings'];settings.update(aiEnabled=False);ok('settings',settings)
+        engine.terminate();engine.wait(timeout=5)
+        engine=subprocess.Popen([str(args.engine.resolve()),str(port)],env=env,stdout=log,stderr=log)
+        for attempt in range(100):
+            try:
+                if call('health')[0]==200:break
+            except URLError:time.sleep(.05)
+        tune(121900,latitude=0.003,longitude=-0.003,traffic=[])
+        ok('plan',plan)
+        ok('stations/nearby',{})
+        repeated=req('radio_check')
+        assert any(t['speaker']=='ATC' for t in repeated['state']['transcript']),repeated
+        assert next(t['voice'] for t in reversed(repeated['state']['transcript']) if t['speaker']=='ATC')==ground_voice
+        assert json.loads((config/'controllers.json').read_text())==roster
         print('Radio engine: station roles, silence, clearance/readback/start/pushback/taxi, reusable-ack rejection, Tower runway-backtrack/readback/endpoint gating, proactive Ground crossing/traffic hold/readback/onward taxi, airport weather, ATIS letters/destination, phrase rotation/history, role-aware variety prompts, unsafe LLM fallback passed')
     finally:
         engine.terminate();engine.wait(timeout=5);log.close();model.shutdown()

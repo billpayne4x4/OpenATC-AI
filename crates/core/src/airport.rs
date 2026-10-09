@@ -806,6 +806,7 @@ pub fn calculate_taxi_route(
         };
     }
     let (points, via) = taxi_path(&nodes, &previous, start, target);
+    let holding_marker_point = holding_marker_position(airport, &points);
     let needs_backtrack = target_distance > 500.0 && !to_parking && hold_short == destination;
     let instructions = if via.is_empty() && !hold_short.is_empty() {
         crate::dialogue::say("taxi_to_holding_point", &[("runway", hold_short.clone())])
@@ -851,6 +852,7 @@ pub fn calculate_taxi_route(
         crossing_runway: String::new(),
         entry_runway: String::new(),
         holding_channel: 0,
+        holding_marker_point,
         waiting_for_traffic: false,
         guidance_complete: false,
         hold_short_runway: hold_short,
@@ -1591,6 +1593,17 @@ fn intersection(first: Point, second: Point, third: Point, fourth: Point) -> Opt
         .then_some((first_fraction, second_fraction))
 }
 
+/// Check actual scenery pavement/runway geometry rather than airport reference-point proximity.
+#[must_use]
+pub fn contains_aircraft(airport: &Airport, telemetry: &Telemetry) -> bool {
+    telemetry.position_valid
+        && telemetry.on_ground
+        && on_pavement(
+            airport,
+            airport_point(airport, telemetry.latitude, telemetry.longitude),
+        )
+}
+
 fn on_pavement(airport: &Airport, p: Point) -> bool {
     if airport.runways.iter().any(|r| {
         let delta = difference(r.second, r.first);
@@ -1884,6 +1897,108 @@ fn clear_runway_connector(
         intersection(first, second, h[0], h[1]).is_some()
             && segment_distance(h[0], runway.first, runway.second) > 150.0
     })
+}
+
+/// Radius around the route limit used for stopped-aircraft recognition.
+pub const HOLDING_MARKER_RADIUS_METRES: f64 = 15.0;
+
+/// Find a holding-line intersection along the final approach, then keep the disc behind it.
+#[must_use]
+pub fn holding_marker_position(airport: &Airport, points: &[Point]) -> Option<Point> {
+    let end = *points.last()?;
+    let before = points
+        .iter()
+        .rev()
+        .skip(1)
+        .find(|p| flat_distance(p, &end) > 1.0)?;
+    let length = flat_distance(before, &end);
+    let de = (end.east - before.east) / length;
+    let dn = (end.north - before.north) / length;
+    let mut stop = 0.0;
+    let mut nearest = f64::INFINITY;
+    let mut setback = HOLDING_MARKER_RADIUS_METRES + 4.0;
+    for line in &airport.taxi_hold_lines {
+        let le = line[1].east - line[0].east;
+        let ln = line[1].north - line[0].north;
+        let cross = de * ln - dn * le;
+        if cross.abs() < 0.001 {
+            continue;
+        }
+        let ae = line[0].east - end.east;
+        let an = line[0].north - end.north;
+        let t = (ae * ln - an * le) / cross;
+        let u = (ae * dn - an * de) / cross;
+        if (0.0..=1.0).contains(&u) && t.abs() < 80.0 && t.abs() < nearest {
+            stop = t;
+            nearest = t.abs();
+            setback = (HOLDING_MARKER_RADIUS_METRES + 4.0) * le.hypot(ln) / cross.abs();
+        }
+    }
+    let offset = stop - setback;
+    Some(Point {
+        east: end.east + de * offset,
+        north: end.north + dn * offset,
+        ..end
+    })
+}
+
+/// Radius around the route limit used for stopped-aircraft recognition.
+pub const HOLD_POINT_RADIUS_METRES: f64 = 45.0;
+
+/// Recognize the route endpoint or its nearby painted holding line on approach.
+#[must_use]
+pub fn taxi_hold_reached(airport: &Airport, route: &TaxiClearance, telemetry: &Telemetry) -> bool {
+    if !telemetry.position_valid
+        || !telemetry.on_ground
+        || telemetry.paused
+        || !route.crossing_runway.is_empty()
+    {
+        return false;
+    }
+    let Some(end) = route.points.last() else {
+        return false;
+    };
+    let here = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    if flat_distance(&here, end) <= HOLD_POINT_RADIUS_METRES {
+        return true;
+    }
+    !route.to_parking
+        && !route.runway_taxi
+        && !route.hold_short_runway.is_empty()
+        && flat_distance(&here, end) <= 120.0
+        && airport.taxi_hold_lines.iter().any(|line| {
+            segment_distance(*end, line[0], line[1]) <= 100.0
+                && segment_distance(here, line[0], line[1]) <= 25.0
+        })
+}
+
+/// A crossing finishes once the aircraft is on the opposite side with tail clearance.
+#[must_use]
+pub fn crossing_vacated(airport: &Airport, route: &TaxiClearance, telemetry: &Telemetry) -> bool {
+    if !telemetry.position_valid || !telemetry.on_ground || telemetry.paused {
+        return false;
+    }
+    let Some(runway) = airport
+        .runways
+        .iter()
+        .find(|r| r.first_name == route.crossing_runway || r.second_name == route.crossing_runway)
+    else {
+        return false;
+    };
+    let Some(start) = route.points.first() else {
+        return false;
+    };
+    let dx = runway.second.east - runway.first.east;
+    let dn = runway.second.north - runway.first.north;
+    let length = dx.hypot(dn);
+    if length < 100.0 {
+        return false;
+    }
+    let across = |p: Point| {
+        ((p.east - runway.first.east) * dn - (p.north - runway.first.north) * dx) / length
+    };
+    let here = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    across(*start) * across(here) < 0.0 && across(here).abs() >= runway.width / 2.0 + 40.0
 }
 
 /// Authorize one transverse published-network crossing, ending clear of that runway.

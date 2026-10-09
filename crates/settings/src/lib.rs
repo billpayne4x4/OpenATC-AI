@@ -276,6 +276,8 @@ pub struct Settings {
     pub show_taxi_arrows: bool,
     /// Illuminated taxi guidance objects in the simulator.
     pub show_ground_taxi_arrows: bool,
+    /// Highlight the authorised holding point on the map and simulator ground.
+    pub show_holding_point: bool,
     /// ILS approach and glideslope volumes on the airport map.
     pub show_ils_beams: bool,
     /// Draw your aircraft on maps.
@@ -392,6 +394,7 @@ impl Default for Settings {
             show_taxi_route: true,
             show_taxi_arrows: true,
             show_ground_taxi_arrows: false,
+            show_holding_point: false,
             show_ils_beams: false,
             show_ownship: true,
             show_labels: true,
@@ -562,6 +565,7 @@ mod tests {
         assert!(settings.copilot_button);
         assert!(settings.show_taxi_arrows);
         assert!(!settings.show_ground_taxi_arrows);
+        assert!(!settings.show_holding_point);
         assert!(settings.dev_mode);
         assert!(settings.realism().strict_readbacks);
         settings.validate().unwrap();

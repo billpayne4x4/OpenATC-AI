@@ -70,12 +70,12 @@ pub struct Interface {
     pub nearby_stations: Vec<openatc_core::stations::Station>,
     /// Station/weather reception status.
     pub radio_notice: String,
-    /// User-editable station search, initially the nearest airport.
+    /// User-editable station search, defaulting to the current surface airport.
     pub station_filter: String,
     /// Search configured aircraft crew controls.
     pub crew_control_filter: String,
-    /// Preserve an intentionally cleared station search.
-    pub station_filter_initialized: bool,
+    /// Preserve a filter deliberately entered or cleared by the user.
+    pub station_filter_manual: bool,
     /// Station index/discovery request is pending.
     pub stations_loading: bool,
     stations_checked: f64,
@@ -183,6 +183,12 @@ pub struct Interface {
     pub last_action: String,
     /// Prevent duplicate automatic replies while the command is in flight.
     pub auto_reply_pending: bool,
+    /// Copilot transmission is queued; its decision waits until playback finishes.
+    pub copilot_reply_prepared: bool,
+    /// Prepared transmission that must reach the local audio queue before commit.
+    pub copilot_prepared_sequence: u32,
+    /// Last controller instruction submitted for an automatic readback.
+    pub last_copilot_reply_sequence: u32,
     /// Push-to-talk armed.
     pub ptt_armed: bool,
     /// Push-to-talk role override.
@@ -228,6 +234,8 @@ pub struct Interface {
     pub transcript_fraction: f32,
     /// Frequency picked on the radio page, if any.
     pub requested_frequency_khz: Option<i32>,
+    /// Debug-only simulator reposition request.
+    pub requested_debug_jump: Option<String>,
     /// True when the plugin (not desktop) hosts the panel.
     pub simulator_host: bool,
     /// Background opacity when faded.
@@ -256,7 +264,7 @@ impl Interface {
             radio_notice: String::new(),
             station_filter: String::new(),
             crew_control_filter: String::new(),
-            station_filter_initialized: false,
+            station_filter_manual: false,
             stations_loading: false,
             stations_checked: 0.0,
             atis_checked: 0.0,
@@ -313,6 +321,9 @@ impl Interface {
             last_voice_check: 0.0,
             last_action: String::new(),
             auto_reply_pending: false,
+            copilot_reply_prepared: false,
+            copilot_prepared_sequence: 0,
+            last_copilot_reply_sequence: 0,
             ptt_armed: false,
             ptt_role: String::new(),
             record_start: 0.0,
@@ -335,6 +346,7 @@ impl Interface {
             compact: false,
             transcript_fraction: 0.57,
             requested_frequency_khz: None,
+            requested_debug_jump: None,
             simulator_host: false,
             background_opacity: 0.96,
             confirm_reset: false,
@@ -439,6 +451,15 @@ impl Interface {
             ..Default::default()
         };
         full.role.clone_from(&self.crew_role());
+        if full.role == "atc" {
+            let state = self.engine.state();
+            let nearby = openatc_core::stations::nearby(&self.nearby_stations, &state.telemetry);
+            if let Some(station) = openatc_core::stations::tuned(&nearby, state.telemetry.com1_khz)
+            {
+                full.text =
+                    format_typed_transmission(&station.name, &state.plan.callsign, &full.text);
+            }
+        }
         self.notice.clear();
         self.send(&full);
         self.message.clear();
@@ -696,6 +717,25 @@ impl Interface {
                 reply.error.clone_into(&mut self.notice);
             }
         }
+        if let Some(reply) = self.engine.take_reply("/request/copilot-prepare") {
+            self.copilot_reply_prepared = reply.success;
+            self.copilot_prepared_sequence = reply.data["state"]["transcript"]
+                .as_array()
+                .and_then(|entries| entries.last())
+                .and_then(|e| e["sequence"].as_u64())
+                .and_then(|s| u32::try_from(s).ok())
+                .unwrap_or(0);
+            if !reply.success {
+                self.auto_reply_pending = false;
+                self.notice = reply.error;
+            }
+        }
+        if let Some(reply) = self.engine.take_reply("/request/copilot-reply") {
+            self.auto_reply_pending = false;
+            if !reply.success {
+                self.notice = reply.error;
+            }
+        }
         if let Some(reply) = self.engine.take_reply("/request/auto-reply") {
             self.auto_reply_pending = false;
             if reply.success {
@@ -872,6 +912,34 @@ impl Interface {
         self.update_local_airport(&state);
         self.update_arrival(&state, now);
         self.update_speech(&state);
+        if self.settings.copilot_replies
+            && !self.auto_reply_pending
+            && !self.speech.busy()
+            && !self.speech.recording()
+            && self.speech_queue.is_empty()
+            && let Some(last) = state
+                .transcript
+                .iter()
+                .rev()
+                .find(|e| e.speaker == "ATC" && !e.background)
+            && last.sequence > self.last_copilot_reply_sequence
+            && openatc_core::readback::auto_reply(&state).is_some()
+        {
+            self.last_copilot_reply_sequence = last.sequence;
+            self.auto_reply_pending = true;
+            self.engine
+                .post("/request/copilot-prepare", serde_json::json!({}));
+        }
+        if self.copilot_reply_prepared
+            && self.last_speech_sequence >= self.copilot_prepared_sequence
+            && !self.speech.busy()
+            && !self.speech.recording()
+            && self.speech_queue.is_empty()
+        {
+            self.copilot_reply_prepared = false;
+            self.engine
+                .post("/request/copilot-reply", serde_json::json!({}));
+        }
         if self.settings_loaded && self.engine.connected() {
             let settings_json = serde_json::to_string(&self.settings).unwrap_or_default();
             if settings_json != self.pending_settings_json {
@@ -991,10 +1059,17 @@ impl Interface {
     }
 
     fn update_local_airport(&mut self, state: &State) {
-        if self.page != 2 {
+        if !matches!(self.page, 1 | 2 | 6) {
             return;
         }
-        let airport = if !self.current_airport.is_empty() {
+        let planned = if state.has_departed {
+            &state.plan.destination
+        } else {
+            &state.plan.departure
+        };
+        let airport = if state.telemetry.on_ground && !planned.is_empty() {
+            planned
+        } else if !self.current_airport.is_empty() {
             &self.current_airport
         } else if state.has_departed {
             &state.plan.destination
@@ -1264,8 +1339,10 @@ impl Interface {
     /// Drag area with the centered title.
     fn toolbar_drag(&mut self, ui: &imgui::Ui, scale: f32) {
         ui.same_line();
-        let right_buttons = if self.can_pop_out { 4.0 } else { 3.0 };
-        let drag_width = (ui.content_region_avail()[0] - right_buttons * 39.0 * scale).max(1.0);
+        let right_buttons = (if self.can_pop_out { 4.0 } else { 3.0 })
+            + if self.settings.dev_mode { 1.0 } else { 0.0 };
+        let drag_width =
+            (ui.content_region_avail()[0] - right_buttons * 39.0 * scale - 7.0 * scale).max(1.0);
         let position = ui.cursor_screen_pos();
         ui.invisible_button("##drag-window", [drag_width, 32.0 * scale]);
         if ui.is_item_active() && ui.is_mouse_dragging(imgui::MouseButton::Left) {
@@ -1288,6 +1365,23 @@ impl Interface {
     /// New flight, pin, compact and pop-out controls on the right.
     fn toolbar_right(&mut self, ui: &imgui::Ui, _scale: f32) {
         use widgets::{ToolbarIcon, icon_button};
+        if self.settings.dev_mode {
+            ui.same_line();
+            if icon_button(ui, "Debug flight jump", ToolbarIcon::FastForward, false) {
+                ui.open_popup("Debug flight jump");
+            }
+            ui.popup("Debug flight jump", || {
+                ui.text("Move aircraft for testing");
+                if ui.button("Next holding point") {
+                    self.requested_debug_jump = Some("hold".into());
+                    ui.close_current_popup();
+                }
+                if ui.button("Departure runway start") {
+                    self.requested_debug_jump = Some("runway".into());
+                    ui.close_current_popup();
+                }
+            });
+        }
         ui.same_line();
         {
             let _disabled = ui.begin_disabled(self.reset_pending);
@@ -1413,4 +1507,59 @@ pub fn now_seconds() -> f64 {
         .get_or_init(std::time::Instant::now)
         .elapsed()
         .as_secs_f64()
+}
+
+fn format_typed_transmission(station: &str, callsign: &str, message: &str) -> String {
+    let compact = |text: &str| {
+        text.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .flat_map(char::to_lowercase)
+            .collect::<String>()
+    };
+    let has_callsign = !callsign.is_empty() && compact(message).contains(&compact(callsign));
+    let has_station =
+        !station.is_empty() && message.to_lowercase().contains(&station.to_lowercase());
+    let id = match (has_station, has_callsign) {
+        (true, true) => return message.to_owned(),
+        (true, false) => "pilot_typed_callsign",
+        (false, true) => "pilot_typed_station",
+        _ => "pilot_typed_transmission",
+    };
+    openatc_core::dialogue::say(
+        id,
+        &[
+            ("station", station.into()),
+            ("callsign", callsign.into()),
+            ("message", message.into()),
+        ],
+    )
+}
+
+#[cfg(test)]
+mod typed_transmission_tests {
+    #[test]
+    fn addressing_is_added_once_to_typed_requests() {
+        let text = super::format_typed_transmission("Los Angeles Ground", "C-GTLT", "Request taxi");
+        assert!(
+            text.contains("Los Angeles Ground")
+                && text.contains("C-GTLT")
+                && text.contains("Request taxi")
+        );
+        assert_eq!(
+            super::format_typed_transmission("Los Angeles Ground", "C-GTLT", &text),
+            text
+        );
+        let own = super::format_typed_transmission(
+            "Los Angeles Ground",
+            "C-GTLT",
+            "C-GTLT, request taxi",
+        );
+        assert_eq!(own.matches("C-GTLT").count(), 1);
+        let station = super::format_typed_transmission(
+            "Los Angeles Ground",
+            "C-GTLT",
+            "Los Angeles Ground, request taxi",
+        );
+        assert_eq!(station.matches("Los Angeles Ground").count(), 1);
+    }
 }

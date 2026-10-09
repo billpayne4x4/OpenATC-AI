@@ -112,7 +112,7 @@ pub fn assign_controller(
         order.pool.to_vec()
     };
     let exclude = if candidates.len() > 1 {
-        4.min(candidates.len() - 1)
+        8.min(candidates.len() - 1)
     } else {
         0
     };
@@ -388,14 +388,19 @@ fn apply_readback(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome
         } else {
             PhaseCode::Taxi
         };
+        // A correct crossing readback activates monitoring without another radio call.
+        if !state.taxi_clearance.crossing_runway.is_empty() {
+            return RequestOutcome {
+                accepted: true,
+                message: String::new(),
+            };
+        }
         return reply(
             state,
             ctx,
             true,
             crate::dialogue::say(
-                if !state.taxi_clearance.crossing_runway.is_empty() {
-                    "crossing_readback_correct"
-                } else if state.taxi_clearance.runway_taxi {
+                if state.taxi_clearance.runway_taxi {
                     "runway_taxi_readback_correct"
                 } else {
                     "taxi_readback_correct_follow_the_approved_route"
@@ -719,7 +724,6 @@ fn apply_ground(state: &mut State, ctx: &RequestContext<'_>) -> Option<RequestOu
             || runway.is_empty()
             || !state.telemetry.on_ground
             || state.telemetry.paused
-            || state.telemetry.ground_speed_knots > 2.0
         {
             return Some(reply(
                 state,

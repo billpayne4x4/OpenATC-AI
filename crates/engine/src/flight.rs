@@ -477,6 +477,13 @@ pub fn takeoff_wording(
         .find(|e| e.speaker == "ATC")
     {
         entry.text.clone_from(&result.message);
+        entry.pilot_reply = say(
+            "pilot_takeoff_readback",
+            &[
+                ("runway", state.session.plan.runway.clone()),
+                ("callsign", state.session.plan.callsign.clone()),
+            ],
+        );
     }
 }
 

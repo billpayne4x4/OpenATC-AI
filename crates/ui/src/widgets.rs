@@ -52,6 +52,8 @@ pub enum ToolbarIcon {
     FlightPlan,
     /// Blank page with a plus: new flight.
     NewFile,
+    /// Two forward triangles: surface test jump.
+    FastForward,
     /// Hamburger: page menu.
     Menu,
     /// Pin: keep expanded.
@@ -125,6 +127,13 @@ fn draw_toolbar_glyph(
     match icon {
         ToolbarIcon::Messages => draw_symbol(draw, 0, center, color, 11.0 * scale),
         ToolbarIcon::FlightPlan => draw_symbol(draw, 1, center, color, 10.0 * scale),
+        ToolbarIcon::FastForward => {
+            for x in [-9.0, 1.0] {
+                draw.add_triangle(point(x, -8.0), point(x + 9.0, 0.0), point(x, 8.0), color)
+                    .filled(true)
+                    .build();
+            }
+        }
         ToolbarIcon::NewFile => {
             for (a, b) in [
                 ([-8.0, -11.0], [3.0, -11.0]),

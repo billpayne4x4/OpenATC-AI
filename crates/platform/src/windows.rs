@@ -3,7 +3,7 @@
 //! Autostart uses a per-user Scheduled Task (no admin prompt). The task XML
 //! below is imported once with `schtasks /create /tn OpenATCAI /xml file`.
 
-use super::{GpuBackend, models_dir};
+use super::GpuBackend;
 use std::path::PathBuf;
 
 /// `%LOCALAPPDATA%`, falling back to the profile directory.

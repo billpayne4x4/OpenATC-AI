@@ -24,7 +24,7 @@ workspace lints forbid `unsafe` except in crates that opt out explicitly
 (FFI crates will). Models download to `~/.local/share/openatc-ai/models`
 (`OPENATC_AI_MODELS` overrides); see `models.toml` for pins.
 
-Build: `cargo build` / `cargo test` from the repository root.
+Build: `cargo build` / `cargo test` from the repository root use the default core, engine, UI and plugin members. Optional desktop and AI services use explicit `-p` targets; `--workspace` includes every member and its native build requirements.
 
 Audio device selection uses miniaudio's native backend priorities: Linux can
 use PulseAudio (including PipeWire's PulseAudio compatibility server), with
@@ -130,7 +130,7 @@ ATC Auto Reply sits beside Replay ATC. It submits a complete pilot readback usin
 
 Taxi loading prefers published scenery ATC graphs. When absent, it derives an unnamed graph from solid/enhanced painted centerlines (apt.dat styles 1/7/51/57), samples Bezier curves and intersects connected lines. Pavement gaps, edge markings and hold barriers do not become ordinary taxi links. The UI identifies this fallback. Fallback stand connectors are limited to 35 metres of continuous pavement; hold-line buffers allow room ahead of the aircraft reference point.
 
-A holding point away from the departure threshold ends the ordinary taxi route and requires separate Tower backtrack clearance. Request runway backtrack becomes available while stopped at that route endpoint. At airports without a taxiway graph or holding point, Tower can issue runway taxi/backtrack to the assigned departure end over verified pavement and the selected runway centerline. Ground must hand the request to Tower; no specific airport is hardcoded. Backtrack clearance requires readback, grants no takeoff permission, and the arrows stop when the aircraft reaches the end. Other runway crossings, disconnected pavement and overlap with another runway are rejected. Simulator-reported runway occupancy and final-approach protection are implemented; traffic ownership and full separation remain future work.
+A holding point away from the departure threshold ends the ordinary taxi route and requires separate Tower backtrack clearance. Request runway backtrack becomes available while stopped at that route endpoint. At airports without a taxiway graph or holding point, Tower can issue runway taxi/backtrack to the assigned departure end over verified pavement and the selected runway centerline. Ground must hand the request to Tower; no specific airport is hardcoded. Backtrack clearance requires readback, grants no takeoff permission, and the arrows stop when the aircraft reaches the end. Backtrack routes reject other-runway crossings, disconnected pavement and overlap with another runway. Ordinary taxi routes stop before an intervening runway; a separate crossing clearance and readback authorise that crossing. Simulator-reported runway occupancy and final-approach protection are implemented; traffic ownership and full separation remain future work.
 
 Auto Reply resolves the current pending instruction in the engine, with separate IFR and taxi readback scopes. Taxi acknowledgments refer to taxi instructions. Ordinary holding-point routes do not say backtrack; runway backtrack wording is reserved for an explicitly authorized route along the runway. The Taxi page includes a saved simulator ground-arrow switch.
 
@@ -155,3 +155,9 @@ After `cargo build --locked --release -p openatc-ai -p openatc-stt`, run `python
 ## Starting another flight
 
 Use the page-with-plus New flight icon in the plugin header. It clears the active plan, conversation, clearances, taxi route, checklist progress and pending crew actions after confirmation. Settings and controller voices remain available. This reset uses the running engine; it does not unload the plugin or restart the AI server. Automated reset and late-response checks are covered by the radio and crew integration scripts. Live simulator reset and re-enable remain acceptance checks.
+
+## Native platform builds
+
+`.github/workflows/platform-builds.yml` builds both products on native GitHub runners, manually or on `v*` tags. Windows uses MSVC, the target supported by the X-Plane SDK bindings. Macs are built separately for Intel and Apple Silicon. The builds use CPU inference defaults; CUDA builds, signing, installers and universal Mac bundles are not covered.
+
+`vendor/xplane-sys` retains the upstream SDK bindings and licenses, with the macOS framework search directive corrected to `cargo:rustc-link-search=framework=...`. The Cargo patch keeps that fix reproducible rather than changing a developer's registry cache.

@@ -105,6 +105,8 @@ pub fn gather(refs: &Refs) -> openatc_core::state::Telemetry {
     let flag = |value: &Option<Box<dyn Fn() -> i32>>| value.as_ref().map_or(0, |read| read());
     openatc_core::state::Telemetry {
         traffic: refs.traffic.as_ref().map(|read| read()),
+        radio_busy: false,
+        radio_sequence_seen: None,
         latitude: number(&refs.latitude),
         longitude: number(&refs.longitude),
         altitude_feet: number(&refs.altitude) * 3.280_839_895,

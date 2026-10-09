@@ -64,6 +64,11 @@ pub(crate) fn interpret(text: &str) -> super::identify::Interpreted {
     // Callsign-bearing transmissions use the same deterministic workflow parser.
     for (phrase, intent) in [
         ("request landing clearance", "landing"),
+        ("vacated", "vacated"),
+        ("vacted", "vacated"),
+        ("runway vacated", "vacated"),
+        ("runway clear", "vacated"),
+        ("clear of runway", "vacated"),
         ("request runway crossing", "cross_runway"),
         ("request crossing", "cross_runway"),
         ("check in", "checkin"),

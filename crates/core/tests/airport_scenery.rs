@@ -314,6 +314,18 @@ fn installed_parallel_runway_route_names_actual_first_hold() {
     };
     let cross = openatc_core::airport::calculate_crossing_route(&airport, &holding, "25R").unwrap();
     println!("cross={:?}", cross.points);
+    let reported = Telemetry {
+        latitude: 33.938285,
+        longitude: -118.383085,
+        ground_speed_knots: 8.0,
+        ..holding.clone()
+    };
+    assert!(openatc_core::airport::crossing_vacated(
+        &airport, &cross, &reported
+    ));
+    let reported_route = calculate_taxi_route(&airport, &reported, "25L", false, 'C').unwrap();
+    assert_eq!(reported_route.hold_short_runway, "25L");
+
     let end = cross.points.last().unwrap();
     let clear = Telemetry {
         latitude: airport.reference_latitude + end.north / 111320.0,
@@ -323,4 +335,110 @@ fn installed_parallel_runway_route_names_actual_first_hold() {
     };
     let onward = calculate_taxi_route(&airport, &clear, "25L", false, 'C').unwrap();
     assert_eq!(onward.hold_short_runway, "25L");
+}
+
+#[test]
+fn painted_hold_line_before_graph_endpoint_counts_as_arrival() {
+    use openatc_core::airport::{Airport, taxi_hold_reached};
+    use openatc_core::state::Point;
+    use openatc_core::state::TaxiClearance;
+    let airport = Airport {
+        taxi_hold_lines: vec![[
+            Point {
+                east: -20.0,
+                north: 0.0,
+                ..Default::default()
+            },
+            Point {
+                east: 20.0,
+                north: 0.0,
+                ..Default::default()
+            },
+        ]],
+        ..Default::default()
+    };
+    let route = TaxiClearance {
+        points: vec![Point {
+            east: 0.0,
+            north: -80.0,
+            ..Default::default()
+        }],
+        hold_short_runway: "09".into(),
+        ..Default::default()
+    };
+    let mut telemetry = Telemetry {
+        position_valid: true,
+        on_ground: true,
+        ..Default::default()
+    };
+    assert!(taxi_hold_reached(&airport, &route, &telemetry));
+    telemetry.ground_speed_knots = 8.0;
+    assert!(taxi_hold_reached(&airport, &route, &telemetry));
+    telemetry.ground_speed_knots = 0.0;
+    telemetry.longitude = 0.003;
+    assert!(!taxi_hold_reached(&airport, &route, &telemetry));
+}
+
+#[test]
+fn surface_readback_precedes_position_monitoring() {
+    use openatc_core::state::{SurfaceStage, TaxiClearance};
+    let mut route = TaxiClearance::default();
+    assert_eq!(route.stage(), SurfaceStage::Idle);
+    route.pending_readback = true;
+    route.guidance_complete = true;
+    assert_eq!(route.stage(), SurfaceStage::AwaitingReadback);
+    route.pending_readback = false;
+    route.approved = true;
+    route.guidance_complete = false;
+    assert_eq!(route.stage(), SurfaceStage::Taxiing);
+    route.crossing_runway = "09".into();
+    assert_eq!(route.stage(), SurfaceStage::Crossing);
+    route.guidance_complete = true;
+    assert_eq!(route.stage(), SurfaceStage::CrossingComplete);
+    route.crossing_runway.clear();
+    assert_eq!(route.stage(), SurfaceStage::AtHold);
+}
+
+#[test]
+fn holding_circle_stays_on_the_approach_side_in_both_directions() {
+    use openatc_core::airport::{Airport, HOLDING_MARKER_RADIUS_METRES, holding_marker_position};
+    use openatc_core::state::Point;
+    let point = |east, north| Point {
+        east,
+        north,
+        ..Default::default()
+    };
+    let airport = Airport {
+        taxi_hold_lines: vec![[point(-100.0, 0.0), point(100.0, 0.0)]],
+        ..Default::default()
+    };
+    for start in [point(0.0, -60.0), point(0.0, 60.0), point(-60.0, -60.0)] {
+        let marker = holding_marker_position(&airport, &[start, point(0.0, 0.0)]).unwrap();
+        assert!(marker.north * start.north > 0.0);
+        assert!(marker.north.abs() - HOLDING_MARKER_RADIUS_METRES >= 3.99);
+    }
+}
+
+#[test]
+#[ignore = "requires installed X-Plane scenery"]
+fn installed_klax_identifies_reported_aircraft_positions() {
+    let root = std::env::var("OPENATC_SIM_ROOT").expect("OPENATC_SIM_ROOT");
+    let airport =
+        load_airport_from_simulator(&root, "KLAX", &|p| std::path::Path::new(p).exists(), &|p| {
+            std::fs::read_to_string(p).map_err(|e| e.to_string())
+        })
+        .unwrap();
+    for (latitude, longitude) in [(33.940528, -118.383405), (33.938282, -118.383087)] {
+        let telemetry = Telemetry {
+            latitude,
+            longitude,
+            position_valid: true,
+            on_ground: true,
+            ..Default::default()
+        };
+        assert!(
+            openatc_core::airport::contains_aircraft(&airport, &telemetry),
+            "KLAX did not recognize {latitude}, {longitude}"
+        );
+    }
 }

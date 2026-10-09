@@ -168,6 +168,58 @@ pub fn parse(profile: &CrewProfile, role: &str, text: &str) -> Option<(String, f
     }
     validate(profile, role, id, value).then(|| ((*id).clone(), value))
 }
+/// Parse explicit control clauses, inheriting an action verb across conjunctions.
+pub fn parse_many(profile: &CrewProfile, role: &str, text: &str) -> Option<Vec<(String, f64)>> {
+    let mut lower = text.to_lowercase();
+    if role == "cabin" {
+        lower = lower
+            .replace(" and crosscheck", "")
+            .replace(" and cross check", "");
+    }
+    if ["don't", "do not", "never", "not "]
+        .iter()
+        .any(|word| lower.contains(word))
+    {
+        return None;
+    }
+    let split = regex::Regex::new(r"\s+(?:and|then)\s+|;").ok()?;
+    let clauses = split.split(&lower).collect::<Vec<_>>();
+    if clauses.len() > 8 {
+        return None;
+    }
+    let verbs = [
+        "remove",
+        "disconnect",
+        "connect",
+        "add",
+        "set",
+        "turn",
+        "arm",
+        "disarm",
+        "engage",
+        "disengage",
+        "lower",
+        "raise",
+    ];
+    let inherited = lower
+        .split_whitespace()
+        .find(|word| verbs.contains(word))
+        .unwrap_or("");
+    let mut actions = Vec::new();
+    for clause in clauses {
+        let parsed = parse(profile, role, clause).or_else(|| {
+            (!inherited.is_empty())
+                .then(|| parse(profile, role, &format!("{inherited} {clause}")))
+                .flatten()
+        })?;
+        if actions.iter().any(|(id, _)| id == &parsed.0) {
+            return None;
+        }
+        actions.push(parsed);
+    }
+    (!actions.is_empty()).then_some(actions)
+}
+
 /// Validate a finite target against the aircraft control and crew role.
 #[must_use]
 pub fn validate(profile: &CrewProfile, role: &str, id: &str, value: f64) -> bool {

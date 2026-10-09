@@ -1,3 +1,23 @@
+Debug surface jumps and addressed controller calls: target tests verify taxi permission and ground-state gating, heading and safe hold position. Radio integration checks no handoff while stopped with takeoff clearance, addressed controller messages and no backwards Delivery redirect for repeated clearance requests. SDK repositioning in ToLiss has not been exercised live.
+
+Airport-filter and circle-rendering revision: default workspace tests, the UI pavement-containment regression, release build and radio integration pass. The regression checks KLAX surface geometry overrides 57CA reference-point selection and does not override it away from that pavement. Circle geometry is now two triangles with one shared alpha texture. Simulator appearance still requires a live check.
+
+Holding-marker approach-side revision: tests cover both approach directions and an oblique approach, requiring the disc edge to remain at least four metres before the line. Default tests, release build and radio integration pass. The marker is now 30 metres across and uses the shared computed position on map and ground. Live scenery alignment remains user acceptance.
+
+Successful crossing-readback regression: accepted readback produces no ATC transmission, enables the crossing, and far-side completion issues onward taxi. Default tests, release build, speech validation and radio integration pass.
+
+# Holding-point marker — 9 October 2026
+
+Default workspace tests, settings/plugin tests and release radio integration pass. The marker-placement test checks that it uses the route limit and approach direction; the setting defaults off. Clippy checks pass with existing advisory warnings. Ground terrain placement retains slope/footprint checks. Your local setting is enabled. The marker has not yet been visually exercised in X-Plane; live appearance and aircraft alignment remain simulator acceptance checks.
+
+# Vacated reports and final holding-point handoff — 9 October 2026
+
+Core/engine/UI tests and release radio integration pass. The radio sequence verifies “VACTED” produces the onward taxi instruction without “readback correct”, then its readback activates monitoring and stopping at the departure hold produces the Tower frequency. Core tests cover holding lines offset from graph endpoints and the surface lifecycle with readback preceding monitoring. Installed KLAX scenery regression also passes. Live simulator map colours, holding-line detection and physical taxi remain user acceptance checks.
+
+# Controller voices and crossing completion — 9 October 2026
+
+Core, engine and UI tests pass. Radio integration verifies distinct English Delivery/Ground voices, reuse of the saved Ground voice after a full engine restart, crossing completion while moving and onward taxi requiring readback. The installed KLAX regression checks the reported position clear of 25R and routes onward to the 25L hold. Physical simulator playback and taxi behaviour remain user acceptance checks.
+
 # New flight and runway crossings — 8 October 2026
 
 The release engine and plugin build passed. Rust core, engine and UI tests passed, including a delayed HTTP snapshot check that prevents an old flight from returning after reset. Clippy completed with the existing vendor and pedantic warnings; it was not warning-free.
@@ -150,3 +170,17 @@ Offline GeoNames tests cover the reported VLVT location, airborne/ground wording
 Phrase variation checks cover independent runtime-template rotation, saved-history reload, different IFR clearance wording across flight resets, strict mode avoiding wording-model calls, and role/task/previous-wording context in variety prompts. Unsafe model clearances still fall back to checked TOML text.
 
 Simulator follow-up checks produce ten distinct IFR clearance transmissions for identical plans across resets, map the chalks alias to the chocks action, reject compound partial actions, and exercise Ground-to-Tower/traffic-hold/clear-runway flow with ownship 35 m from the taxi endpoint. Native ToLiss control behavior and the revised panel edge still require simulator acceptance. The earlier missed KLAX trigger could not be replayed exactly because no live taxi-state snapshot remained after simulator exit.
+
+Holding-marker size revision: plugin tests and release build pass. The translucent disc is 24 metres across, with terrain checks expanded accordingly. Live cockpit visibility remains to be checked; installed after X-Plane closed; cockpit appearance remains unverified.
+
+Copilot radio replies now originate in the simulator after its speech queue drains, rather than being applied inside the engine request handler. The same endpoint handles onward taxi instructions and takeoff acknowledgements. Automatic tuning and cockpit actions wait for playback and pending copilot replies. Final holding-point telemetry does not invent a pilot ready report; holding recognition no longer requires zero taxi speed. Channels also loads local airport geometry (page 6) to identify the occupied airport. Regression checks cover deferred readback, takeoff acknowledgement, moving holding detection and installed KLAX positions; live ToLiss audio timing still needs simulator testing.
+
+Radio turn-taking uses a two-step copilot exchange: record and play the readback, then apply it after playback finishes. Telemetry marks the radio busy during playback, recording or pending crew replies, delaying automatic surface and airborne calls. A previously reported ready aircraft can receive takeoff clearance after blocking traffic clears. Crossing eligibility follows holding-point detection without a conflicting stopped-aircraft gate. Unknown runway status produces an explained standby instruction and retries when confirmation becomes available. The debug header uses a vector fast-forward icon with the same dimensions as other controls. Unit and engine regressions cover prepared readbacks, occupied-radio suppression, moving hold recognition and traffic-clearance retry; embedded simulator layout and live audio need user verification.
+
+Typed ATC requests add missing controller and callsign addressing. Spoken transmissions retain the words recognized by speech-to-text. AI intent recovery tolerates clear request-word typos and recognition errors; operational values and readback checks remain authoritative. Crew requests can contain up to eight explicit actions, such as “remove chocks and external power.” Clauses inherit the action verb where appropriate. All targets are validated against the aircraft profile before the batch becomes visible to the simulator; each action needs confirmation, and failure cancels the remaining actions. Duplicate controls and unsupported clauses are rejected. The LLM can return a bounded actions array using mapped control IDs, never raw simulator refs. Settings → Voices → Pilot (own transmissions) → Speak my transmitted requests enables synthesized playback of the pilot requests. It is off by default. Engine regression tests use mocked model responses and simulator acknowledgements; live control effects remain a simulator check.
+
+## Platform build validation
+
+On 2026-10-09, Linux cross-target checks passed for `openatc-core`, `openatc-settings`, `openatc-platform` and `openatc-http` on `x86_64-pc-windows-msvc`, `x86_64-apple-darwin` and `aarch64-apple-darwin`. An unused Windows import was removed. These checks compile the Rust code; they do not run Windows or macOS tests.
+
+Full plugin/engine and AI cross-target attempts encounter missing native tools on this Linux machine. Windows requires MSVC tools such as `lib.exe`; Apple targets require a compatible compiler and macOS SDK. The native GitHub matrix is the next validation gate and has not been executed from this checkout. Run it manually after uploading the workflow, then download the artifacts and test inside X-Plane. Native build success does not validate microphone devices, rendering, aircraft controls, signing or model execution.

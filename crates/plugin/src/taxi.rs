@@ -8,15 +8,16 @@ use std::{
 };
 use xplane_sys as xp;
 
-pub struct GroundArrows {
+pub struct GroundGuidance {
     object: xp::XPLMObjectRef,
     probe: xp::XPLMProbeRef,
     instances: Vec<xp::XPLMInstanceRef>,
     last_update: Instant,
     load_attempted: bool,
     last_sequence: u32,
+    holding_marker: bool,
 }
-impl GroundArrows {
+impl GroundGuidance {
     pub fn new() -> Self {
         Self {
             object: ptr::null_mut(),
@@ -27,7 +28,13 @@ impl GroundArrows {
                 .unwrap_or_else(Instant::now),
             load_attempted: false,
             last_sequence: 0,
+            holding_marker: false,
         }
+    }
+    pub fn new_holding_marker() -> Self {
+        let mut marker = Self::new();
+        marker.holding_marker = true;
+        marker
     }
     pub fn clear(&mut self) {
         for instance in self.instances.drain(..) {
@@ -40,7 +47,15 @@ impl GroundArrows {
         let route = &state.taxi_clearance;
         if !enabled
             || !route.approved
-            || route.guidance_complete
+            || (!self.holding_marker && route.guidance_complete)
+            || (self.holding_marker
+                && (!route.crossing_runway.is_empty()
+                    || route.hold_short_runway.is_empty()
+                    || !matches!(
+                        state.phase,
+                        openatc_core::state::PhaseCode::Taxi
+                            | openatc_core::state::PhaseCode::TaxiIn
+                    )))
             || !state.telemetry.on_ground
             || !state.telemetry.position_valid
             || route.points.len() < 2
@@ -62,7 +77,13 @@ impl GroundArrows {
                 let path = std::path::Path::new(&file)
                     .parent()
                     .and_then(std::path::Path::parent)
-                    .map(|p| p.join("assets/taxi-arrow/arrow.obj"));
+                    .map(|p| {
+                        p.join(if self.holding_marker {
+                            "assets/taxi-arrow/holding.obj"
+                        } else {
+                            "assets/taxi-arrow/arrow.obj"
+                        })
+                    });
                 if let Some(path) =
                     path.and_then(|p| CString::new(p.to_string_lossy().as_bytes()).ok())
                 {
@@ -72,7 +93,11 @@ impl GroundArrows {
                 }
             }
             if self.object.is_null() {
-                crate::debug_log("OpenATC: failed to load taxi arrow asset\n");
+                crate::debug_log(if self.holding_marker {
+                    "OpenATC: failed to load holding marker asset\n"
+                } else {
+                    "OpenATC: failed to load taxi arrow asset\n"
+                });
             }
         }
         if self.object.is_null() {
@@ -93,7 +118,12 @@ impl GroundArrows {
             north: (state.telemetry.latitude - route.reference_latitude) * 111_320.0,
             height: 0.0,
         };
-        for (point, heading) in samples(&route.points, &ownship) {
+        let positions = if self.holding_marker {
+            holding_sample(state, &ownship).into_iter().collect()
+        } else {
+            samples(&route.points, &ownship)
+        };
+        for (point, heading) in positions {
             let Some(position) = self.position(state, &point, heading) else {
                 continue;
             };
@@ -125,9 +155,18 @@ impl GroundArrows {
         }
         let (x, y, z) = (x as f32, y as f32, z as f32);
         let hit = self.hit(x, y + 1000.0, z)?;
-        terrain_pose(x, z, heading, &hit, |px, pz| {
-            self.hit(px, y + 1000.0, pz).map(|h| h.locationY)
-        })
+        terrain_pose_with_footprint(
+            x,
+            z,
+            heading,
+            &hit,
+            if self.holding_marker {
+                (15.0, 15.0)
+            } else {
+                (1.6, 3.0)
+            },
+            |px, pz| self.hit(px, y + 1000.0, pz).map(|h| h.locationY),
+        )
     }
     fn hit(&self, x: f32, y: f32, z: f32) -> Option<xp::XPLMProbeInfo_t> {
         let mut info: xp::XPLMProbeInfo_t = unsafe { std::mem::zeroed() };
@@ -140,7 +179,7 @@ impl GroundArrows {
         .then_some(info)
     }
 }
-impl Drop for GroundArrows {
+impl Drop for GroundGuidance {
     fn drop(&mut self) {
         self.clear();
         unsafe {
@@ -155,11 +194,23 @@ impl Drop for GroundArrows {
 }
 
 /// Tilt to the terrain normal and lift clear of the sampled arrow footprint.
+#[cfg(test)]
 fn terrain_pose(
     x: f32,
     z: f32,
     heading: f64,
     hit: &xp::XPLMProbeInfo_t,
+    terrain: impl FnMut(f32, f32) -> Option<f32>,
+) -> Option<xp::XPLMDrawInfo_t> {
+    terrain_pose_with_footprint(x, z, heading, hit, (1.6, 3.0), terrain)
+}
+
+fn terrain_pose_with_footprint(
+    x: f32,
+    z: f32,
+    heading: f64,
+    hit: &xp::XPLMProbeInfo_t,
+    footprint: (f32, f32),
     mut terrain: impl FnMut(f32, f32) -> Option<f32>,
 ) -> Option<xp::XPLMDrawInfo_t> {
     if hit.normalY < 0.85
@@ -177,11 +228,11 @@ fn terrain_pose(
     let mut valid = true;
     // Probe the footprint too: a normal alone cannot detect a crest/curb.
     for (side, ahead) in [
-        (-1.6, 0.0),
-        (1.6, 0.0),
-        (-0.55, 3.0),
-        (0.55, 3.0),
-        (0.0, -3.0),
+        (-footprint.0, 0.0),
+        (footprint.0, 0.0),
+        (-footprint.0, footprint.1),
+        (footprint.0, footprint.1),
+        (0.0, -footprint.1),
     ] {
         let dx = right[0] * side + forward[0] * ahead;
         let dz = right[1] * side + forward[1] * ahead;
@@ -204,6 +255,34 @@ fn terrain_pose(
         heading: heading as f32,
         roll: -slope(right[0], right[1]).atan().to_degrees(),
     })
+}
+
+/// Draw the same route limit used by the controller, oriented across the approach.
+fn holding_sample(state: &State, ownship: &Point) -> Option<(Point, f64)> {
+    let route = &state.taxi_clearance;
+    let end = *route.points.last()?;
+    let before = route
+        .points
+        .iter()
+        .rev()
+        .skip(1)
+        .find(|p| (p.east - end.east).hypot(p.north - end.north) > 0.5)?;
+    if (end.east - ownship.east).hypot(end.north - ownship.north) > 1200.0 {
+        return None;
+    }
+    Some((
+        route.holding_marker_point.unwrap_or_else(|| {
+            openatc_core::airport::holding_marker_position(
+                &openatc_core::airport::Airport::default(),
+                &route.points,
+            )
+            .unwrap_or(end)
+        }),
+        (end.east - before.east)
+            .atan2(end.north - before.north)
+            .to_degrees()
+            .rem_euclid(360.0),
+    ))
 }
 
 /// Even spacing across corners; discard consumed route, distant sections and the stop limit.
@@ -312,6 +391,15 @@ mod tests {
             velocityZ: 0.0,
             is_wet: 0,
         }
+    }
+    #[test]
+    fn holding_marker_uses_the_route_limit_and_approach_heading() {
+        let mut state = State::default();
+        state.taxi_clearance.points = vec![p(0.0, 0.0), p(0.0, 100.0)];
+        let (point, heading) = holding_sample(&state, &p(0.0, 80.0)).unwrap();
+        assert_eq!(point, p(0.0, 81.0));
+        assert_eq!(heading, 0.0);
+        assert!(holding_sample(&state, &p(2000.0, 0.0)).is_none());
     }
     #[test]
     fn terrain_placement_tilts_and_clears_small_crests() {

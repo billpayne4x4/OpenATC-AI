@@ -4807,8 +4807,6 @@ dependencies = [
 [[package]]
 name = "xplane-sys"
 version = "4.0.109"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6308612ea83430a9d638cf132cc9a188870c048ecaa3328d3c5e460ccb7bce0"
 dependencies = [
  "bindgen 0.69.5",
  "bitfield",

@@ -1,0 +1,13 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: x-plane-sdk
+Upstream-Contact: Julia DeMille <me@jdemille.com>
+Source: https://git.sr.ht/~jdemille/x-plane-sdk
+
+Files: xp-wrappers/include/* xp-wrappers/src/*.cpp xplm/Frameworks/* xplm/include/*
+       xplm/lib/* xpwidgets/Frameworks/* xpwidgets/include/* xpwidgets/lib/*
+Copyright: 2022 Laminar Research, Sandy Barbour, Ben Supnik
+License: LicenseRef-BSD-X-Plane
+
+Files: xp-wrappers/include/XPLMPlatform.h
+Copyright: 2024 Julia DeMille <me@jdemille.com>
+License: MIT

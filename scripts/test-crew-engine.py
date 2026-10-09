@@ -46,7 +46,14 @@ with tempfile.TemporaryDirectory(prefix='openatc-crew-') as temporary:
         action('ground','add chocks','chocks',1)
         action('ground','remove chocks','chocks',0)
         action('ground','Remove chalks.','chocks',0)
-        compound=request('ground','disconnect external power and shocks');assert not compound['state']['crewActions'] and not compound['result']['accepted'],compound
+        compound=request('ground','remove chocks and external power')
+        tasks=compound['state']['crewActions'];assert len(tasks)==2 and all(t['value']==0 for t in tasks),compound
+        assert {t['control'] for t in tasks}=={'chocks','external_power'},tasks
+        for index,task in enumerate(tasks):
+            completed=call('crew/ack',{'sequence':task['sequence'],'aircraft':task['aircraft'],'success':True,'detail':'test confirmed'})
+            assert len(completed['state']['crewActions'])==1-index,completed
+        denied=request('ground','remove chocks and connect imaginary thing')
+        assert not denied['state']['crewActions'] and not denied['result']['accepted'],denied
         action('cabin','cabin brightness 50 percent','cabin_brightness',50)
         armed=action('cabin','arm slides and crosscheck','slides',1)
         assert 'armed and cross-checked' in armed['state']['transcript'][-1]['text'].lower(),armed
@@ -98,6 +105,12 @@ with tempfile.TemporaryDirectory(prefix='openatc-crew-') as temporary:
         call('settings',settings)
         action('copilot','please choose heading two seven five','heading',275)
         assert model_calls and 'Pilot wording examples' in model_calls[-1]['messages'][0]['content']
+        model_answer.clear();model_answer.update({'actions':[{'control':'chocks','value':0},{'control':'external_power','value':0}]})
+        typo=request('ground','remuve choks and exernal pwer')
+        tasks=typo['state']['crewActions'];assert len(tasks)==2,typo
+        failed=call('crew/ack',{'sequence':tasks[0]['sequence'],'aircraft':tasks[0]['aircraft'],'success':False,'detail':'test failure'})
+        assert not failed['state']['crewActions'], 'Failed action must cancel the remaining batch'
+
         for proposed in [{'control':'heading','value':999},{'control':'slides','value':1},{'control':'sim/custom/anything','value':1}]:
             model_answer.clear();model_answer.update(proposed)
             denied=request('copilot','please choose heading two seven five');assert not denied['result']['accepted'] and not denied['state']['crewActions'],denied

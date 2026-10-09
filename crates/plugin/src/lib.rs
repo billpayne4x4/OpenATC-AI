@@ -5,6 +5,7 @@
 
 mod arrival;
 mod crew;
+mod debug_jump;
 mod geometry;
 mod panel;
 mod render;
@@ -42,7 +43,9 @@ struct Shared {
     logged_notice: String,
     logged_role: String,
     enabled: bool,
-    ground_arrows: taxi::GroundArrows,
+    ground_arrows: taxi::GroundGuidance,
+    holding_marker: taxi::GroundGuidance,
+    debug_cancel_pending: bool,
     arrival_sampler: arrival::TerrainSampler,
     weather_sampler: weather::Sampler,
 }
@@ -186,7 +189,11 @@ fn update_tune(shared: &Arc<Mutex<Shared>>) {
         (
             interface.engine.state(),
             interface.last_notice(),
-            settings.copilot_tunes || settings.auto_tune_handoff,
+            (settings.copilot_tunes || settings.auto_tune_handoff)
+                && !interface.speech.busy()
+                && !interface.speech.recording()
+                && interface.speech_queue.is_empty()
+                && !interface.auto_reply_pending,
             settings.dev_mode,
         )
     };
@@ -231,7 +238,11 @@ fn update_autopilot(shared: &Arc<Mutex<Shared>>) {
             return;
         };
         let settings = interface.engine.settings();
-        if !settings.copilot_flies_ap {
+        if !settings.copilot_flies_ap
+            || interface.speech.busy()
+            || !interface.speech_queue.is_empty()
+            || interface.auto_reply_pending
+        {
             return;
         }
         let Some(clearance) = locked
@@ -376,6 +387,7 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
     let mut locked = shared
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let debug_cancel_pending = locked.debug_cancel_pending;
     let Some(interface) = locked.interface.as_mut() else {
         return;
     };
@@ -399,6 +411,14 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         .requested_frequency_khz
         .take()
         .filter(|frequency| interface.radio_power && (118_000..=136_990).contains(frequency));
+    // Playback and recording occupy the radio until their queues drain.
+    if let Some(telemetry) = telemetry.as_mut() {
+        telemetry.radio_sequence_seen = Some(interface.last_speech_sequence);
+        telemetry.radio_busy = interface.speech.busy()
+            || interface.speech.recording()
+            || !interface.speech_queue.is_empty()
+            || interface.auto_reply_pending;
+    }
     // Send telemetry after processing the current UI requests.
     if let Some(telemetry) = &telemetry {
         interface.engine.post(
@@ -407,7 +427,37 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         );
     }
     let state = interface.engine.state();
+    if let Some(kind) = interface
+        .requested_debug_jump
+        .take()
+        .filter(|_| interface.settings.dev_mode)
+    {
+        let result = debug_jump::reposition(&kind, &state, &interface.airport);
+        let pending = result.is_ok();
+        if pending {
+            interface
+                .engine
+                .post("/debug/cancel-actions", serde_json::json!({}));
+        }
+        interface.notice = result.map_or_else(
+            |e| e,
+            |()| "Debug jump complete; parking brake set. ATC permissions remain unchanged.".into(),
+        );
+        locked.crew = crew::Runtime::default();
+        locked.debug_cancel_pending = pending;
+        return;
+    }
+    if debug_cancel_pending {
+        if let Some(reply) = interface.engine.take_reply("/debug/cancel-actions") {
+            if !reply.success {
+                interface.notice = reply.error;
+            }
+            locked.debug_cancel_pending = false;
+        }
+        return;
+    }
     let ground_enabled = interface.settings.show_ground_taxi_arrows;
+    let holding_enabled = interface.settings.show_holding_point;
     let arrival_target = openatc_core::arrival::target(
         &interface.arrival,
         &state.plan.arrival_runway,
@@ -442,6 +492,7 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         }
     }
     locked.ground_arrows.update(ground_enabled, &state);
+    locked.holding_marker.update(holding_enabled, &state);
     if let Some(frequency) = requested_frequency {
         if let Some(radio) = locked.com1.as_mut() {
             radio.set(frequency);
@@ -460,11 +511,13 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         .map_or(0, |i| i.flight_reset_generation);
     if generation != locked.last_reset_generation {
         locked.last_reset_generation = generation;
+        locked.debug_cancel_pending = false;
         locked.crew = crew::Runtime::default();
         locked.last_frequency_sequence = 0;
         locked.last_state_sequence = 0;
         locked.last_ap_seq = 0;
-        locked.ground_arrows = taxi::GroundArrows::new();
+        locked.ground_arrows = taxi::GroundGuidance::new();
+        locked.holding_marker = taxi::GroundGuidance::new_holding_marker();
         locked.arrival_sampler = arrival::TerrainSampler::new();
         locked.weather_sampler = weather::Sampler::default();
     }
@@ -482,7 +535,12 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         crew, interface, ..
     } = &mut *locked;
     if let Some(interface) = interface.as_ref() {
-        crew.tick(xpapi, &profile, &interface.engine);
+        if !interface.speech.busy()
+            && interface.speech_queue.is_empty()
+            && !interface.auto_reply_pending
+        {
+            crew.tick(xpapi, &profile, &interface.engine);
+        }
     }
 }
 
@@ -520,7 +578,9 @@ impl Plugin for OpenAtc {
             logged_notice: String::new(),
             logged_role: "init".to_owned(),
             enabled: false,
-            ground_arrows: taxi::GroundArrows::new(),
+            ground_arrows: taxi::GroundGuidance::new(),
+            holding_marker: taxi::GroundGuidance::new_holding_marker(),
+            debug_cancel_pending: false,
             arrival_sampler: arrival::TerrainSampler::new(),
             weather_sampler: weather::Sampler::default(),
         }));
@@ -650,7 +710,8 @@ impl Plugin for OpenAtc {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         shared.enabled = false;
-        shared.ground_arrows = taxi::GroundArrows::new();
+        shared.ground_arrows = taxi::GroundGuidance::new();
+        shared.holding_marker = taxi::GroundGuidance::new_holding_marker();
         shared.arrival_sampler = arrival::TerrainSampler::new();
         shared.weather_sampler = weather::Sampler::default();
         if let Some(window) = shared.window.as_ref() {

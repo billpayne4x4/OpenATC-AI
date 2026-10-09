@@ -231,7 +231,7 @@ pub fn update_flight_phase(state: &mut State, telemetry: &Telemetry) -> Result<(
             && telemetry.ground_speed_knots < 2.0
             && (here.east - end.east).hypot(here.north - end.north)
                 <= if state.taxi_clearance.crossing_runway.is_empty() {
-                    45.0
+                    crate::airport::HOLD_POINT_RADIUS_METRES
                 } else {
                     10.0
                 }
@@ -530,6 +530,83 @@ pub fn parse_voice_pool(pool: &str) -> Vec<String> {
         .filter(|token| !token.is_empty())
         .map(std::string::ToString::to_string)
         .collect()
+}
+
+/// English Kokoro voices and the supported provider aliases.
+#[must_use]
+pub fn english_voice(voice: &str) -> bool {
+    matches!(
+        voice,
+        "alloy"
+            | "echo"
+            | "fable"
+            | "onyx"
+            | "nova"
+            | "shimmer"
+            | "af_alloy"
+            | "af_aoede"
+            | "af_bella"
+            | "af_heart"
+            | "af_jessica"
+            | "af_kore"
+            | "af_nicole"
+            | "af_nova"
+            | "af_river"
+            | "af_sarah"
+            | "af_sky"
+            | "am_adam"
+            | "am_echo"
+            | "am_eric"
+            | "am_fenrir"
+            | "am_liam"
+            | "am_michael"
+            | "am_onyx"
+            | "am_puck"
+            | "am_santa"
+            | "bf_alice"
+            | "bf_emma"
+            | "bf_isabella"
+            | "bf_lily"
+            | "bm_daniel"
+            | "bm_fable"
+            | "bm_george"
+            | "bm_lewis"
+    )
+}
+
+/// Treat provider aliases and their Kokoro voices as the same speaker.
+#[must_use]
+pub fn voice_identity(voice: &str) -> &str {
+    match voice {
+        "alloy" => "af_alloy",
+        "echo" => "am_echo",
+        "fable" => "bm_fable",
+        "onyx" => "am_onyx",
+        "nova" => "af_nova",
+        "shimmer" => "af_sky",
+        _ => voice,
+    }
+}
+
+/// Empty or non-English pools use a varied English default.
+#[must_use]
+pub fn english_voice_pool(pool: &str) -> Vec<String> {
+    let mut voices = Vec::new();
+    for voice in parse_voice_pool(pool)
+        .into_iter()
+        .filter(|v| english_voice(v))
+    {
+        if !voices
+            .iter()
+            .any(|v: &String| voice_identity(v) == voice_identity(&voice))
+        {
+            voices.push(voice);
+        }
+    }
+    if voices.is_empty() {
+        voices = parse_voice_pool("alloy, echo, fable, onyx, nova, shimmer");
+    }
+    voices
 }
 
 /// Speech pacing preset.

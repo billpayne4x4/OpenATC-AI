@@ -72,6 +72,10 @@ pub struct Telemetry {
     pub on_ground: bool,
     /// Simulator paused.
     pub paused: bool,
+    /// Local radio playback, microphone or a pending crew radio exchange.
+    pub radio_busy: bool,
+    /// Latest transmission observed by the simulator audio queue.
+    pub radio_sequence_seen: Option<u32>,
     /// Feet per minute.
     pub vertical_speed_fpm: f64,
     /// Feet above ground.
@@ -99,6 +103,8 @@ impl Default for Telemetry {
             ground_track_degrees: None,
             on_ground: true,
             paused: false,
+            radio_busy: false,
+            radio_sequence_seen: None,
             vertical_speed_fpm: 0.0,
             height_agl_feet: 0.0,
             com1_khz: 0,
@@ -517,6 +523,8 @@ pub struct TaxiClearance {
     pub entry_runway: String,
     /// Channel already notified at this hold point; prevents repeated handoffs.
     pub holding_channel: i32,
+    /// Visual target on the approach side of the scenery holding line.
+    pub holding_marker_point: Option<Point>,
     /// Traffic or missing traffic data currently blocks departure.
     pub waiting_for_traffic: bool,
     /// Guidance ends at the authorized hold point; clearance remains recorded.
@@ -533,6 +541,42 @@ pub struct TaxiClearance {
     pub destination_point: Point,
     /// Destination is parking, not a runway.
     pub to_parking: bool,
+}
+
+/// Surface permission lifecycle, derived from the saved clearance fields.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SurfaceStage {
+    /// No permission to follow a route.
+    Idle,
+    /// Instructions issued; a correct readback is still needed.
+    AwaitingReadback,
+    /// Following an acknowledged taxi clearance.
+    Taxiing,
+    /// Crossing the one explicitly authorized runway.
+    Crossing,
+    /// At the authorized endpoint, waiting for the next instruction.
+    AtHold,
+    /// Fully clear of the crossed runway; onward taxi must be issued.
+    CrossingComplete,
+}
+
+impl TaxiClearance {
+    /// Readback always precedes movement monitoring, including after a crossing.
+    #[must_use]
+    pub fn stage(&self) -> SurfaceStage {
+        if self.pending_readback {
+            return SurfaceStage::AwaitingReadback;
+        }
+        if !self.approved {
+            return SurfaceStage::Idle;
+        }
+        match (self.crossing_runway.is_empty(), self.guidance_complete) {
+            (true, false) => SurfaceStage::Taxiing,
+            (false, false) => SurfaceStage::Crossing,
+            (true, true) => SurfaceStage::AtHold,
+            (false, true) => SurfaceStage::CrossingComplete,
+        }
+    }
 }
 
 /// Flight session state shared by the engine and UI.

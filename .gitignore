@@ -4,6 +4,7 @@
 /packages/
 /vendor/*
 !/vendor/xplane/
+!/vendor/xplane-sys/
 /.idea/
 /.vscode/
 *.swp

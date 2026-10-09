@@ -123,7 +123,7 @@ fn queue(s: &mut crate::EngineState, role: &str, id: &str, value: f64, response:
         || s.crew
             .observed_at
             .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(3))
-        || !s.session.crew_actions.is_empty()
+        || s.session.crew_actions.len() >= 8
     {
         return false;
     }
@@ -204,7 +204,7 @@ pub async fn acknowledge(AxumState(shared): AxumState<Shared>, Json(ack): Json<A
     else {
         return Json(json!({"accepted":false})).into_response();
     };
-    s.session.crew_actions.clear();
+    s.session.crew_actions.remove(0);
     let label = s
         .crew
         .profile
@@ -241,6 +241,7 @@ pub async fn acknowledge(AxumState(shared): AxumState<Shared>, Json(ack): Json<A
             return next_item(&mut s);
         }
     } else {
+        s.session.crew_actions.clear();
         s.crew.checklist = None;
         eprintln!("Crew action {} failed: {}", action.control, ack.detail);
         let text = say("crew_action_failed", &[("item", label)]);
@@ -264,6 +265,16 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
                 .any(|a| text.contains(a))
     }) || [
         "set ",
+        "remove ",
+        "disconnect ",
+        "connect ",
+        "add ",
+        "please ",
+        "can you ",
+        "could you ",
+        "remov",
+        "discon",
+        "conn",
         "lower ",
         "raise ",
         "engage ",
@@ -280,7 +291,20 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
         || text.contains("xcheck")
         || (role == "ground" && (text.contains("pushback") || text.contains("push back")))
         || s.crew.checklist.is_some() && role == "copilot";
-    if !recognized {
+    let ai_recovery = s.settings.ai_enabled
+        && !s.settings.ai_model.is_empty()
+        && ![
+            "how are",
+            "hello",
+            "hi",
+            "good morning",
+            "good evening",
+            "thanks",
+            "thank you",
+        ]
+        .iter()
+        .any(|prefix| text.starts_with(prefix));
+    if !recognized && !ai_recovery {
         return None;
     }
     if s.crew
@@ -289,21 +313,11 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     {
         return Some(reply(&mut s, role, "crew_controls_wait", &[], false));
     }
-    let matched_controls = profile
-        .controls
-        .iter()
-        .filter(|(id, c)| {
-            c.role == role
-                && !c.momentary
-                && openatc_core::dialogue::phrases(&format!("crew_request_{id}"))
-                    .iter()
-                    .any(|a| text.contains(a))
-        })
-        .count();
-    if matched_controls > 1 && text.contains(" and ") {
-        return Some(reply(&mut s, role, "crew_action_clarify", &[], false));
+    if !s.session.crew_actions.is_empty() {
+        return Some(reply(&mut s, role, "crew_actions_busy", &[], false));
     }
     let pilot = s.session.plan.callsign.clone();
+    let pilot_sequence = s.session.next_sequence;
     add_transmission(&mut s.session, &pilot, &request.text, &SpeechTag::default());
     if role == "ground" && (text.contains("pushback") || text.contains("push back")) {
         s.crew.pushback = openatc_core::crew::parse_pushback(&text);
@@ -487,7 +501,7 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     }
     let generation = s.session_generation;
     let aircraft = s.crew.aircraft.clone();
-    let parsed = openatc_core::crew::parse(&profile, role, &request.text);
+    let parsed = openatc_core::crew::parse_many(&profile, role, &request.text);
     drop(s);
     let parsed = if parsed.is_some() {
         parsed
@@ -527,7 +541,7 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
                     .join("\n")
             };
             let prompt = format!(
-                "Interpret a single explicit aircraft-control request. Return only JSON {{\"control\":\"id\",\"value\":number}}, or {{}} if unclear, a question, negated, or unsupported. Never perform extra actions. Use only these controls: {}. Pilot wording examples follow; their numbers are fictional and must never replace the current request. Interpret the current request only. Return JSON, never a spoken reply.\n{}",
+                "Interpret explicit aircraft-control requests, tolerating obvious spelling and speech-recognition mistakes. Return only JSON {{\"actions\":[{{\"control\":\"id\",\"value\":number}}]}}, or {{}} if any requested action is unclear, a question, negated, or unsupported. Include every explicitly requested action in order, at most eight. An action verb may apply to multiple named controls. Never invent targets, repair numeric values or perform extra actions. Use only these controls: {}. Pilot wording examples follow; their numbers are fictional and must never replace the current request. Interpret the current request only. Return JSON, never a spoken reply.\n{}",
                 json!(allowed),
                 pilot_examples
             );
@@ -543,12 +557,27 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
             .ok()
             .and_then(|v| serde_json::from_str::<Value>(&v).ok())
             .and_then(|v| {
-                Some((
-                    v.get("control")?.as_str()?.to_owned(),
-                    v.get("value")?.as_f64()?,
-                ))
+                let entries = v
+                    .get("actions")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_else(|| vec![v]);
+                if entries.is_empty() || entries.len() > 8 {
+                    return None;
+                }
+                let mut actions = Vec::new();
+                for item in entries {
+                    let id = item.get("control")?.as_str()?.to_owned();
+                    let value = item.get("value")?.as_f64()?;
+                    if !openatc_core::crew::validate(&profile, role, &id, value)
+                        || actions.iter().any(|(existing, _)| existing == &id)
+                    {
+                        return None;
+                    }
+                    actions.push((id, value));
+                }
+                Some(actions)
             })
-            .filter(|(id, value)| openatc_core::crew::validate(&profile, role, id, *value))
         } else {
             None
         }
@@ -566,36 +595,48 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     if s.crew.aircraft != aircraft {
         return Some(reply(&mut s, role, "crew_action_clarify", &[], false));
     }
-    if let Some((id, value)) = parsed {
-        let c = profile.controls.get(&id)?;
-        let state = if c.momentary {
-            say("crew_state_button", &[])
-        } else {
-            c.states
-                .iter()
-                .find(|(_, v)| (**v - value).abs() < 0.01)
-                .map(|(name, _)| say(&format!("crew_state_{name}"), &[]))
-                .unwrap_or_else(|| {
-                    if value == c.off {
-                        say("crew_state_off", &[])
-                    } else if value == c.on {
-                        say("crew_state_on", &[])
-                    } else {
-                        say("crew_state_value", &[("value", format!("{value:.0}"))])
-                    }
-                })
-        };
-        let ok = queue(&mut s, role, &id, value, state);
-        if ok {
-            return Some(Json(json!({"result":{"accepted":true,"pending":true},"state":snapshot(&s.session,&s.settings)})).into_response());
+    if let Some(actions) = parsed {
+        if !s.session.crew_actions.is_empty() {
+            return Some(reply(&mut s, role, "crew_actions_busy", &[], false));
         }
-        return Some(reply(
-            &mut s,
-            role,
-            "crew_action_unavailable",
-            &[("item", say(&format!("crew_control_{id}"), &[]))],
-            false,
-        ));
+        for (id, value) in actions {
+            let c = profile.controls.get(&id)?;
+            let state = if c.momentary {
+                say("crew_state_button", &[])
+            } else {
+                c.states
+                    .iter()
+                    .find(|(_, v)| (**v - value).abs() < 0.01)
+                    .map(|(name, _)| say(&format!("crew_state_{name}"), &[]))
+                    .unwrap_or_else(|| {
+                        if value == c.off {
+                            say("crew_state_off", &[])
+                        } else if value == c.on {
+                            say("crew_state_on", &[])
+                        } else {
+                            say("crew_state_value", &[("value", format!("{value:.0}"))])
+                        }
+                    })
+            };
+            let ok = queue(&mut s, role, &id, value, state);
+            if !ok {
+                s.session.crew_actions.clear();
+                return Some(reply(
+                    &mut s,
+                    role,
+                    "crew_action_unavailable",
+                    &[("item", say(&format!("crew_control_{id}"), &[]))],
+                    false,
+                ));
+            }
+        }
+        return Some(Json(json!({"result":{"accepted":true,"pending":true},"state":snapshot(&s.session,&s.settings)})).into_response());
+    }
+    if !recognized {
+        s.session
+            .transcript
+            .retain(|entry| entry.sequence != pilot_sequence);
+        return None;
     }
     Some(reply(&mut s, role, "crew_action_clarify", &[], false))
 }

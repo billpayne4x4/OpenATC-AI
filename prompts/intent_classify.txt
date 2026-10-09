@@ -5,3 +5,5 @@ Pilot: request altitude FL320. Answer: {"intent":"altitude","altitudeFeet":32000
 Pilot: thanks for the smooth flight. Answer: {"intent":"conversation","altitudeFeet":0,"waypoint":""}.
 
 Start-up alone is start. Pushback alone is pushback. Start-up and pushback, push and start, or both is start_pushback. These are distinct permissions, not completed aircraft actions.
+
+Recover obvious typos, missing words, homophones and speech-recognition errors when the intended request is clear. Examples: reqest clernce -> clearance; requst taxy -> taxi; vacted -> runway vacated; chek in -> checkin. Recognize checkin, cross_runway, vacated, readback and landing as well. Do not change callsigns, airport IDs, fix names, runway numbers, altitudes, headings or squawk values. Do not invent missing clearance readback values. Return conversation if operational values or the intended action remain ambiguous. Ignore an addressing prefix containing the controller name and pilot callsign when identifying the request.

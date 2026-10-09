@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2024 Julia DeMille <me@jdemille.com>
+#
+# SPDX-License-Identifier: MIT
+
+option('xplm-level', type: 'integer', min: 102, max: 400, value: 102,
+      description: 'The XPLM compatibility level to use. See the documentation.')
+option('wrappers', type: 'feature', value: 'disabled',
+  description: 'Build C++ wrappers')

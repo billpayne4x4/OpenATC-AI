@@ -1266,7 +1266,7 @@ say = ["Taxi to the holding point, hold short of runway {runway}, {callsign}.", 
 
 [holding_standby]
 slots = ["runway"]
-say = ["Hold short of runway {runway}, stand by.", "Hold short of runway {runway}. Await further instructions.", "Runway {runway}, hold short.", "Remain holding short of runway {runway}.", "Hold short of runway {runway}, crossing is not authorized.", "Hold position, remain short of runway {runway}."]
+say = ["Hold short of runway {runway}, stand by while I confirm the runway is clear.", "Remain short of runway {runway}. Stand by for confirmation the runway is clear.", "Hold position short of runway {runway}. I will call you when the runway is confirmed clear."]
 
 [holding_runway_occupied]
 slots = ["runway"]
@@ -1383,10 +1383,6 @@ say = ["Cross runway {runway}, report vacated.", "Runway {runway}, cleared to cr
 [pilot_crossing_readback]
 slots = ["runway", "callsign"]
 say = ["Cross runway {runway}, report vacated, {callsign}.", "Cleared to cross runway {runway}, will report clear, {callsign}.", "Cross runway {runway}, {callsign}, will report vacated.", "{callsign}, cross runway {runway}, report clear.", "Runway {runway}, cleared to cross, {callsign}.", "{callsign}, cleared to cross runway {runway}, will report vacated."]
-
-[crossing_readback_correct]
-slots = []
-say = ["Readback correct. Report vacated.", "Correct, report clear of the runway.", "Readback correct. Cross as cleared.", "Correct. Report when completely clear.", "Readback correct; hold short of all other runways.", "Correct, report vacated on the other side."]
 
 [readback_field_runway_crossing]
 slots = []
@@ -16117,3 +16113,31 @@ say = [
   "Contact {station}, {frequency}, when ready for start-up or pushback.",
   "When ready, contact {station}, {frequency}, for start-up or pushback.",
 ]
+
+[addressed_controller_transmission]
+slots = ["callsign", "message"]
+say = ["{callsign}, {message}"]
+
+[pilot_takeoff_readback]
+slots = ["runway", "callsign"]
+say = ["Runway {runway}, cleared for takeoff, {callsign}.", "Cleared for takeoff, runway {runway}, {callsign}."]
+
+[pilot_controller_checkin]
+slots = ["station", "callsign", "altitude"]
+say = ["{station}, {callsign}, {altitude}.", "{station}, {callsign}, checking in at {altitude}."]
+
+[crew_actions_busy]
+slots = []
+say = ["Stand by while I finish your previous request.", "One moment, your previous request is still in progress."]
+
+[pilot_typed_transmission]
+slots = ["station", "callsign", "message"]
+say = ["{station}, {callsign}, {message}"]
+
+[pilot_typed_station]
+slots = ["station", "message"]
+say = ["{station}, {message}"]
+
+[pilot_typed_callsign]
+slots = ["callsign", "message"]
+say = ["{callsign}, {message}"]
