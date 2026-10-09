@@ -1,5 +1,9 @@
 # Unreleased
 
+## Platform warning cleanup — 9 October 2026
+
+ZIP permission options now use a Unix-only shadowed value, removing the Windows unused-mut warning. The vendored SDK binding crate suppresses unnecessary-transmute warnings only on Windows; generated ABI conversions remain unchanged.
+
 ## Intel Mac build time — 9 October 2026
 
 Disabled ONNX Runtime unit-test compilation for the Intel Mac AI-server build. The shared runtime and its model support remain enabled.

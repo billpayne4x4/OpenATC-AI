@@ -349,13 +349,13 @@ pub(crate) fn package(label: &str) -> Result {
             .strip_prefix(&stage)?
             .to_string_lossy()
             .replace('\\', "/");
-        let mut options = zip::write::SimpleFileOptions::default()
+        let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
         #[cfg(unix)]
-        {
+        let options = {
             use std::os::unix::fs::PermissionsExt;
-            options = options.unix_permissions(fs::metadata(&file)?.permissions().mode());
-        }
+            options.unix_permissions(fs::metadata(&file)?.permissions().mode())
+        };
         zip.start_file(name, options)?;
         std::io::copy(&mut fs::File::open(file)?, &mut zip)?;
     }

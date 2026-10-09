@@ -5,6 +5,8 @@
 
 // Allow C-like conventions
 #![allow(non_upper_case_globals, non_camel_case_types, non_snake_case)]
+// Bindgen uses transmute for bitfields in Windows SDK structures.
+#![cfg_attr(windows, allow(unnecessary_transmutes))]
 
 use std::fmt::Debug;
 
