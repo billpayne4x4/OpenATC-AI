@@ -3,37 +3,85 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (for example 0.0.1-alpha.1); manual runs do not publish'
+        required: true
+        default: '0.0.1-alpha.1'
+      platform:
+        description: 'Platform to test'
+        type: choice
+        options: [all, linux-x64, windows-x64, macos-intel, macos-arm64]
+        default: all
+      product:
+        description: 'Product to test'
+        type: choice
+        options: [all, plugin, ai-server]
+        default: all
 permissions:
   contents: read
 jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.matrix.outputs.version }}
+    steps:
+      - id: matrix
+        env:
+          INPUT_PLATFORM: ${{ inputs.platform || 'all' }}
+          INPUT_PRODUCT: ${{ inputs.product || 'all' }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          if [ "$REF_TYPE" = tag ]; then version="${REF_NAME#v}"; fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || { echo 'Invalid version'; exit 1; }
+          matrix='[]'
+          for platform in linux-x64 windows-x64 macos-intel macos-arm64; do
+            [ "$INPUT_PLATFORM" = all ] || [ "$INPUT_PLATFORM" = "$platform" ] || continue
+            case "$platform" in
+              linux-x64) runner=ubuntu-22.04 ;;
+              windows-x64) runner=windows-2022 ;;
+              macos-intel) runner=macos-15-intel ;;
+              macos-arm64) runner=macos-15 ;;
+            esac
+            for product in plugin ai-server; do
+              [ "$INPUT_PRODUCT" = all ] || [ "$INPUT_PRODUCT" = "$product" ] || continue
+              matrix=$(jq -c --arg platform "$platform" --arg product "$product" --arg runner "$runner" '. + [{platform:$platform,product:$product,runner:$runner}]' <<< "$matrix")
+            done
+          done
+          [ "$matrix" != '[]' ] || { echo 'No build targets selected'; exit 1; }
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  checks:
+    uses: ./.github/workflows/build.yml
   native:
+    needs: [prepare, checks]
     name: ${{ matrix.platform }} / ${{ matrix.product }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux-x64, windows-x64, macos-intel, macos-arm64]
-        product: [plugin, ai-server]
-        include:
-          - platform: linux-x64
-            runner: ubuntu-24.04
-          - platform: windows-x64
-            runner: windows-2022
-          - platform: macos-intel
-            runner: macos-15-intel
-          - platform: macos-arm64
-            runner: macos-15
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.platform }}-${{ matrix.product }}
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
       - name: Install Linux build tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev cmake pkg-config libssl-dev
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev cmake pkg-config rpm dpkg-dev flatpak zenity
       - name: Configure Windows native tools
         if: runner.os == 'Windows'
         shell: pwsh
@@ -49,21 +97,33 @@ jobs:
         run: |
           echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
           echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
-      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
         if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server'
+        id: onnx-cache
+        with:
+          path: ${{ runner.temp }}/openatc-onnx
+          key: onnxruntime-1.28.0-macos15-intel-no-tests-v1
+      - uses: actions/checkout@v4
+        if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server' && steps.onnx-cache.outputs.cache-hit != 'true' 
         with:
           repository: microsoft/onnxruntime
           ref: v1.28.0
           path: build-deps/onnxruntime
           submodules: recursive
       - name: Build ONNX Runtime for Intel Mac
-        if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server'
+        if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server' && steps.onnx-cache.outputs.cache-hit != 'true'
         run: |
           cd build-deps/onnxruntime
           ./build.sh --config Release --build_shared_lib --parallel 3 --skip_tests --compile_no_warning_as_error --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF CMAKE_OSX_ARCHITECTURES=x86_64 CMAKE_INSTALL_RPATH=@loader_path
           runtime="$PWD/build/MacOS/Release"
           test -f "$runtime/libonnxruntime.dylib"
-          echo "ORT_LIB_PATH=$runtime" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/openatc-onnx"
+          cp -L "$runtime"/libonnxruntime*.dylib "$RUNNER_TEMP/openatc-onnx/"
+      - name: Configure Intel Mac ONNX library
+        if: matrix.platform == 'macos-intel' && matrix.product == 'ai-server'
+        run: |
+          test -f "$RUNNER_TEMP/openatc-onnx/libonnxruntime.dylib"
+          echo "ORT_LIB_PATH=$RUNNER_TEMP/openatc-onnx" >> "$GITHUB_ENV"
           echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
           echo 'RUSTFLAGS=-C link-arg=-Wl,-rpath,@loader_path' >> "$GITHUB_ENV"
       - name: Test shared code on Windows
@@ -103,6 +163,35 @@ jobs:
           cargo xtask test-radio target/release/open-atc-engine speech
           cargo xtask test-crew target/release/open-atc-engine speech
           cargo xtask test-speech target/release/open-atc-engine speech
+      - name: Build packaging tools
+        run: cargo build --locked --release -p xtask
+      - name: Install Windows installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.4.3 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install Linux packaging runtimes
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user --noninteractive flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
+          cargo xtask fetch-package-tools "$RUNNER_TEMP/package-tools"
+          echo "APPIMAGETOOL=$RUNNER_TEMP/package-tools/appimagetool" >> "$GITHUB_ENV"
+          echo "APPIMAGE_RUNTIME=$RUNNER_TEMP/package-tools/runtime-x86_64" >> "$GITHUB_ENV"
+      - name: Package Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo xtask release-package ${{ matrix.product }} ${{ matrix.platform }} "$env:RELEASE_VERSION"
+      - name: Package Linux and macOS releases
+        if: runner.os != 'Windows'
+        run: cargo xtask release-package ${{ matrix.product }} ${{ matrix.platform }} "$RELEASE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.platform }}-${{ matrix.product }}
+          path: packages/*
+          if-no-files-found: error
       - name: Collect Windows build outputs
         if: runner.os == 'Windows'
         shell: pwsh
@@ -115,3 +204,25 @@ jobs:
           name: native-${{ matrix.platform }}-${{ matrix.product }}
           path: build-artifacts/
           if-no-files-found: error
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: native
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          path: release
+          merge-multiple: true
+      - name: Publish versioned packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          args=(--verify-tag --generate-notes --title "OpenATC $RELEASE_TAG")
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release/* "${args[@]}"

@@ -174,6 +174,16 @@ pub fn tick(state: &mut EngineState) {
     );
     let tag = tag(state, &current);
     add_transmission(&mut state.session, "ATC", &text, &tag);
+    if let Some(entry) = state.session.transcript.last_mut() {
+        entry.pilot_reply = say(
+            "pilot_frequency_readback",
+            &[
+                ("station", next.name.clone()),
+                ("frequency", format!("{:.3}", f64::from(next.khz) / 1000.0)),
+                ("callsign", state.session.plan.callsign.clone()),
+            ],
+        );
+    }
 }
 
 fn respond(
@@ -448,17 +458,21 @@ pub fn takeoff_wording(
             )],
         )
     };
-    let expected = say(
-        "flight_expect_level",
-        &[(
-            "altitude",
-            openatc_core::altitude_text(
-                f64::from(plan.cruise_feet),
-                openatc_core::UnitSystem::Imperial,
-                true,
-            ),
-        )],
-    );
+    let expected = if plan.cruise_feet > altitude {
+        say(
+            "flight_expect_level",
+            &[(
+                "altitude",
+                openatc_core::altitude_text(
+                    f64::from(plan.cruise_feet),
+                    openatc_core::UnitSystem::Imperial,
+                    true,
+                ),
+            )],
+        )
+    } else {
+        String::new()
+    };
     result.message = say(
         "flight_takeoff",
         &[

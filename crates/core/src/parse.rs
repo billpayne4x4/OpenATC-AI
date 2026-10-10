@@ -71,6 +71,8 @@ pub(crate) fn interpret(text: &str) -> super::identify::Interpreted {
         ("clear of runway", "vacated"),
         ("request runway crossing", "cross_runway"),
         ("request crossing", "cross_runway"),
+        ("checking in", "checkin"),
+        ("check-in", "checkin"),
         ("check in", "checkin"),
         ("with you", "checkin"),
         ("request start-up and pushback", "start_pushback"),
@@ -135,4 +137,18 @@ pub(crate) fn interpret(text: &str) -> super::identify::Interpreted {
         }
     }
     request
+}
+
+#[cfg(test)]
+mod checkin_tests {
+    #[test]
+    fn accepts_natural_controller_checkins() {
+        for text in [
+            "SOCAL Approach, C-GTLT, checking in",
+            "SOCAL Approach, C-GTLT, with you",
+            "check-in",
+        ] {
+            assert_eq!(super::interpret(text).intent, "checkin");
+        }
+    }
 }

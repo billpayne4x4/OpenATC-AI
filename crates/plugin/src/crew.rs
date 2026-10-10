@@ -358,8 +358,9 @@ impl Runtime {
             }
             let ok = matches
                 && stable.get_or_insert_with(Instant::now).elapsed() >= Duration::from_millis(750);
-            if ok || time.elapsed() > Duration::from_secs(3) {
-                let ack = serde_json::json!({"sequence":action.sequence,"aircraft":action.aircraft,"success":ok,"detail":"Control readback after execution"});
+            let timeout = if action.control == "slides" { 10 } else { 3 };
+            if ok || time.elapsed() > Duration::from_secs(timeout) {
+                let ack = serde_json::json!({"sequence":action.sequence,"aircraft":action.aircraft,"success":ok,"detail":format!("Control readback after execution: {:?}", c.and_then(|c| values(ref_for(c), c.index)))});
                 client.post("/crew/ack", ack.clone());
                 self.ack = Some(ack);
                 self.last_ack = Some(Instant::now());

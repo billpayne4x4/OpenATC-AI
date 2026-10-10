@@ -192,6 +192,7 @@ fn shared_libraries(source: &Path, target: &Path) -> Result {
         let p = entry?.path();
         let name = p.file_name().unwrap().to_string_lossy();
         if p.is_file()
+            && !name.contains("openatc_plugin")
             && (name.ends_with(".dll") || name.ends_with(".dylib") || name.contains(".so"))
         {
             copy(&p, &target.join(p.file_name().unwrap()))?;

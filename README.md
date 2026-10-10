@@ -163,3 +163,11 @@ The Intel macOS AI-server job builds ONNX Runtime 1.28.0 from source because `or
 Build, install, package and integration-test commands now use `cargo xtask`; see [the command reference](xtask/README.md). The Python scripts and obsolete speech gateway were removed, along with `scripts/`. OpenATC users do not need Python. Intel Mac server CI still needs Python to compile ONNX Runtime using its upstream build script. A portable systemd user-unit example is in `packaging/systemd/openatc-ai.service`.
 
 The maintained SDK binding patch generates only XPLM/XP functions, excluding Windows CRT declarations from the SDK's `C-unwind` ABI. The plugin launches its Windows companion as a detached process and loads OpenGL from the host's native library; Windows extension symbols use `wglGetProcAddress`. Windows engine configuration and logs default to `%LOCALAPPDATA%/openatc`, with `OPENATC_CONFIG_DIR` available as an override.
+
+### Controller check-ins and copilot handoffs
+
+The check-in quick request is available on Delivery, Ground and Tower while on the ground, and on Tower, Departure, Approach and Center in flight. Ground calls use “with you”; departure calls include the current altitude and the cleared climb altitude when applicable. “Checking in”, “check-in” and “with you” are recognised as check-ins.
+
+With copilot replies and tuning enabled, the copilot acknowledges a handoff after ATC finishes speaking, the plugin changes COM1, and the copilot checks in after telemetry confirms the new frequency. The controller responds after the copilot transmission finishes. Takeoff speech does not repeat an expected altitude equal to the cleared initial altitude. Routine taxi instructions omit prompts to read back; required readbacks remain enforced.
+
+Cabin requests support “arm and cross-check” and an additional coffee request after a comma. Slide arming still requires simulator confirmation; it waits up to ten seconds for the indication to settle and logs the observed values on failure. An unconfirmed indication is never announced as armed.

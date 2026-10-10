@@ -255,8 +255,21 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     if !["copilot", "cabin", "ground"].contains(&role) {
         return None;
     }
-    let text = request.text.to_lowercase();
+    let mut text = request.text.to_lowercase();
+    let coffee = role == "cabin"
+        && text.contains("coffee")
+        && text
+            .split_once(',')
+            .is_some_and(|(control, _)| control.contains("arm") || control.contains("cross"));
+    if coffee {
+        text = text
+            .split_once(',')
+            .map_or(text.clone(), |(control, _)| control.to_owned());
+    }
     let mut s = shared.write().await;
+    if coffee {
+        speak(&mut s, role, &say("crew_coffee_requested", &[]));
+    }
     let profile = s.crew.profile.clone();
     let recognized = profile.controls.iter().any(|(id, c)| {
         c.role == role
@@ -501,7 +514,7 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     }
     let generation = s.session_generation;
     let aircraft = s.crew.aircraft.clone();
-    let parsed = openatc_core::crew::parse_many(&profile, role, &request.text);
+    let parsed = openatc_core::crew::parse_many(&profile, role, &text);
     drop(s);
     let parsed = if parsed.is_some() {
         parsed

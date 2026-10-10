@@ -228,7 +228,15 @@ pub fn serves(service: &str, intent: &str) -> bool {
         }
         "cross_runway" => service == "Ground" || service == "Tower",
         "ready" | "backtrack" | "landing" => service == "Tower",
-        "checkin" => ["Tower", "Approach", "Departure", "Center"].contains(&service),
+        "checkin" => [
+            "Clearance",
+            "Ground",
+            "Tower",
+            "Approach",
+            "Departure",
+            "Center",
+        ]
+        .contains(&service),
         "altitude" | "direct" | "descent" | "cancel_ifr" | "route" | "deviation" | "hold"
         | "speed" | "divert" => ["Approach", "Departure", "Center"].contains(&service),
         "approach" | "runway" => ["Approach", "Center"].contains(&service),

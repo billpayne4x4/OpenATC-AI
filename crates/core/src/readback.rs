@@ -385,3 +385,43 @@ mod tests {
         assert_eq!(taxi.intent, "conversation", "taxi is not a readback");
     }
 }
+
+/// Build a check-in from the aircraft's current altitude and active clearance.
+#[must_use]
+pub fn checkin_text(state: &State, station: &str) -> String {
+    let altitude = crate::altitude_text(
+        state.telemetry.altitude_feet,
+        crate::UnitSystem::Imperial,
+        true,
+    );
+    let target = state
+        .clearance
+        .as_ref()
+        .map_or(state.plan.initial_altitude_feet, |c| c.altitude_feet);
+    let climb = if !state.telemetry.on_ground
+        && f64::from(target) > state.telemetry.altitude_feet + 100.0
+    {
+        crate::dialogue::say(
+            "pilot_checkin_climbing",
+            &[(
+                "altitude",
+                crate::altitude_text(f64::from(target), crate::UnitSystem::Imperial, true),
+            )],
+        )
+    } else {
+        String::new()
+    };
+    crate::dialogue::say(
+        if state.telemetry.on_ground {
+            "pilot_ground_checkin"
+        } else {
+            "pilot_controller_checkin"
+        },
+        &[
+            ("station", station.to_owned()),
+            ("callsign", state.plan.callsign.clone()),
+            ("altitude", altitude),
+            ("climb", climb),
+        ],
+    )
+}

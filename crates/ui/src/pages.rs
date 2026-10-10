@@ -855,7 +855,8 @@ fn quick_request_available(
         return false;
     }
     if intent == "checkin" {
-        return !state.telemetry.on_ground;
+        return state.telemetry.on_ground
+            || !["Clearance", "Ground"].contains(&station.service.as_str());
     }
     if intent == "cross_runway" {
         return state.taxi_clearance.approved
@@ -907,21 +908,7 @@ fn request_grid(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                     if intent == "checkin"
                         && let Some(station) = station
                     {
-                        request.text = openatc_core::dialogue::say(
-                            "pilot_controller_checkin",
-                            &[
-                                ("station", station.name.clone()),
-                                ("callsign", state.plan.callsign.clone()),
-                                (
-                                    "altitude",
-                                    altitude_text(
-                                        state.telemetry.altitude_feet,
-                                        openatc_core::UnitSystem::Imperial,
-                                        true,
-                                    ),
-                                ),
-                            ],
-                        );
+                        request.text = openatc_core::readback::checkin_text(state, &station.name);
                     }
                     if intent == "readback" && state.taxi_clearance.pending_readback {
                         request.clearance_sequence = state.taxi_clearance.sequence;
@@ -2667,7 +2654,8 @@ mod tests {
         assert!(!quick_request_available(&state, Some(&tower), "taxi"));
         tower.services.push("Ground".into());
         assert!(quick_request_available(&state, Some(&tower), "taxi"));
-        assert!(!quick_request_available(&state, Some(&tower), "checkin"));
+        assert!(quick_request_available(&state, Some(&tower), "checkin"));
+        assert!(quick_request_available(&state, Some(&delivery), "checkin"));
         state.phase = PhaseCode::Cruise;
         state.telemetry.on_ground = false;
         let center = Station {

@@ -170,7 +170,7 @@ examples = [
   { text = "{callsign}, readability three, readable but with difficulty. Say again your last.", kind = "say" },
   { text = "Reading you five as well, {callsign}.", kind = "readback" },
 ]
-fallback = "Reading you five. Development controller online."
+fallback = "Reading you five. "
 
 [intent.readback]
 title = "Read back clearance"
@@ -565,7 +565,7 @@ group = "Radio"
 catalogue = true
 parameter = false
 roles = ["atc", "copilot"]
-exact = ["check in"]
+exact = ["check in", "checking in", "check-in", "with you"]
 pattern = "exact"
 slots = []
 examples = [{text = "check in", kind = "request"}]

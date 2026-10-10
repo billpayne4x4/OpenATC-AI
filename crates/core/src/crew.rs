@@ -174,7 +174,11 @@ pub fn parse_many(profile: &CrewProfile, role: &str, text: &str) -> Option<Vec<(
     if role == "cabin" {
         lower = lower
             .replace(" and crosscheck", "")
-            .replace(" and cross check", "");
+            .replace(" and cross check", "")
+            .replace(" and cross-check", "");
+        if matches!(lower.trim(), "arm" | "disarm") {
+            lower.push_str(" slides");
+        }
     }
     if ["don't", "do not", "never", "not "]
         .iter()
@@ -501,6 +505,25 @@ fn build_standard_profile() -> CrewProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cabin_arming_includes_the_slide_control() {
+        let profile = crate::profiles::load_aircraft_profile(std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../aircraft/toliss_a320.toml"
+        )))
+        .unwrap()
+        .crew;
+        for text in [
+            "arm and cross check",
+            "arm and cross-check",
+            "arm and crosscheck",
+        ] {
+            assert_eq!(
+                parse_many(&profile, "cabin", text),
+                Some(vec![("slides".into(), 1.0)])
+            );
+        }
+    }
     #[test]
     fn pushback_orders_preserve_metres_and_tail_direction() {
         assert_eq!(

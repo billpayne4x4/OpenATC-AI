@@ -89,13 +89,14 @@ fn sidecar_path(explicit: Option<&std::path::Path>) -> PathBuf {
     if let Some(path) = explicit {
         return path.to_owned();
     }
+    let name = format!("openatc-stt{}", std::env::consts::EXE_SUFFIX);
     if let Ok(us) = std::env::current_exe()
         && let Some(dir) = us.parent()
-        && dir.join("openatc-stt").exists()
+        && dir.join(&name).exists()
     {
-        return dir.join("openatc-stt");
+        return dir.join(&name);
     }
-    PathBuf::from("openatc-stt")
+    PathBuf::from(name)
 }
 
 /// Start the sidecar and wait for `/health`, returning its base URL and backend.

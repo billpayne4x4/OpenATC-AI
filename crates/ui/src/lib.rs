@@ -7,4 +7,5 @@ mod debug;
 pub mod interface;
 pub mod maps;
 pub mod pages;
+mod sectors;
 pub mod widgets;

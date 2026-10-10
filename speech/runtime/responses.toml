@@ -39,12 +39,12 @@ say = [
 [read_back_the_taxi_route_and_hold]
 slots = ["prefix", "instructions"]
 say = [
-  "{prefix}{instructions} Read back the taxi clearance.",
-  "{prefix}{instructions} Read back the taxi instruction.",
-  "{prefix}{instructions} Confirm your taxi clearance by readback.",
-  "{prefix}{instructions} Read back your taxi clearance.",
-  "{prefix}{instructions} Read back the taxi instructions.",
-  "{prefix}{instructions} Confirm the taxi instruction by readback.",
+  "{prefix}{instructions}",
+  "{prefix}{instructions}",
+  "{prefix}{instructions}",
+  "{prefix}{instructions}",
+  "{prefix}{instructions}",
+  "{prefix}{instructions}",
 ]
 
 [runway_cleared_for_takeoff_openatc_ai_does]
@@ -162,11 +162,11 @@ say = [
 [reading_you_five_development_controller_online]
 slots = []
 say = [
-  "Reading you five. Development controller online.",
-  "Reading you five. OpenATC development controller online.",
-  "Radio check, reading you five. Development controller online.",
-  "Reading you loud and clear. Development controller online.",
-  "Your transmission is clear. OpenATC development controller online.",
+  "Reading you five.",
+  "Reading you five.",
+  "Radio check, reading you five.",
+  "Reading you loud and clear.",
+  "Your transmission is clear.",
 ]
 
 [no_previous_controller_transmission]
@@ -1238,7 +1238,7 @@ say = ["That readback belongs to an earlier instruction. Read back the current c
 
 [pilot_taxi_hold_readback]
 slots = ["via", "runway", "callsign"]
-say = ["Taxi via {via}, hold short of runway {runway}, {callsign}.", "{callsign}, taxi via {via}, holding short of runway {runway}."]
+say = ["Taxi via {via}, hold short of runway {runway}, {callsign}.", "{callsign}, taxi via {via}, hold short of runway {runway}."]
 
 [taxi_via_runway_backtrack]
 slots = ["entry_runway", "runway"]
@@ -1301,8 +1301,8 @@ slots = ["callsign", "station", "frequency"]
 say = ["{callsign}, contact {station} on {frequency}.", "{callsign}, contact {station}, {frequency}."]
 
 [flight_checkin]
-slots = ["callsign", "station", "altitude"]
-say = ["{callsign}, {station}, roger, reported altitude {altitude}.", "{callsign}, roger, {station}, reported {altitude}."]
+slots = ["callsign", "station"]
+say = ["{callsign}, {station}, roger.", "{callsign}, {station}, good day."]
 
 [flight_remain_frequency]
 slots = ["callsign", "station"]
@@ -1326,7 +1326,7 @@ say = ["After departure climb to {altitude}."]
 
 [flight_sid_climb]
 slots = ["sid", "altitude"]
-say = ["After departure, {sid} departure, climb to {altitude}, comply with published restrictions."]
+say = ["Fly the {sid} departure. Maintain {altitude}."]
 
 [flight_expect_level]
 slots = ["altitude"]
@@ -16123,8 +16123,8 @@ slots = ["runway", "callsign"]
 say = ["Runway {runway}, cleared for takeoff, {callsign}.", "Cleared for takeoff, runway {runway}, {callsign}."]
 
 [pilot_controller_checkin]
-slots = ["station", "callsign", "altitude"]
-say = ["{station}, {callsign}, {altitude}.", "{station}, {callsign}, checking in at {altitude}."]
+slots = ["station", "callsign", "altitude", "climb"]
+say = ["{station}, {callsign}, with you at {altitude}{climb}.", "{station}, {callsign}, {altitude}{climb}."]
 
 [crew_actions_busy]
 slots = []
@@ -16141,3 +16141,19 @@ say = ["{station}, {message}"]
 [pilot_typed_callsign]
 slots = ["callsign", "message"]
 say = ["{callsign}, {message}"]
+
+[pilot_ground_checkin]
+slots = ["station", "callsign"]
+say = ["{station}, {callsign}, with you."]
+
+[pilot_frequency_readback]
+slots = ["station", "frequency", "callsign"]
+say = ["Contact {station}, {frequency}, {callsign}."]
+
+[pilot_checkin_climbing]
+slots = ["altitude"]
+say = [", climbing to {altitude}"]
+
+[crew_coffee_requested]
+slots = []
+say = ["Of course, Captain. I will bring your coffee.", "Coffee coming up, Captain.", "Certainly, Captain. Coffee on the way."]

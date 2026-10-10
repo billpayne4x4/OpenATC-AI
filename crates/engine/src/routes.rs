@@ -808,6 +808,36 @@ pub async fn post_copilot_prepare(AxumState(shared): AxumState<Shared>) -> Respo
     Json(json!({"state":snapshot(&state.session,&state.settings)})).into_response()
 }
 
+/// Speak the new-controller check-in before submitting it to ATC.
+pub async fn post_copilot_checkin(AxumState(shared): AxumState<Shared>) -> Response {
+    let mut state = shared.write().await;
+    if !state.settings.copilot_replies || state.pending_copilot_reply.is_some() {
+        return bad_request("Copilot communication is unavailable.");
+    }
+    let stations = openatc_core::stations::nearby(&state.stations, &state.session.telemetry);
+    let Some(station) = openatc_core::stations::tuned(&stations, state.session.telemetry.com1_khz)
+        .filter(|s| openatc_core::stations::station_serves(s, "checkin"))
+    else {
+        return bad_request("No receiving controller for check-in.");
+    };
+    let text = openatc_core::readback::checkin_text(&state.session, &station.name);
+    let request = Request {
+        intent: "checkin".into(),
+        text: text.clone(),
+        controller_initiated: true,
+        ..Default::default()
+    };
+    let tag = SpeechTag {
+        voice: state.settings.copilot_voice.clone(),
+        delivery: delivery_name(state.settings.copilot_delivery).into(),
+        speed: state.settings.copilot_speed,
+        ..Default::default()
+    };
+    add_transmission(&mut state.session, "COPILOT", &text, &tag);
+    state.pending_copilot_reply = Some((state.session_generation, request));
+    Json(json!({"state":snapshot(&state.session,&state.settings)})).into_response()
+}
+
 /// Apply the prepared readback only after its playback has completed.
 pub async fn post_copilot_reply(AxumState(shared): AxumState<Shared>) -> Response {
     let request = {
@@ -1617,7 +1647,11 @@ pub(crate) async fn atc_request(
         result.message.push(' ');
         result.message.push_str(&handoff);
         state.session.recommended_frequency_khz = ground.khz;
-        state.session.frequency_sequence = state.session.next_sequence;
+        state.session.frequency_sequence = state
+            .session
+            .transcript
+            .last()
+            .map_or(0, |entry| entry.sequence);
         if let Some(last) = state.session.transcript.last_mut() {
             last.text.clone_from(&result.message);
         }

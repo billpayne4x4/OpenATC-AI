@@ -1,6 +1,7 @@
 //! Build, install and validation tools for OpenATC.
 mod checks;
 mod distribution;
+mod release;
 use std::{
     error::Error,
     path::{Path, PathBuf},
@@ -21,7 +22,16 @@ fn run(command: &mut Command) -> Result {
     Ok(())
 }
 fn main() {
-    if let Err(error) = dispatch() {
+    let launcher = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .is_some_and(|s| s == "openatc-install" || s == "openatc-launcher");
+    let result = if launcher {
+        release::launch()
+    } else {
+        dispatch()
+    };
+    if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
     }
@@ -36,6 +46,8 @@ fn dispatch() -> Result {
     match args.first().map(String::as_str).unwrap_or("help") {
         "install-plugin" => distribution::install_plugin(Path::new(arg(1)?), true),
         "install-ai" => distribution::install_ai(Path::new(arg(1)?)),
+        "release-package" => release::package(arg(1)?, arg(2)?, arg(3)?),
+        "fetch-package-tools" => release::fetch_tools(Path::new(arg(1)?)),
         "package" => distribution::package(arg(1)?),
         "collect-artifacts" => distribution::collect(
             arg(1)?,

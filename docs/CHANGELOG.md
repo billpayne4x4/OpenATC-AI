@@ -413,3 +413,12 @@ Replaced the Python installers, ZIP packager, Linux dependency checker, artifact
 - Use a detached Windows process for companion-engine startup and resolve its `.exe` filename.
 - Load native OpenGL libraries on Windows/macOS, with Windows extension lookup through `wglGetProcAddress`.
 - Store Windows companion settings and logs in the local application-data directory.
+
+## Controller check-in and handoff corrections
+
+- Recognise “checking in”, “check-in” and “with you”, including calls with controller names and callsigns.
+- Offer ground check-ins and include the active climb altitude in airborne pilot check-ins. Controller acknowledgements no longer present telemetry as a pilot-reported altitude.
+- Give airborne handoffs a copilot acknowledgement, confirm tuning through telemetry, then prepare and play the copilot check-in before ATC processes it.
+- Remove development-controller wording and routine taxi readback prompts from speech. Keep hold-short readbacks in the instruction form.
+- Avoid duplicate expected/initial altitude wording and use a conservative SID instruction without claiming an unmodelled climb-via clearance.
+- Recognise cabin arming/cross-check variants and handle a comma-separated coffee request independently. Allow slide indications time to settle and include actual readback values in failure logs.

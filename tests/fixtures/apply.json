@@ -89,7 +89,7 @@
       "com1": 118100,
       "expected": {
         "accepted": true,
-        "message": "Reading you five. Development controller online."
+        "message": "Reading you five."
       }
     },
     {
@@ -147,7 +147,7 @@
       "onGround": true,
       "expected": {
         "accepted": true,
-        "message": "Reading you five. Development controller online."
+        "message": "Reading you five."
       }
     },
     {

@@ -300,6 +300,10 @@ async fn main() {
         .route("/request/auto-reply", post(routes::post_auto_reply))
         .route("/request/copilot-reply", post(routes::post_copilot_reply))
         .route(
+            "/request/copilot-checkin",
+            post(routes::post_copilot_checkin),
+        )
+        .route(
             "/request/copilot-prepare",
             post(routes::post_copilot_prepare),
         )

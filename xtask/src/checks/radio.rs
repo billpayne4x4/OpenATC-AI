@@ -329,7 +329,31 @@ pub(super) fn radio(e: &mut Engine, m: &Model) -> Result {
         json!({"intent":"checkin","role":"atc","text":"Tower, VH-BIL, 1500 feet."}),
     )?;
     accepted(&checkin);
-    contains(&checkin, "1500");
+    contains(&checkin, "VH-BIL");
+    assert!(
+        !checkin["result"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("reported altitude")
+    );
+    e.settings(json!({"copilotReplies":true}))?;
+    e.post("request/copilot-checkin", json!({}))?;
+    let prepared = e.state()?;
+    assert_eq!(
+        prepared["transcript"].as_array().unwrap().last().unwrap()["speaker"],
+        "COPILOT"
+    );
+    assert!(
+        prepared["transcript"].as_array().unwrap().last().unwrap()["text"]
+            .as_str()
+            .unwrap()
+            .contains("1500")
+    );
+    e.post("request/copilot-reply", json!({}))?;
+    assert_eq!(
+        e.state()?["transcript"].as_array().unwrap().last().unwrap()["speaker"],
+        "ATC"
+    );
     e.tune(123450, json!({}))?;
     let before = m.count();
     assert_eq!(e.req("conversation")?["result"]["silent"], true);

@@ -19,7 +19,7 @@ pub struct LocalNotice {
 }
 
 /// Page indices in sidebar order.
-pub const PAGES: [&str; 7] = [
+pub const PAGES: [&str; 8] = [
     "ATC",
     "Flight Plan",
     "Taxi",
@@ -27,6 +27,7 @@ pub const PAGES: [&str; 7] = [
     "Airports",
     "Settings",
     "Channels",
+    "Radio sectors",
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -70,6 +71,10 @@ pub struct Interface {
     pub nearby_stations: Vec<openatc_core::stations::Station>,
     /// Station/weather reception status.
     pub radio_notice: String,
+    /// Debug sector map scale, in nautical miles from the aircraft.
+    pub radio_map_range: f32,
+    /// Debug map follows the aircraft until dragged.
+    pub radio_map_center: Option<[f64; 2]>,
     /// User-editable station search, defaulting to the current surface airport.
     pub station_filter: String,
     /// Search configured aircraft crew controls.
@@ -189,6 +194,8 @@ pub struct Interface {
     pub copilot_prepared_sequence: u32,
     /// Last controller instruction submitted for an automatic readback.
     pub last_copilot_reply_sequence: u32,
+    /// Last handoff followed by an automatic controller check-in.
+    pub last_checkin_sequence: u32,
     /// Push-to-talk armed.
     pub ptt_armed: bool,
     /// Push-to-talk role override.
@@ -262,6 +269,8 @@ impl Interface {
             engine: EngineClient::new(endpoint),
             nearby_stations: Vec::new(),
             radio_notice: String::new(),
+            radio_map_range: 80.0,
+            radio_map_center: None,
             station_filter: String::new(),
             crew_control_filter: String::new(),
             station_filter_manual: false,
@@ -324,6 +333,7 @@ impl Interface {
             copilot_reply_prepared: false,
             copilot_prepared_sequence: 0,
             last_copilot_reply_sequence: 0,
+            last_checkin_sequence: 0,
             ptt_armed: false,
             ptt_role: String::new(),
             record_start: 0.0,
@@ -717,17 +727,19 @@ impl Interface {
                 reply.error.clone_into(&mut self.notice);
             }
         }
-        if let Some(reply) = self.engine.take_reply("/request/copilot-prepare") {
-            self.copilot_reply_prepared = reply.success;
-            self.copilot_prepared_sequence = reply.data["state"]["transcript"]
-                .as_array()
-                .and_then(|entries| entries.last())
-                .and_then(|e| e["sequence"].as_u64())
-                .and_then(|s| u32::try_from(s).ok())
-                .unwrap_or(0);
-            if !reply.success {
-                self.auto_reply_pending = false;
-                self.notice = reply.error;
+        for endpoint in ["/request/copilot-prepare", "/request/copilot-checkin"] {
+            if let Some(reply) = self.engine.take_reply(endpoint) {
+                self.copilot_reply_prepared = reply.success;
+                self.copilot_prepared_sequence = reply.data["state"]["transcript"]
+                    .as_array()
+                    .and_then(|entries| entries.last())
+                    .and_then(|e| e["sequence"].as_u64())
+                    .and_then(|s| u32::try_from(s).ok())
+                    .unwrap_or(0);
+                if !reply.success {
+                    self.auto_reply_pending = false;
+                    self.notice = reply.error;
+                }
             }
         }
         if let Some(reply) = self.engine.take_reply("/request/copilot-reply") {
@@ -939,6 +951,30 @@ impl Interface {
             self.copilot_reply_prepared = false;
             self.engine
                 .post("/request/copilot-reply", serde_json::json!({}));
+        }
+        if self.settings.copilot_replies
+            && (self.settings.copilot_tunes || self.settings.auto_tune_handoff)
+            && !self.auto_reply_pending
+            && !self.speech.busy()
+            && !self.speech.recording()
+            && self.speech_queue.is_empty()
+            && state.frequency_sequence > self.last_checkin_sequence
+            && state.telemetry.com1_khz == state.recommended_frequency_khz
+            && state
+                .transcript
+                .iter()
+                .rev()
+                .find(|e| e.speaker == "ATC" && !e.background)
+                .is_some_and(|e| e.sequence == state.frequency_sequence && e.pilot_reply.is_empty())
+            && let Some(_station) = self
+                .nearby_stations
+                .iter()
+                .find(|s| s.khz == state.telemetry.com1_khz && s.receivable)
+        {
+            self.last_checkin_sequence = state.frequency_sequence;
+            self.auto_reply_pending = true;
+            self.engine
+                .post("/request/copilot-checkin", serde_json::json!({}));
         }
         if self.settings_loaded && self.engine.connected() {
             let settings_json = serde_json::to_string(&self.settings).unwrap_or_default();
@@ -1334,6 +1370,12 @@ impl Interface {
                 self.set_page(page);
             }
         }
+        if self.settings.dev_mode {
+            ui.same_line();
+            if icon_button(ui, "Radio sectors", ToolbarIcon::Headset, self.page == 7) {
+                self.set_page(7);
+            }
+        }
     }
 
     /// Drag area with the centered title.
@@ -1442,6 +1484,9 @@ impl Interface {
     }
 
     fn draw_body(&mut self, ui: &imgui::Ui, state: &openatc_core::state::State) {
+        if self.page == 7 && !self.settings.dev_mode {
+            self.set_page(0);
+        }
         let descriptions = [
             "Talk with your crew and air traffic control.",
             "Plan your route, procedures and fuel.",
@@ -1450,6 +1495,7 @@ impl Interface {
             "Explore airport layouts, approaches and services.",
             "Configure your crew, audio and flight preferences.",
             "Nearby radio stations. Select a station to tune COM1.",
+            "Controller boundaries used by flight handoffs. Debug view.",
         ];
         crate::widgets::page_heading(ui, PAGES[self.page], descriptions[self.page]);
         match self.page {
@@ -1459,6 +1505,7 @@ impl Interface {
             4 => crate::pages::airports_page(ui, self, state),
             5 => crate::pages::settings_page(ui, self, state),
             6 => crate::pages::radio_page(ui, self, state),
+            7 => crate::sectors::page(ui, self, state),
             _ => crate::pages::atc_page(ui, self, state),
         }
     }

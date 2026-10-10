@@ -211,7 +211,9 @@ fn update_tune(shared: &Arc<Mutex<Shared>>) {
         && let Some(com1) = locked.com1.as_mut()
     {
         com1.set(snapshot.recommended_frequency_khz);
-        locked.last_frequency_sequence = snapshot.frequency_sequence;
+        if com1.get() == snapshot.recommended_frequency_khz {
+            locked.last_frequency_sequence = snapshot.frequency_sequence;
+        }
     }
     // Error watch for dev mode.
     if dev_mode && !notice.is_empty() && notice != locked.logged_notice {
