@@ -468,6 +468,7 @@ pub async fn atis(AxumState(shared): AxumState<Shared>, Json(body): Json<Value>)
     );
     let mut tag = crate::flight::tag(&mut s, &station);
     tag.radio = Some(radio);
+    tag.frequency = Some(station.khz);
     let prefix = format!("{radio:?}/");
     let log_key = format!("{prefix}{}", station.airport);
     let bulletin = format!("{code}|{}|{runway}", weather_signature(&weather));

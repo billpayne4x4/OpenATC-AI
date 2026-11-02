@@ -703,6 +703,15 @@ impl TrafficHealth {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn serial() -> MutexGuard<'static, ()> {
+        TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
 
     fn receive(events: &Receiver<StationEvent>, timeout: Duration) -> StationEvent {
         // Worker start-up can be delayed by other test binaries on a busy machine. The
@@ -715,6 +724,7 @@ mod tests {
 
     #[test]
     fn independent_frequencies_run_in_separate_threads_and_drain_independently() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(121_705, 1, Phase::Taxi, events.clone());
@@ -756,6 +766,7 @@ mod tests {
 
     #[test]
     fn release_removes_the_watch_and_shutdown_joins_the_threads() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(121_705, 7, Phase::Taxi, events);
@@ -770,6 +781,7 @@ mod tests {
 
     #[test]
     fn a_stalled_crossing_escalates_and_progress_resets_it() {
+        let _serial = serial();
         let mut registry = SessionRegistry::default();
         registry.add(4, 121_705, Phase::Crossing, 10.0);
         let health = TrafficHealth::default();
@@ -796,6 +808,7 @@ mod tests {
 
     #[test]
     fn the_player_is_never_escalated() {
+        let _serial = serial();
         let mut registry = SessionRegistry::default();
         registry.add(0, 118_700, Phase::Taxi, 0.0);
         let health = TrafficHealth::default();
@@ -805,6 +818,7 @@ mod tests {
 
     #[test]
     fn watch_sets_are_partitioned_by_frequency() {
+        let _serial = serial();
         let mut registry = SessionRegistry::default();
         registry.add(1, 121_705, Phase::Taxi, 0.0);
         registry.add(2, 118_700, Phase::Hold, 0.0);
@@ -841,6 +855,7 @@ mod tests {
 
     #[test]
     fn an_empty_station_exits_its_thread_and_keeps_the_session() {
+        let _serial = serial();
         let (events, _received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(121_705, 7, Phase::Taxi, events);
@@ -851,6 +866,7 @@ mod tests {
 
     #[test]
     fn a_new_transmission_starts_an_idle_station_again() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(121_705, 7, Phase::Taxi, events);
@@ -884,6 +900,7 @@ mod tests {
 
     #[test]
     fn a_trigger_restarts_the_station_with_its_watch_set() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(118_700, 9, Phase::Hold, events);
@@ -916,6 +933,7 @@ mod tests {
 
     #[test]
     fn same_frequency_order_survives_a_worker_restart() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(118_700, 1, Phase::Takeoff, events);
@@ -948,6 +966,7 @@ mod tests {
 
     #[test]
     fn session_sync_starts_a_worker_and_only_triggers_real_changes() {
+        let _serial = serial();
         let mut bus = StationBus::default();
         bus.sync_sessions(vec![(7, 118_700, Phase::Takeoff)], 10.0);
         let deadline = Instant::now() + Duration::from_secs(2);
@@ -987,6 +1006,7 @@ mod tests {
 
     #[test]
     fn one_frequency_serializes_its_transmissions() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(118_700, 1, Phase::Takeoff, events);
@@ -1026,6 +1046,7 @@ mod tests {
 
     #[test]
     fn different_frequencies_transmit_independently() {
+        let _serial = serial();
         let (events, received) = mpsc::channel();
         let mut supervisor = StationSupervisor::default();
         supervisor.watch(118_700, 1, Phase::Takeoff, events.clone());

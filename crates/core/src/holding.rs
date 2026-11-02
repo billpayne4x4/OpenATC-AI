@@ -88,6 +88,92 @@ pub fn blocked_surface<'a>(
     None
 }
 
+/// Along-runway position where a crossing route crosses the runway centreline.
+#[must_use]
+pub fn crossing_along(
+    airport: &Airport,
+    runway: &str,
+    points: &[crate::state::Point],
+) -> Option<f64> {
+    let frame = runway_frame(airport, runway)?;
+    for pair in points.windows(2) {
+        let a = pair[0];
+        let b = pair[1];
+        let along = |p: crate::state::Point| {
+            let east = p.east - frame.start.east;
+            let north = p.north - frame.start.north;
+            (east * frame.dx + north * frame.dn) / frame.length
+        };
+        let across = |p: crate::state::Point| {
+            let east = p.east - frame.start.east;
+            let north = p.north - frame.start.north;
+            (east * frame.dn - north * frame.dx) / frame.length
+        };
+        let (along_a, across_a, along_b, across_b) = (along(a), across(a), along(b), across(b));
+        if across_a * across_b <= 0.0 && (across_a - across_b).abs() > 1.0 {
+            let fraction = across_a.abs() / (across_a.abs() + across_b.abs());
+            return Some(along_a + (along_b - along_a) * fraction);
+        }
+    }
+    None
+}
+
+/// Runway protection for a crossing. An aircraft that has passed the crossing point
+/// and is still moving in the landing direction does not block the crossing behind it.
+pub fn blocked_for_crossing<'a>(
+    airport: &Airport,
+    runway: &str,
+    crossing_along: f64,
+    targets: impl Iterator<Item = &'a crate::state::TrafficTarget> + Clone,
+    seconds: f64,
+) -> Option<&'static str> {
+    if let Some(reason) = blocked_final_timing(airport, runway, targets.clone(), seconds) {
+        return Some(reason);
+    }
+    let Some(frame) = runway_frame(airport, runway) else {
+        return Some("holding_standby");
+    };
+    for target in targets {
+        if !valid(target) {
+            return Some("holding_standby");
+        }
+        if on_other_parallel_runway(airport, runway, target)
+            || target.runway_occupancy == Some(false)
+        {
+            continue;
+        }
+        let p = airport_point(airport, target.latitude, target.longitude);
+        let east = p.east - frame.start.east;
+        let north = p.north - frame.start.north;
+        let along = (east * frame.dx + north * frame.dn) / frame.length;
+        let across = (east * frame.dn - north * frame.dx).abs() / frame.length;
+        let agl = target.altitude_feet - airport.elevation_feet;
+        let (fore_aft, lateral) = crate::traffic::footprint(
+            &target.aircraft,
+            target.wingspan_meters,
+            target.track_degrees,
+            frame.heading,
+        );
+        if !(-fore_aft - 10.0..=frame.length + fore_aft + 10.0).contains(&along)
+            || across >= frame.runway.width / 2.0 + lateral + 10.0
+            || (!target.on_ground && agl >= 150.0)
+        {
+            continue;
+        }
+        let heading_difference =
+            (target.track_degrees - frame.heading + 180.0).rem_euclid(360.0) - 180.0;
+        let moving_away =
+            target.ground_speed_knots.unwrap_or(0.0) > 1.0 && heading_difference.abs() < 45.0;
+        let behind = along >= crossing_along + fore_aft + 10.0;
+        if behind && moving_away {
+            continue;
+        }
+        return Some("holding_runway_occupied");
+    }
+    let _ = seconds;
+    None
+}
+
 fn valid(target: &crate::state::TrafficTarget) -> bool {
     [
         target.latitude,
@@ -325,6 +411,53 @@ fn parallel_runways(airport: &Airport, first: &str, second: &str) -> bool {
 mod tests {
     use super::*;
     use crate::state::{Point, TrafficTarget};
+    #[test]
+    fn a_crossing_route_reports_the_runway_intersection() {
+        let airport = crate::airport::demo_airport();
+        let points = [
+            Point {
+                east: -200.0,
+                north: -50.0,
+                height: 0.0,
+            },
+            Point {
+                east: -200.0,
+                north: 50.0,
+                height: 0.0,
+            },
+        ];
+        let along = crossing_along(&airport, "09", &points).expect("crossing point");
+        assert!((along - 1_000.0).abs() < 1.0, "{along}");
+    }
+
+    #[test]
+    fn a_landed_aircraft_past_the_crossing_does_not_block_it() {
+        let airport = crate::airport::demo_airport();
+        let target = |east: f64, speed: f64| TrafficTarget {
+            latitude: 0.0,
+            longitude: east / 111_320.0,
+            altitude_feet: 0.0,
+            track_degrees: 90.0,
+            ground_speed_knots: Some(speed),
+            on_ground: true,
+            ..Default::default()
+        };
+        let past = target(-200.0, 20.0);
+        assert!(
+            blocked_for_crossing(&airport, "09", 500.0, std::iter::once(&past), 60.0).is_none()
+        );
+        let before = target(-700.0, 20.0);
+        assert_eq!(
+            blocked_for_crossing(&airport, "09", 500.0, std::iter::once(&before), 60.0),
+            Some("holding_runway_occupied")
+        );
+        let stopped = target(-200.0, 0.0);
+        assert_eq!(
+            blocked_for_crossing(&airport, "09", 500.0, std::iter::once(&stopped), 60.0),
+            Some("holding_runway_occupied")
+        );
+    }
+
     #[test]
     fn lining_up_needs_surface_occupancy_but_not_a_distant_final() {
         let airport = crate::airport::demo_airport();

@@ -28,8 +28,6 @@ const HOLD_QUEUE_MARGIN: f64 = 60.0;
 /// Hard floor for two ground aircraft. Directional separation should keep them much
 /// farther apart; this catches a merge where neither aircraft sees the other ahead.
 const MIN_GROUND_SEPARATION: f64 = 25.0;
-/// Shortest runway rollout before an arrival may turn off.
-const MIN_LANDING_ROLLOUT_METERS: f64 = 700.0;
 
 /// Deterministic mixture used for the random GA share and weighted operator draw.
 fn mix(mut value: u64) -> u64 {
@@ -970,6 +968,23 @@ impl TrafficManager {
             } else {
                 None
             };
+            let flight_leader = if self.aircraft[index].kind == AmbientKind::Departure
+                && distance >= self.aircraft[index].ground_end
+            {
+                self.aircraft
+                    .iter()
+                    .filter(|other| {
+                        other.id != own_id
+                            && other.kind == AmbientKind::Departure
+                            && other.airport == own_airport
+                            && other.runway == own_runway
+                            && other.distance > distance
+                    })
+                    .min_by(|left, right| left.distance.total_cmp(&right.distance))
+                    .map(|other| (other.distance, other.speed))
+            } else {
+                None
+            };
             let blocked = runway_blocked
                 || right_blocked
                 || player_blocked
@@ -1038,6 +1053,15 @@ impl TrafficManager {
             } else {
                 taxi
             };
+            if let Some((leader_distance, leader_speed)) = flight_leader {
+                let gap = leader_distance - distance;
+                if gap < 3.0 * 1_852.0 {
+                    aircraft.speed = aircraft.speed.min(leader_speed);
+                    if gap < 1.5 * 1_852.0 {
+                        aircraft.speed *= (gap / (1.5 * 1_852.0)).clamp(0.35, 1.0);
+                    }
+                }
+            }
             if aircraft.speed > follow_speed {
                 aircraft.speed = follow_speed;
             }
@@ -1080,7 +1104,7 @@ impl TrafficManager {
         state.airports.prune(own, 60.0);
 
         // Speak only when the player is tuned to the aircraft's frequency.
-        let mut calls: Vec<(openatc_core::state::Radio, String, String, String)> = Vec::new();
+        let mut calls: Vec<(openatc_core::state::Radio, i32, String, String, String)> = Vec::new();
         for aircraft in &mut self.aircraft {
             let Some(frequency) = aircraft.frequency_khz else {
                 continue;
@@ -1116,15 +1140,22 @@ impl TrafficManager {
                 "takeoff" => openatc_core::dialogue::say("ambient_takeoff_readback", &slots),
                 _ => openatc_core::dialogue::say("ambient_landing_readback", &slots),
             };
-            calls.push((radio, text, pilot_reply, aircraft.callsign.clone()));
+            calls.push((
+                radio,
+                frequency,
+                text,
+                pilot_reply,
+                aircraft.callsign.clone(),
+            ));
         }
-        for (radio, text, pilot_reply, callsign) in calls {
+        for (radio, frequency, text, pilot_reply, callsign) in calls {
             openatc_core::apply::add_transmission(
                 &mut state.session,
                 "ATC",
                 &text,
                 &openatc_core::state::SpeechTag {
                     radio: Some(radio),
+                    frequency: Some(frequency),
                     position: "Tower".into(),
                     voice: "tower".into(),
                     ..Default::default()
@@ -1140,6 +1171,7 @@ impl TrafficManager {
                 &pilot_reply,
                 &openatc_core::state::SpeechTag {
                     radio: Some(radio),
+                    frequency: Some(frequency),
                     position: "Traffic".into(),
                     ..Default::default()
                 },
@@ -1454,26 +1486,6 @@ impl TrafficManager {
             ) else {
                 continue;
             };
-            let latitude = airport.reference_latitude + node.point.north / 111_320.0;
-            let longitude = airport.reference_longitude
-                + node.point.east
-                    / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
-            let Some((surface_points, route)) = plan_taxi(
-                airport,
-                node.id,
-                route_runway,
-                size,
-                kind == AmbientKind::Arrival,
-            ) else {
-                self.rejected_route = self.rejected_route.saturating_add(1);
-                self.last_error = format!("no taxi graph route from node {}", node.id);
-                continue;
-            };
-            let stand_waypoint = Waypoint {
-                latitude,
-                longitude,
-                altitude_feet: airport.elevation_feet,
-            };
             let handling_kind = identity.profile.handling.unwrap_or(Kind::Jet);
             let Some(handling) = state
                 .traffic_handling
@@ -1483,6 +1495,27 @@ impl TrafficManager {
             else {
                 self.last_error = format!("no {handling_kind:?} animation handling");
                 continue;
+            };
+            let latitude = airport.reference_latitude + node.point.north / 111_320.0;
+            let longitude = airport.reference_longitude
+                + node.point.east
+                    / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
+            let minimum_rollout = phases::landing::minimum_rollout(&identity.profile, &handling);
+            let Some((surface_points, route)) = plan_taxi(
+                airport,
+                node.id,
+                route_runway,
+                size,
+                (kind == AmbientKind::Arrival).then_some(minimum_rollout),
+            ) else {
+                self.rejected_route = self.rejected_route.saturating_add(1);
+                self.last_error = format!("no taxi graph route from node {}", node.id);
+                continue;
+            };
+            let stand_waypoint = Waypoint {
+                latitude,
+                longitude,
+                altitude_feet: airport.elevation_feet,
             };
             let climb_speed = phases::sid::climb_speed(&identity.profile, &handling);
             let climb_fpm = identity.profile.climb_fpm;
@@ -1496,9 +1529,13 @@ impl TrafficManager {
                     climb_speed,
                     climb_fpm,
                 ),
-                AmbientKind::Arrival => {
-                    arrival_path(airport, &surface_points, &arrival_runway, stand_waypoint)
-                }
+                AmbientKind::Arrival => arrival_path(
+                    airport,
+                    &surface_points,
+                    &arrival_runway,
+                    stand_waypoint,
+                    minimum_rollout,
+                ),
             };
             let Some((points, ground_start, ground_end, taxi_end, runway_start, runway_end)) = path
             else {
@@ -1817,7 +1854,7 @@ fn plan_taxi(
     start: i64,
     runway: &str,
     size: char,
-    arrival: bool,
+    arrival: Option<f64>,
 ) -> Option<(Vec<Point>, String)> {
     use std::cmp::Reverse;
     use std::collections::{BTreeMap, BinaryHeap};
@@ -1842,7 +1879,7 @@ fn plan_taxi(
         .filter(|node| {
             if openatc_core::airport::within_runway(airport, &node.point)
                 || !openatc_core::airport::on_non_runway_taxiway(airport, &node.point, 12.0)
-                || (!arrival
+                || (arrival.is_none()
                     && openatc_core::airport::runway_edge_distance(airport, &node.point)
                         .is_some_and(|distance| distance <= RUNWAY_EDGE_MARGIN))
             {
@@ -1857,8 +1894,8 @@ fn plan_taxi(
             else {
                 return true;
             };
-            if arrival {
-                along >= MIN_LANDING_ROLLOUT_METERS
+            if let Some(minimum_rollout) = arrival {
+                along >= minimum_rollout
                     && along <= length - 100.0
                     && across.abs() > runway_data.width / 2.0 + 35.0
                     && across.abs() < 250.0
@@ -1868,20 +1905,33 @@ fn plan_taxi(
         })
         .min_by(|left, right| {
             let key = |node: &openatc_core::airport::TaxiNode| {
-                if arrival {
-                    (node.point.east - start_point.east).hypot(node.point.north - start_point.north)
+                if arrival.is_some() {
+                    let latitude = airport.reference_latitude + node.point.north / 111_320.0;
+                    let longitude = airport.reference_longitude
+                        + node.point.east
+                            / (111_320.0
+                                * (airport.reference_latitude.to_radians().cos()).max(0.01));
+                    let along = openatc_core::traffic::runway_position(
+                        airport, runway, latitude, longitude,
+                    )
+                    .map_or(f64::INFINITY, |(along, _, _, _)| along);
+                    let stand = (node.point.east - start_point.east)
+                        .hypot(node.point.north - start_point.north);
+                    (along, stand)
                 } else {
                     let hold = hold_line_distance(airport, node.point) <= 40.0;
                     let distance = (node.point.east - threshold.east)
                         .hypot(node.point.north - threshold.north);
                     if hold {
-                        distance
+                        (distance, 0.0)
                     } else {
-                        distance + 1_000_000.0
+                        (distance + 1_000_000.0, 0.0)
                     }
                 }
             };
-            key(left).total_cmp(&key(right))
+            key(left)
+                .partial_cmp(&key(right))
+                .unwrap_or(std::cmp::Ordering::Equal)
         })?
         .id;
     let mut adjacency: BTreeMap<i64, Vec<(i64, f64, String)>> = BTreeMap::new();
@@ -2048,7 +2098,12 @@ fn entry_waypoint(airport: &Airport, runway: &str, point: Point) -> Option<Waypo
 }
 
 /// Project an arrival exit onto the runway and require a minimum rollout.
-fn arrival_exit_waypoint(airport: &Airport, runway: &str, point: Point) -> Option<Waypoint> {
+fn arrival_exit_waypoint(
+    airport: &Airport,
+    runway: &str,
+    point: Point,
+    minimum_rollout: f64,
+) -> Option<Waypoint> {
     let waypoint = entry_waypoint(airport, runway, point)?;
     let (along, _, length, _) = openatc_core::traffic::runway_position(
         airport,
@@ -2056,7 +2111,7 @@ fn arrival_exit_waypoint(airport: &Airport, runway: &str, point: Point) -> Optio
         waypoint.latitude,
         waypoint.longitude,
     )?;
-    (along >= MIN_LANDING_ROLLOUT_METERS && along <= length - 50.0).then_some(waypoint)
+    (along >= minimum_rollout && along <= length - 50.0).then_some(waypoint)
 }
 
 fn departure_path(
@@ -2129,6 +2184,7 @@ fn arrival_path(
     points: &[Point],
     runway: &str,
     stand: Waypoint,
+    minimum_rollout: f64,
 ) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64)> {
     let (_, threshold, far) = runway_ends(airport, runway, None)?;
     let bearing = openatc_core::arrival::bearing(
@@ -2150,7 +2206,7 @@ fn arrival_path(
     path.push(threshold);
     let exit = points
         .last()
-        .and_then(|point| arrival_exit_waypoint(airport, runway, *point))?;
+        .and_then(|point| arrival_exit_waypoint(airport, runway, *point, minimum_rollout))?;
     path.push(exit);
     let exit_index = path.len().saturating_sub(1);
     // Keep the exit node itself: the centreline point is the rollout end, and the
@@ -2162,7 +2218,7 @@ fn arrival_path(
     let ground_start = cumulative.get(3).copied().unwrap_or(0.0);
     let ground_end = cumulative.last().copied().unwrap_or(0.0);
     let runway_end = cumulative.get(exit_index).copied().unwrap_or(ground_start);
-    if runway_end - ground_start < MIN_LANDING_ROLLOUT_METERS - 1.0 {
+    if runway_end - ground_start < minimum_rollout - 1.0 {
         return None;
     }
     Some((
@@ -2811,8 +2867,8 @@ mod phase_tests {
             height: 0.0,
         };
         let (path, ground_start, _, _, _, runway_end) =
-            arrival_path(&airport, &[exit], "09", stand).expect("arrival path");
-        assert!(runway_end - ground_start >= MIN_LANDING_ROLLOUT_METERS - 1.0);
+            arrival_path(&airport, &[exit], "09", stand, 700.0).expect("arrival path");
+        assert!(runway_end - ground_start >= 699.0);
         assert!(path.len() > 5, "the exit and taxi-in remain on the path");
         let early = Point {
             east: -1_100.0,
@@ -2820,7 +2876,7 @@ mod phase_tests {
             height: 0.0,
         };
         assert!(
-            arrival_path(&airport, &[early], "09", stand).is_none(),
+            arrival_path(&airport, &[early], "09", stand, 700.0).is_none(),
             "an exit at the threshold must reject the arrival instead of reversing"
         );
     }
@@ -2885,14 +2941,14 @@ mod phase_tests {
             ],
             ..Default::default()
         };
-        let (arrival, _) = plan_taxi(&airport, 1, "09", 'C', true).expect("arrival taxi route");
+        let (arrival, _) =
+            plan_taxi(&airport, 1, "09", 'C', Some(700.0)).expect("arrival taxi route");
         assert!(
             (arrival.last().expect("exit").east - 900.0).abs() < 1.0,
             "arrival should route to the exit at 900 m, got {:?}",
             arrival.last()
         );
-        let (departure, _) =
-            plan_taxi(&airport, 1, "09", 'C', false).expect("departure taxi route");
+        let (departure, _) = plan_taxi(&airport, 1, "09", 'C', None).expect("departure taxi route");
         assert!(
             departure.last().expect("hold").east.abs() < 1.0,
             "departure should route to the threshold hold"
@@ -3036,6 +3092,39 @@ mod phase_tests {
             &node.point,
             8.0
         ));
+    }
+
+    #[test]
+    fn a_faster_departure_does_not_overrun_a_slower_leader() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.02;
+        state.session.telemetry.longitude = 0.02;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut leader = ambient(AmbientKind::Departure, 500.0, 0.0, 300.0);
+        leader.id = 1;
+        leader.airport = "DEMO".into();
+        leader.runway = "09".into();
+        leader.climb_speed = 80.0;
+        leader.distance = 500.0;
+        let mut follower = ambient(AmbientKind::Departure, 300.0, 0.0, 300.0);
+        follower.id = 2;
+        follower.airport = "DEMO".into();
+        follower.runway = "09".into();
+        follower.climb_speed = 160.0;
+        follower.distance = 300.0;
+        manager.aircraft.push(leader);
+        manager.aircraft.push(follower);
+        manager.tick(&mut state);
+        assert!(manager.aircraft[1].speed <= manager.aircraft[0].speed + 0.01);
     }
 
     #[test]
@@ -3378,7 +3467,7 @@ mod phase_tests {
     }
 
     #[test]
-    fn landing_rollout_brakes_at_the_handling_rate_and_stops_by_the_exit() {
+    fn landing_rollout_uses_the_rate_needed_to_reach_the_exit() {
         let handling = jet_handling();
         let taxi = TAXI_STRAIGHT_METERS_PER_SECOND;
         let touchdown_speed = 70.0;
@@ -3402,8 +3491,10 @@ mod phase_tests {
             touchdown_speed,
         );
         let rate = (at_touchdown.powi(2) - later.powi(2)) / (2.0 * 500.0);
-        assert!((rate - handling.braking_knots_sec * 0.514_444).abs() < 0.01);
-        let short_exit = 1_400.0;
+        let required = (touchdown_speed.powi(2) - taxi.powi(2)) / (2.0 * (long_exit - touchdown));
+        assert!((rate - required).abs() < 0.01);
+        assert!(rate < handling.braking_knots_sec * 0.514_444);
+        let short_exit = 3_000.0;
         let at_exit = phases::landing::rollout_speed(
             &handling,
             short_exit,
@@ -3412,7 +3503,7 @@ mod phase_tests {
             taxi,
             touchdown_speed,
         );
-        assert!((at_exit - taxi).abs() < 0.01);
+        assert!((at_exit - taxi).abs() < 0.1);
         assert!(
             phases::landing::rollout_speed(
                 &handling,
@@ -3422,6 +3513,18 @@ mod phase_tests {
                 taxi,
                 touchdown_speed,
             ) >= taxi
+        );
+        let too_short = 1_400.0;
+        assert!(
+            phases::landing::rollout_speed(
+                &handling,
+                too_short,
+                touchdown,
+                too_short,
+                taxi,
+                touchdown_speed,
+            ) > taxi,
+            "an exit shorter than the stopping distance cannot reach taxi speed"
         );
     }
 

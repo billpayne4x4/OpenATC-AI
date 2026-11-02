@@ -331,6 +331,21 @@ pub async fn post_telemetry(
                 };
                 let runway = &state.session.taxi_clearance.hold_short_runway;
                 if route.waiting_seconds > 0.0 {
+                    let size = openatc_core::parking::aircraft_size(&state.session).unwrap_or('F');
+                    if let Ok(crossing) =
+                        openatc_core::airport::calculate_crossing_route(a, &telemetry, runway, size)
+                        && let Some(along) =
+                            openatc_core::holding::crossing_along(a, runway, &crossing.points)
+                    {
+                        return openatc_core::holding::blocked_for_crossing(
+                            a,
+                            runway,
+                            along,
+                            targets.iter(),
+                            route.waiting_seconds,
+                        )
+                        .is_none();
+                    }
                     openatc_core::holding::blocked_for_movement(
                         a,
                         runway,

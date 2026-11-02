@@ -1013,6 +1013,7 @@ fn process_delivery(state: &mut EngineState, rate: f64, gap: f64) {
             }
         };
         tag.radio = Some(radio);
+        tag.frequency = Some(exchange.station.khz);
         let spoken_callsign = state.generated.spoken_text(&exchange.callsign);
         state.station_bus.transmit(
             exchange.station.khz,
@@ -1509,6 +1510,7 @@ fn advance_exchange(state: &mut EngineState, mut exchange: Exchange) -> Option<E
             }
         };
         tag.radio = Some(radio);
+        tag.frequency = Some(exchange.station.khz);
         let spoken_callsign = state.generated.spoken_text(&exchange.callsign);
         state.station_bus.transmit(
             exchange.station.khz,

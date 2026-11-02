@@ -363,15 +363,26 @@ fn blocked_for_crossing<'a>(
     ctx: &RequestContext<'a>,
     airport: &Airport,
     runway: &str,
+    crossing_along: f64,
     seconds: f64,
 ) -> Option<&'static str> {
     if let Some(targets) = ctx.traffic {
-        return crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds);
+        return crate::holding::blocked_for_crossing(
+            airport,
+            runway,
+            crossing_along,
+            targets.iter(),
+            seconds,
+        );
     }
     match state.telemetry.traffic.as_deref() {
-        Some(targets) => {
-            crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds)
-        }
+        Some(targets) => crate::holding::blocked_for_crossing(
+            airport,
+            runway,
+            crossing_along,
+            targets.iter(),
+            seconds,
+        ),
         None => Some("holding_standby"),
     }
 }
@@ -975,7 +986,18 @@ fn apply_ground(state: &mut State, ctx: &RequestContext<'_>) -> Option<RequestOu
             Err(error) => return Some(reply(state, ctx, false, error)),
         };
         let seconds = super::airport::crossing_seconds(&route);
-        if let Some(blocked) = blocked_for_crossing(state, ctx, airport, &runway, seconds) {
+        let Some(crossing_along) = crate::holding::crossing_along(airport, &runway, &route.points)
+        else {
+            return Some(reply(
+                state,
+                ctx,
+                false,
+                crate::dialogue::say("crossing_route_unavailable", &[]),
+            ));
+        };
+        if let Some(blocked) =
+            blocked_for_crossing(state, ctx, airport, &runway, crossing_along, seconds)
+        {
             state.taxi_clearance.waiting_for_traffic = true;
             state.taxi_clearance.waiting_seconds = seconds;
             return Some(reply(
@@ -1618,7 +1640,7 @@ mod tests {
             traffic: Some(&targets),
             runway_sequence: RunwaySequence::Clear,
         };
-        assert!(blocked_for_crossing(&state, &ctx, &airport, "09", 60.0).is_none());
+        assert!(blocked_for_crossing(&state, &ctx, &airport, "09", 0.0, 60.0).is_none());
         target.longitude = -1.0 / 60.0;
         let targets = vec![target];
         let ctx = RequestContext {
@@ -1627,7 +1649,7 @@ mod tests {
             ..ctx
         };
         assert_eq!(
-            blocked_for_crossing(&state, &ctx, &airport, "09", 60.0),
+            blocked_for_crossing(&state, &ctx, &airport, "09", 0.0, 60.0),
             Some("holding_traffic_final")
         );
         let route = crate::state::TaxiClearance {

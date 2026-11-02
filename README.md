@@ -385,7 +385,7 @@ Automatic crossing requests reuse the active airport data and cached controller 
 
 A Ground taxi request made from physical runway pavement identifies the occupied runway and directs the pilot to Tower for exit instructions, rather than suggesting an unrelated departure-runway backtrack. Ordinary gate taxi routing remains subject to the same runway protection.
 
-Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. The crossing check uses the time needed to taxi across, plus the clearance/readback and radio buffer, so a distant final that cannot reach the threshold in time does not block the runway. Generated traffic crosses at the taxi-turn speed (8 kt with the jet envelope) and switches its landing lights on for the crossing.
+Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. The crossing check uses the time needed to taxi across, plus the clearance/readback and radio buffer, so a distant final that cannot reach the threshold in time does not block the runway. A landing aircraft that has already passed the crossing point and is moving away does not block the crossing behind it. An aircraft before or over the crossing, stopped past it, or still on final does block it. Generated traffic crosses at the taxi-turn speed (8 kt with the jet envelope) and switches its landing lights on for the crossing.
 
 After the crossing, the copilot can report vacated at the observed completion point. The next taxi instruction replaces the route and requires its own readback. In manual mode physical completion can advance the crossing workflow; a vacated report is not treated as an altitude readback.
 
@@ -414,7 +414,7 @@ A takeoff instruction may include known wind, pressure and departure guidance. T
 - Pilot check-ins use the indicated altitude.
 - Debug conversation exports include all three readings for diagnosis.
 
-Check in after tuning the assigned frequency. The airborne check-in includes current altitude and the assigned climb altitude when applicable. Handoffs use current and predicted sector coverage; receiving a frequency is not the same as owning the aircraft's sector. The debug Map displays the controller geometry used by these decisions.
+Check in after tuning the assigned frequency. The airborne check-in includes current altitude and the assigned climb altitude when applicable. Handoffs use current and predicted sector coverage; receiving a frequency is not the same as owning the aircraft's sector. When copilot tuning is enabled, a handoff moves the handoff radio to the recommended frequency after the instruction has been heard. Traffic on a station is scoped to that frequency: leaving a station hides its traffic from the transcript and stops its queued audio, while the flight's own clearances remain in the log. The debug Map displays the controller geometry used by these decisions.
 
 Supported request families include an altitude change, direct to a known fix, a lateral deviation, resuming the route, a speed request, a different approach, and departure/arrival runway amendments. Availability depends on phase and controller role. Requests that cannot be interpreted or supported should be clarified rather than silently applied.
 
@@ -1247,10 +1247,10 @@ from the airport's operator preferences in `traffic/hubs.toml`, with matching
 callsigns and installed paints. Regional airlines can appear with turboprops or
 regional jets, and a random share of general aviation uses registrations and light
 aircraft, turboprops or business jets. Ambient arrivals are sequenced one at a time,
-decelerate through final, and brake through rollout at the handling braking rate,
-with a firmer stop only when the exit is close. They use a stand-side runway exit
-after at least 700 m of rollout; an arrival with no exit beyond that distance is not
-seeded rather than turning around at the threshold. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
+decelerate through final, and brake at the rate needed to reach taxi speed at the
+first usable exit. They do not use maximum braking and then crawl the rest of the
+runway. The exit must be beyond the aircraft's computed stopping distance; if no exit
+qualifies, the arrival is not seeded rather than turning around at the threshold. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
 rollout and taxi-in; the phase states and runway-lighting policy are detailed in
 [CSL animation and runway lights](#csl-animation-and-runway-lights) below. Startup,
 cruise and shutdown phases belong to the complete-flight generated layer. Startup
