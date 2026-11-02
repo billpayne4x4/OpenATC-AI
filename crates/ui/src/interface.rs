@@ -678,6 +678,12 @@ impl Interface {
             "Submitting the Planning flight for clearance…".clone_into(&mut self.notice);
             return;
         }
+        // Radio traffic needs a tuned controller. Crew interphone calls do not.
+        if !matches!(request.role.as_str(), "copilot" | "cabin" | "ground")
+            && !self.station_reachable(radio)
+        {
+            return;
+        }
         let mut request = request.clone();
         if !matches!(request.role.as_str(), "copilot" | "cabin" | "ground")
             && !request.controller_initiated
@@ -800,12 +806,74 @@ impl Interface {
         "Saving settings...".clone_into(&mut self.settings_notice);
     }
 
+    /// Controller station that can accept a transmission on this radio, if any.
+    fn tuned_controller(
+        &self,
+        radio: openatc_core::state::Radio,
+    ) -> Option<openatc_core::stations::Station> {
+        let state = self.engine.state();
+        let nearby = openatc_core::stations::nearby(&self.nearby_stations, &state.telemetry);
+        state
+            .telemetry
+            .frequency(radio)
+            .and_then(|frequency| openatc_core::stations::tuned(&nearby, frequency))
+            .filter(|station| !matches!(station.service.as_str(), "ATIS" | "Unicom"))
+            .cloned()
+    }
+
+    /// Refuse radio speech unless a controller is tuned, before any STT work starts.
+    fn station_reachable(&mut self, radio: openatc_core::state::Radio) -> bool {
+        if self.tuned_controller(radio).is_some() {
+            return true;
+        }
+        self.ptt_armed = false;
+        let frequency = self.engine.state().telemetry.frequency(radio).unwrap_or(0);
+        self.notice = if frequency > 0 {
+            format!(
+                "Not on station — {:.3} MHz is not a receivable controller frequency.",
+                f64::from(frequency) / 1000.0
+            )
+        } else {
+            "Not on station — select a controller frequency before transmitting.".to_owned()
+        };
+        "Transmit refused (not on station)".clone_into(&mut self.last_action);
+        false
+    }
+
+    /// Start recording for a radio or interphone role.
+    fn start_talking(&mut self, role: &str, radio: openatc_core::state::Radio) {
+        self.expand();
+        let background = self.chatter_playing.is_some();
+        self.stop_all_chatter();
+        if (!background && self.speech.busy())
+            || self.speech.recording()
+            || self.speech.monitoring()
+        {
+            "Mic busy — wait for the current job".clone_into(&mut self.last_action);
+            return;
+        }
+        self.ptt_armed = true;
+        self.ptt_radio = radio;
+        role.clone_into(&mut self.ptt_role);
+        self.record_start = now_seconds();
+        self.record_peak = 0.0;
+        self.speech.start_recording(false);
+        self.last_action = if role == "copilot" {
+            "PTT recording (copilot)".to_owned()
+        } else {
+            "PTT recording".to_owned()
+        };
+    }
+
     /// Push-to-talk for the message box mic: record on press, transcribe on release.
     pub fn mic_push_to_talk(&mut self, down: bool) {
         if self.reset_pending {
             return;
         }
         if down {
+            if !self.station_reachable(self.active_radio) {
+                return;
+            }
             self.expand();
         }
         self.ptt_armed = false;
@@ -832,31 +900,15 @@ impl Interface {
             return;
         }
         if down {
-            self.expand();
-            let background = self.chatter_playing.is_some();
-            self.stop_all_chatter();
-            if (!background && self.speech.busy())
-                || self.speech.recording()
-                || self.speech.monitoring()
-            {
-                "Mic busy — wait for the current job".clone_into(&mut self.last_action);
-                return;
-            }
-            self.ptt_armed = true;
-            self.ptt_radio = self.active_radio;
-            self.ptt_role = if copilot {
+            let role = if copilot {
                 "copilot".to_owned()
             } else {
                 self.crew_role()
             };
-            self.record_start = now_seconds();
-            self.record_peak = 0.0;
-            self.speech.start_recording(false);
-            self.last_action = if copilot {
-                "PTT recording (copilot)".to_owned()
-            } else {
-                "PTT recording".to_owned()
-            };
+            if role == "atc" && !self.station_reachable(self.active_radio) {
+                return;
+            }
+            self.start_talking(&role, self.active_radio);
         } else if self.speech.recording() {
             let endpoint = self.engine.endpoint();
             self.speech.transcribe(&endpoint);
@@ -868,15 +920,10 @@ impl Interface {
     /// Radio bindings bypass the crew interphone selection.
     pub fn radio_push_to_talk(&mut self, down: bool, radio: openatc_core::state::Radio) {
         if down {
-            if self.speech.busy() || self.speech.recording() || self.speech.monitoring() {
-                self.talk_push_to_talk(true, false);
+            if !self.station_reachable(radio) {
                 return;
             }
-            self.talk_push_to_talk(true, false);
-            if self.ptt_armed {
-                self.ptt_radio = radio;
-                self.ptt_role = "atc".into();
-            }
+            self.start_talking("atc", radio);
         } else if self.ptt_armed && self.ptt_role == "atc" && self.ptt_radio == radio {
             self.talk_push_to_talk(false, false);
         }
@@ -1292,9 +1339,13 @@ impl Interface {
             if let Some(index) = position
                 && let Some(entry) = self.speech_queue.remove(index)
             {
-                if entry.background {
-                    self.chatter_playing =
-                        Some((radio, entry.frequency.unwrap_or(0), entry.gap_ms));
+                // Only airport chatter carries a live frequency. Ambient traffic
+                // background calls have no frequency and must not be killed by the
+                // station-death filter.
+                if entry.background
+                    && let Some(frequency) = entry.frequency
+                {
+                    self.chatter_playing = Some((radio, frequency, entry.gap_ms));
                 }
                 self.speak_entry(&entry);
             }
@@ -2672,5 +2723,54 @@ mod radio_busy_tests {
         interface.stop_chatter(openatc_core::state::Radio::Com1);
         assert!(interface.speech_queue.is_empty());
         assert!(interface.chatter_playing.is_none());
+    }
+}
+
+#[cfg(test)]
+mod station_gate_tests {
+    use super::*;
+
+    fn controller(frequency: i32, service: &str) -> openatc_core::stations::Station {
+        openatc_core::stations::Station {
+            khz: frequency,
+            service: service.into(),
+            receivable: true,
+            ..Default::default()
+        }
+    }
+
+    fn telemetry(frequency: i32) -> openatc_core::state::Telemetry {
+        openatc_core::state::Telemetry {
+            position_valid: true,
+            com1_khz: frequency,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn off_station_push_to_talk_never_starts_a_transcription() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.nearby_stations = vec![controller(121_700, "Ground")];
+        interface.engine.telemetry(telemetry(118_700));
+        interface.talk_push_to_talk(true, false);
+        assert!(!interface.ptt_armed);
+        assert!(interface.last_action.contains("not on station"));
+        assert!(interface.notice.contains("Not on station"));
+        interface.mic_push_to_talk(true);
+        assert!(!interface.speech.recording());
+        assert!(interface.notice.contains("Not on station"));
+        assert!(!interface.speech.busy());
+    }
+
+    #[test]
+    fn a_tuned_controller_permits_radio_push_to_talk() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.nearby_stations = vec![controller(121_700, "Ground")];
+        interface.engine.telemetry(telemetry(121_700));
+        interface.radio_push_to_talk(true, openatc_core::state::Radio::Com1);
+        assert!(interface.ptt_armed);
+        assert_eq!(interface.ptt_role, "atc");
+        assert_eq!(interface.ptt_radio, openatc_core::state::Radio::Com1);
+        interface.radio_push_to_talk(false, openatc_core::state::Radio::Com1);
     }
 }

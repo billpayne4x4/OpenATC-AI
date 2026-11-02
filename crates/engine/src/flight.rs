@@ -75,6 +75,21 @@ fn surface_owner(state: &EngineState, stations: &[Station], current: &Station) -
         .unwrap_or_else(|| current.clone())
 }
 
+/// Nearest receivable Ground station at the destination, when it is a
+/// different controller from the station issuing the vacate instruction.
+fn ground_station(state: &EngineState, stations: &[Station], current: &Station) -> Option<Station> {
+    stations
+        .iter()
+        .filter(|station| {
+            station.receivable
+                && station.service == "Ground"
+                && station.airport == state.session.plan.destination
+                && !same_controller(station, current)
+        })
+        .min_by(|a, b| a.distance_nm.total_cmp(&b.distance_nm))
+        .cloned()
+}
+
 pub(crate) fn tag(state: &mut EngineState, station: &Station) -> SpeechTag {
     let settings = state.settings.clone();
     let mut tag = crate::routes::assign_airspace_controller(
@@ -485,9 +500,37 @@ pub fn tick(state: &mut EngineState) {
         && let Some(runway) = landed_runway(state)
     {
         state.flow.vacate_reported = true;
+        let owner = surface_owner(state, &stations, &current);
         let exit = runway_exit(state, &runway);
-        let text = match &exit {
-            Some((side, taxiway)) => say(
+        let ground = ground_station(state, &stations, &owner);
+        let contact = ground.as_ref().map(|station| {
+            (
+                station.name.clone(),
+                format!("{:.3}", f64::from(station.khz) / 1000.0),
+            )
+        });
+        let text = match (&exit, contact) {
+            (Some((side, taxiway)), Some((station, frequency))) => say(
+                "arrival_vacate_contact_ground",
+                &[
+                    ("callsign", state.session.plan.callsign.clone()),
+                    ("runway", runway.clone()),
+                    ("side", (*side).to_owned()),
+                    ("taxiway", taxiway.clone()),
+                    ("station", station),
+                    ("frequency", frequency),
+                ],
+            ),
+            (None, Some((station, frequency))) => say(
+                "arrival_vacate_any_contact_ground",
+                &[
+                    ("callsign", state.session.plan.callsign.clone()),
+                    ("runway", runway.clone()),
+                    ("station", station),
+                    ("frequency", frequency),
+                ],
+            ),
+            (Some((side, taxiway)), None) => say(
                 "arrival_vacate_taxiway",
                 &[
                     ("callsign", state.session.plan.callsign.clone()),
@@ -496,7 +539,7 @@ pub fn tick(state: &mut EngineState) {
                     ("taxiway", taxiway.clone()),
                 ],
             ),
-            None => say(
+            (None, None) => say(
                 "arrival_vacate_any",
                 &[
                     ("callsign", state.session.plan.callsign.clone()),
@@ -504,7 +547,11 @@ pub fn tick(state: &mut EngineState) {
                 ],
             ),
         };
-        let owner = surface_owner(state, &stations, &current);
+        if let Some(ground) = ground {
+            state.session.recommended_frequency_khz = ground.khz;
+            state.session.frequency_sequence = state.session.next_sequence;
+            state.flow.pending_station = station_key(&ground);
+        }
         let voice = tag(state, &owner);
         add_transmission(&mut state.session, "ATC", &text, &voice);
         return;
@@ -3046,7 +3093,7 @@ mod ownership_tests {
     }
 
     #[test]
-    fn touchdown_exit_and_ground_handoff_are_separate_steps() {
+    fn a_vacate_instruction_combines_the_ground_handoff_without_repeating_it() {
         use openatc_core::{
             airport::{Airport, Runway},
             state::{Point, Telemetry},
@@ -3109,43 +3156,33 @@ mod ownership_tests {
             tick(&mut state);
             assert_eq!(state.airport.as_ref().unwrap().icao, "DEST");
             assert_eq!(state.session.transcript.len(), 1);
-            assert!(
-                state.session.transcript[0]
-                    .text
-                    .to_lowercase()
-                    .contains("vacate")
-            );
+            let vacate = state.session.transcript[0].text.to_lowercase();
+            assert!(vacate.contains("vacate") || vacate.contains("exit runway"));
+            if separate_ground {
+                assert!(vacate.contains("arrival ground"), "{vacate}");
+                assert!(vacate.contains("121.900"), "{vacate}");
+                assert_eq!(state.session.recommended_frequency_khz, 121_900);
+            } else {
+                assert!(!vacate.contains("arrival ground"), "{vacate}");
+            }
             for _ in 0..5 {
                 tick(&mut state);
             }
             assert_eq!(
                 state.session.transcript.len(),
                 1,
-                "No Ground handoff while on the runway"
+                "The combined handoff is not repeated while on the runway"
             );
             telemetry.longitude = 0.002;
             openatc_core::ops::update_flight_phase(&mut state.session, &telemetry).unwrap();
             for _ in 0..4 {
                 tick(&mut state);
             }
-            if separate_ground {
-                assert_eq!(state.session.recommended_frequency_khz, 121_900);
-                assert!(
-                    state
-                        .session
-                        .transcript
-                        .last()
-                        .unwrap()
-                        .text
-                        .contains("Arrival Ground")
-                );
-            } else {
-                assert_eq!(
-                    state.session.transcript.len(),
-                    1,
-                    "Combined Tower retains the arrival"
-                );
-            }
+            assert_eq!(
+                state.session.transcript.len(),
+                1,
+                "No second Ground handoff after vacating"
+            );
         }
     }
 

@@ -474,16 +474,40 @@ fn exchange(
     let runway = session.runway.clone();
     let via = session.via.clone();
     let lines = if session.service == "Ground" {
-        let pilot = format!("{station}, {callsign}, ready to taxi.");
-        let clearance = if via.is_empty() {
-            format!("{callsign}, taxi to runway {runway}.")
+        let pilot = openatc_core::dialogue::say(
+            "chatter_ground_ready",
+            &[("station", station.clone()), ("callsign", callsign.clone())],
+        );
+        let (clearance, readback) = if via.is_empty() {
+            (
+                openatc_core::dialogue::say(
+                    "chatter_ground_taxi_direct",
+                    &[("callsign", callsign.clone()), ("runway", runway.clone())],
+                ),
+                openatc_core::dialogue::say(
+                    "chatter_ground_taxi_direct_readback",
+                    &[("callsign", callsign.clone()), ("runway", runway.clone())],
+                ),
+            )
         } else {
-            format!("{callsign}, taxi to runway {runway} via {via}.")
-        };
-        let readback = if via.is_empty() {
-            format!("Taxi to runway {runway}, {callsign}.")
-        } else {
-            format!("Taxi to runway {runway} via {via}, {callsign}.")
+            (
+                openatc_core::dialogue::say(
+                    "chatter_ground_taxi",
+                    &[
+                        ("callsign", callsign.clone()),
+                        ("runway", runway.clone()),
+                        ("via", via.clone()),
+                    ],
+                ),
+                openatc_core::dialogue::say(
+                    "chatter_ground_taxi_readback",
+                    &[
+                        ("callsign", callsign.clone()),
+                        ("runway", runway.clone()),
+                        ("via", via.clone()),
+                    ],
+                ),
+            )
         };
         vec![
             Line {
@@ -506,9 +530,18 @@ fn exchange(
             },
         ]
     } else if rand::rng().random_bool(0.5) {
-        let pilot = format!("{station}, {callsign}, ready for departure.");
-        let clearance = format!("{callsign}, runway {runway}, line up and wait.");
-        let readback = format!("Line up and wait runway {runway}, {callsign}.");
+        let pilot = openatc_core::dialogue::say(
+            "chatter_tower_departure",
+            &[("station", station.clone()), ("callsign", callsign.clone())],
+        );
+        let clearance = openatc_core::dialogue::say(
+            "chatter_tower_lineup",
+            &[("callsign", callsign.clone()), ("runway", runway.clone())],
+        );
+        let readback = openatc_core::dialogue::say(
+            "chatter_tower_lineup_readback",
+            &[("callsign", callsign.clone()), ("runway", runway.clone())],
+        );
         vec![
             Line {
                 speaker: callsign.clone(),
@@ -530,9 +563,22 @@ fn exchange(
             },
         ]
     } else {
-        let pilot = format!("{station}, {callsign}, on final runway {runway}.");
-        let clearance = format!("{callsign}, runway {runway}, cleared to land.");
-        let readback = format!("Cleared to land runway {runway}, {callsign}.");
+        let pilot = openatc_core::dialogue::say(
+            "chatter_tower_final",
+            &[
+                ("station", station.clone()),
+                ("callsign", callsign.clone()),
+                ("runway", runway.clone()),
+            ],
+        );
+        let clearance = openatc_core::dialogue::say(
+            "chatter_tower_landing",
+            &[("callsign", callsign.clone()), ("runway", runway.clone())],
+        );
+        let readback = openatc_core::dialogue::say(
+            "chatter_tower_landing_readback",
+            &[("callsign", callsign.clone()), ("runway", runway.clone())],
+        );
         vec![
             Line {
                 speaker: callsign.clone(),

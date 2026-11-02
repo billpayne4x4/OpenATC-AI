@@ -221,7 +221,7 @@ Open X-Plane **Settings → Joystick** to assign a controller button, or **Setti
 | `openatc/copy_error` | Write the current error to X-Plane `Log.txt` | Press once; this writes a log entry rather than copying to the clipboard. |
 
 - Assign a dedicated COM1 or COM2 command when you want an unambiguous radio button. Direct COM transmission is separate from cabin/ground interphone routing.
-- The microphone must be selected and the STT server ready. The current radio/controller still determines whether an ATC request is valid.
+- The microphone must be selected and the STT server ready. Push-to-talk requires a tuned, receivable controller: off-station presses do not start recording or transcription, and typed ATC transmissions are refused before any engine request.
 - Avoid assigning the same button to an X-Plane command as well as OpenATC. Finish editing a text field before using keyboard bindings.
 - Radio tuning, the audio panel and other aircraft controls use the aircraft’s normal X-Plane bindings; OpenATC does not register additional joystick commands for every on-screen request.
 
@@ -451,7 +451,7 @@ Approach variants remain distinct from runway designators in expectations, clear
 - The installed-data regression imports the actual Nice–Milan SimBrief document with its missing approach field, sequences the route, and checks the 4,000-foot amendment, approach clearance, Tower transfer and separate landing permission.
 - Its accelerated telemetry and acknowledged readbacks do not replace native aircraft/audio acceptance.
 
-Touchdown is detected from simulator telemetry. Tower gives a general runway-vacate/report-clear instruction; it does not yet consistently assign a specific exit taxiway. Ground handoff follows observed runway exit, not the first on-ground sample. After Ground check-in, select a destination stand and request taxi; the clearance names the stand and known taxiways. Each intervening runway retains its own hold-short, crossing and readback requirements. A combined Tower/Ground station can retain you on the same frequency.
+Touchdown is detected from simulator telemetry. Tower names the first usable exit and its side, then includes the Ground contact and frequency when a separate Ground station is published. Without a separate Ground station, Tower keeps the arrival and the vacate instruction asks only for the runway-vacated report. The handoff follows the observed runway exit, not the first on-ground sample, and the combined instruction is not repeated. After Ground check-in, select a destination stand and request taxi; the clearance names the stand and known taxiways. Each intervening runway retains its own hold-short, crossing and readback requirements.
 
 Select a destination stand using the parking list and its filter, then request taxi. Arrival taxi routes have the same runway-crossing and readback limits as departure routes. The flight reaches its completed state only when the approved parking route ends at the selected stand and the aircraft has stopped; stopping at an intermediate runway hold is not the end of the flight. Four complete HTTP-engine replay arrangements verify arrival through runway exit, Ground transfer, taxi-in crossings and parking. These tests do not establish native simulator acceptance.
 
@@ -1215,12 +1215,15 @@ takeoff clearances, and only then enter the runway. The hold point is derived fr
 the painted hold-line geometry and set back on the approach side, and the aircraft
 stops there rather than at the nearest graph node. The takeoff run starts at the
 runway end nearest that hold, so the aircraft enters at the near threshold and rolls
-away from it. Takeoff uses a ground roll to rotation speed followed by a three-degree
-climb. Ambient departures and arrivals use separate same-flow runways when the
-airport has a usable parallel; runway occupancy is tracked per physical runway, so
-traffic on 04R does not block 04L. CSL models animate through taxi-out, line-up,
-takeoff, climb, approach, rollout and taxi-in; the phase states and runway-lighting
-policy are detailed in
+away from it. Takeoff accelerates at the handling acceleration rate to rotation
+speed, using a firmer rate only when the runway is shorter than the nominal roll,
+then climbs at three degrees. Ambient departures and arrivals use separate same-flow
+runways when the airport has a usable parallel; runway occupancy is tracked per
+physical runway, so traffic on 04R does not block 04L. Ambient arrivals are sequenced
+one at a time, decelerate through final, and brake through rollout at the handling
+braking rate, with a firmer stop only when the exit is close. They use a stand-side
+runway exit. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
+rollout and taxi-in; the phase states and runway-lighting policy are detailed in
 [CSL animation and runway lights](#csl-animation-and-runway-lights) below. Startup,
 cruise and shutdown phases belong to the complete-flight generated layer. Startup
 never creates `TaxiIn` traffic; `TaxiIn` exists only after a landing. Surface

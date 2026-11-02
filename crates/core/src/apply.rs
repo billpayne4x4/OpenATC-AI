@@ -279,6 +279,20 @@ pub struct RequestContext<'a> {
     pub region: &'a Region,
 }
 
+/// Give the hold instruction its pilot readback without adding another transmission.
+fn hold_readback(state: &mut State, runway: &str) {
+    let text = crate::dialogue::say(
+        "pilot_hold_short_readback",
+        &[
+            ("callsign", state.plan.callsign.clone()),
+            ("runway", runway.to_owned()),
+        ],
+    );
+    if let Some(entry) = state.transcript.last_mut() {
+        entry.pilot_reply = text;
+    }
+}
+
 /// Record the ATC reply and mark go-arounds and emergencies as urgent.
 fn reply(
     state: &mut State,
@@ -745,24 +759,30 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
     if !state.demo {
         if state.departure_wake_seconds > 0.0 {
             state.taxi_clearance.waiting_for_traffic = true;
-            return reply(
+            let runway = state.plan.runway.clone();
+            let outcome = reply(
                 state,
                 ctx,
                 false,
-                crate::dialogue::say("holding_wake", &[("runway", state.plan.runway.clone())]),
+                crate::dialogue::say("holding_wake", &[("runway", runway.clone())]),
             );
+            hold_readback(state, &runway);
+            return outcome;
         }
         let blocked = ctx.airport.map_or(Some("holding_standby"), |airport| {
             crate::holding::blocked(airport, &state.plan.runway, &state.telemetry)
         });
         if let Some(response) = blocked {
             state.taxi_clearance.waiting_for_traffic = true;
-            return reply(
+            let runway = state.plan.runway.clone();
+            let outcome = reply(
                 state,
                 ctx,
                 false,
-                crate::dialogue::say(response, &[("runway", state.plan.runway.clone())]),
+                crate::dialogue::say(response, &[("runway", runway.clone())]),
             );
+            hold_readback(state, &runway);
+            return outcome;
         }
     }
     state.taxi_clearance.waiting_for_traffic = false;
@@ -1428,6 +1448,42 @@ mod tests {
     use super::super::state::{Clearance, Point, State, Telemetry};
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn a_blocked_departure_reads_back_the_hold_instruction() {
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.plan.callsign = "VH-ABC".into();
+        state.plan.runway = "27".into();
+        state.taxi_clearance.approved = true;
+        state.taxi_clearance.points.push(Point::default());
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: None,
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+            },
+        );
+        assert!(!outcome.accepted);
+        let entry = state.transcript.last().expect("hold transmission");
+        assert_eq!(entry.pilot_reply, "Holding short of runway 27, VH-ABC.");
+    }
 
     #[test]
     fn structured_compound_readback_cannot_omit_speed_even_with_lenient_settings() {
