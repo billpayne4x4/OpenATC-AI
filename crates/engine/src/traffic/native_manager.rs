@@ -4,12 +4,14 @@
 //! ATC system. It tracks their state, issues simulated clearances, handles readbacks,
 //! and integrates them with traffic separation and wake turbulence systems.
 
-use crate::traffic::separation;
+use crate::traffic::{separation, wake};
 use crate::EngineState;
-use openatc_core::airport::Airport;
+use openatc_core::airport::{Airport, calculate_taxi_route};
 use openatc_core::state::{NativeAircraft, NativeClearance, NativePhase, Point, Telemetry, TrafficTarget};
 use openatc_core::traffic::profiles::{Aircraft as Profile, Profiles};
+use openatc_core::traffic::wake::departure_for_wake;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Maximum number of native AI aircraft X-Plane supports (excluding ownship).
@@ -32,12 +34,22 @@ struct TrackedNativeAircraft {
     initialized: bool,
     /// Assigned taxi route (taxiway names).
     taxi_route: Option<Vec<String>>,
+    /// Taxi clearance for detailed route.
+    taxi_clearance: Option<openatc_core::state::TaxiClearance>,
     /// Current target altitude for climb/descent.
     target_altitude: Option<i32>,
     /// Current target heading.
     target_heading: Option<f64>,
     /// Current target speed.
     target_speed: Option<i32>,
+    /// Departure runway for this aircraft.
+    departure_runway: Option<String>,
+    /// Arrival runway for this aircraft.
+    arrival_runway: Option<String>,
+    /// Whether this is a departure or arrival.
+    is_departure: bool,
+    /// Pushback direction if applicable.
+    pushback_direction: Option<f64>,
 }
 
 impl TrackedNativeAircraft {
@@ -72,9 +84,14 @@ impl TrackedNativeAircraft {
             last_clearance: None,
             initialized: false,
             taxi_route: None,
+            taxi_clearance: None,
             target_altitude: None,
             target_heading: None,
             target_speed: None,
+            departure_runway: None,
+            arrival_runway: None,
+            is_departure: !target.on_ground, // Assume airborne = arrival, on ground = departure
+            pushback_direction: None,
         }
     }
 
@@ -100,6 +117,8 @@ impl TrackedNativeAircraft {
     }
 
     fn update_from_target(&mut self, target: &TrafficTarget, plane_index: u8) {
+        let was_on_ground = self.aircraft.on_ground;
+        
         self.aircraft.plane_index = plane_index;
         self.aircraft.latitude = target.latitude;
         self.aircraft.longitude = target.longitude;
@@ -114,6 +133,16 @@ impl TrackedNativeAircraft {
 
         // Update phase based on new state
         self.aircraft.phase = Self::determine_phase(&self.aircraft);
+
+        // Track takeoff/landing transitions
+        if was_on_ground && !target.on_ground {
+            // Takeoff occurred
+            self.is_departure = true;
+        } else if !was_on_ground && target.on_ground {
+            // Landing occurred
+            self.is_departure = false;
+            self.aircraft.phase = NativePhase::Rollout;
+        }
     }
 }
 
@@ -130,6 +159,10 @@ pub struct NativeAircraftManager {
     owns_planes: bool,
     /// Airport profiles for aircraft performance data.
     profiles: Option<Arc<Profiles>>,
+    /// Cached airport data for taxi routing.
+    airport_cache: Option<Arc<Airport>>,
+    /// Cached airport ICAO.
+    airport_icao: Option<String>,
 }
 
 impl NativeAircraftManager {
@@ -154,6 +187,18 @@ impl NativeAircraftManager {
     /// Set the aircraft profiles for performance lookups.
     pub fn set_profiles(&mut self, profiles: Arc<Profiles>) {
         self.profiles = Some(profiles);
+    }
+
+    /// Set the airport data for taxi routing and runway determination.
+    pub fn set_airport(&mut self, airport: Arc<Airport>) {
+        self.airport_icao = Some(airport.icao.clone());
+        self.airport_cache = Some(airport);
+    }
+
+    /// Clear the airport cache.
+    pub fn clear_airport(&mut self) {
+        self.airport_cache = None;
+        self.airport_icao = None;
     }
 
     /// Process telemetry update and manage native aircraft.
@@ -182,11 +227,23 @@ impl NativeAircraftManager {
             }
 
             let id = target.id;
+            let is_new = !self.aircraft.contains_key(&id);
             self.aircraft.entry(id).or_insert_with(|| {
                 let mut t = TrackedNativeAircraft::new(target);
                 t.aircraft.plane_index = plane_index;
                 t
             });
+
+            // Assign departure/arrival runways for new aircraft
+            if is_new {
+                if let Some(tracked) = self.aircraft.get_mut(&id) {
+                    if tracked.is_departure {
+                        tracked.departure_runway = self.get_departure_runway(state);
+                    } else {
+                        tracked.arrival_runway = self.get_arrival_runway(state);
+                    }
+                }
+            }
 
             // Update tracked aircraft (mutable borrow ends at end of block)
             {
@@ -257,12 +314,54 @@ impl NativeAircraftManager {
                 }
                 NativePhase::LineUp => {
                     if has_clearance {
-                        self.issue_lineup_clearance(state, id);
+                        // Check wake turbulence delay before lineup
+                        if let Some(tracked) = self.aircraft.get(&id) {
+                            if let Some(airport) = self.airport_cache.as_ref() {
+                                if let Some(runway) = &tracked.departure_runway {
+                                    let wake_delay = state.traffic.wake.departure_delay(
+                                        tracked.aircraft.id,
+                                        airport,
+                                        runway,
+                                        &tracked.aircraft.aircraft,
+                                        tracked.aircraft.latitude,
+                                        tracked.aircraft.longitude,
+                                    );
+                                    if wake_delay <= 0.0 {
+                                        self.issue_lineup_clearance(state, id);
+                                    }
+                                } else {
+                                    self.issue_lineup_clearance(state, id);
+                                }
+                            } else {
+                                self.issue_lineup_clearance(state, id);
+                            }
+                        }
                     }
                 }
                 NativePhase::Takeoff => {
                     if has_clearance {
-                        self.issue_takeoff_clearance(state, id);
+                        // Check wake turbulence delay and separation before takeoff
+                        if let Some(tracked) = self.aircraft.get(&id) {
+                            if let Some(airport) = self.airport_cache.as_ref() {
+                                if let Some(runway) = &tracked.departure_runway {
+                                    let wake_delay = state.traffic.wake.departure_delay(
+                                        tracked.aircraft.id,
+                                        airport,
+                                        runway,
+                                        &tracked.aircraft.aircraft,
+                                        tracked.aircraft.latitude,
+                                        tracked.aircraft.longitude,
+                                    );
+                                    if wake_delay <= 0.0 {
+                                        self.issue_takeoff_clearance(state, id);
+                                    }
+                                } else {
+                                    self.issue_takeoff_clearance(state, id);
+                                }
+                            } else {
+                                self.issue_takeoff_clearance(state, id);
+                            }
+                        }
                     }
                 }
                 NativePhase::InitialClimb => {
@@ -271,7 +370,26 @@ impl NativeAircraftManager {
                     }
                 }
                 NativePhase::Enroute => {
-                    // Monitor for descent/approach
+                    // Monitor for descent/approach based on flight plan
+                    if let Some(tracked) = self.aircraft.get_mut(&id) {
+                        // Check if we should start descent based on distance to destination
+                        if let Some(arrival_airport) = state.arrival_airport.as_ref() {
+                            let distance_nm = openatc_core::arrival::distance_nm(
+                                [tracked.aircraft.latitude, tracked.aircraft.longitude],
+                                [arrival_airport.reference_latitude, arrival_airport.reference_longitude],
+                            );
+                            // Start descent ~100-150 NM out for jets, 50 NM for props
+                            let descent_distance = if tracked.aircraft.aircraft.starts_with('B') || tracked.aircraft.aircraft.starts_with('A') {
+                                120.0 // Jets
+                            } else {
+                                60.0 // Props
+                            };
+                            
+                            if distance_nm <= descent_distance && tracked.aircraft.phase == NativePhase::Enroute {
+                                tracked.aircraft.phase = NativePhase::Descent;
+                            }
+                        }
+                    }
                 }
                 NativePhase::Descent => {
                     if has_clearance {
@@ -280,12 +398,62 @@ impl NativeAircraftManager {
                 }
                 NativePhase::Approach => {
                     if has_clearance {
-                        self.issue_approach_clearance(state, id);
+                        // Check arrival wake conflict
+                        let conflict = if let Some(tracked) = self.aircraft.get(&id) {
+                            if let Some(airport) = self.airport_cache.as_ref() {
+                                if let Some(runway) = &tracked.arrival_runway {
+                                    let mut wake_monitor = state.traffic.wake.clone();
+                                    let targets = state.traffic_targets();
+                                    wake_monitor.arrival_conflict(
+                                        &state.session.telemetry,
+                                        &targets,
+                                        Some(airport),
+                                        runway,
+                                        0.0,
+                                    )
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        
+                        if !conflict {
+                            self.issue_approach_clearance(state, id);
+                        }
                     }
                 }
                 NativePhase::Final => {
                     if has_clearance {
-                        self.issue_landing_clearance(state, id);
+                        // Check arrival wake conflict
+                        let conflict = if let Some(tracked) = self.aircraft.get(&id) {
+                            if let Some(airport) = self.airport_cache.as_ref() {
+                                if let Some(runway) = &tracked.arrival_runway {
+                                    let mut wake_monitor = state.traffic.wake.clone();
+                                    let targets = state.traffic_targets();
+                                    wake_monitor.arrival_conflict(
+                                        &state.session.telemetry,
+                                        &targets,
+                                        Some(airport),
+                                        runway,
+                                        0.0,
+                                    )
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+                        
+                        if !conflict {
+                            self.issue_landing_clearance(state, id);
+                        }
                     }
                 }
                 NativePhase::Landing => {
@@ -374,25 +542,84 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        // TODO: Calculate actual taxi route from airport data
-        let taxi_route = vec!["A".to_string(), "B".to_string()]; // Placeholder
+        
+        let Some(airport) = self.airport_cache.as_ref() else { return };
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
-        tracked.taxi_route = Some(taxi_route.clone());
-
-        tracked.aircraft.clearance = Some(NativeClearance {
-            kind: openatc_core::state::ClearanceKind::Taxi,
-            altitude_feet: None,
-            heading: None,
-            speed_knots: None,
-            runway: None,
-            taxi_route: Some(taxi_route),
-            hold_short_of: None,
-            sequence,
-        });
-        tracked.last_clearance = Some(Instant::now());
-
-        self.add_atc_transmission(state, id, "Taxi via A, B, hold short of runway 09");
+        
+        // Check ground separation - hold if traffic ahead
+        let traffic_targets = state.traffic_targets();
+        let profile = self.profiles
+            .as_ref()
+            .and_then(|p| p.aircraft(&tracked.aircraft.aircraft));
+        let own_length = profile.map(|p| p.length).unwrap_or(30.0);
+        
+        // Check for traffic ahead on taxi route
+        let conflict = separation::closest_ahead(
+            tracked.aircraft.latitude,
+            tracked.aircraft.longitude,
+            tracked.aircraft.track_degrees,
+            own_length,
+            tracked.aircraft.id,
+            &traffic_targets,
+            |_| Some(100.0), // Default queue gap
+        );
+        
+        if conflict.is_some() {
+            // Traffic ahead - don't issue taxi clearance yet
+            return;
+        }
+        
+        // Determine destination based on phase
+        let (destination, to_parking) = if tracked.is_departure {
+            // Departure: taxi to runway hold short
+            (tracked.departure_runway.clone().unwrap_or_else(|| "09".to_string()), false)
+        } else {
+            // Arrival: taxi to parking
+            ("Gate 1".to_string(), true)
+        };
+        
+        // Get aircraft size from profile
+        let aircraft_size = self.profiles
+            .as_ref()
+            .and_then(|p| p.aircraft(&tracked.aircraft.aircraft))
+            .map(|p| p.parking_size)
+            .unwrap_or('C');
+        
+        // Calculate taxi route using airport data
+        let telemetry = &state.session.telemetry;
+        if let Ok(taxi_clearance) = calculate_taxi_route(
+            airport,
+            telemetry,
+            &destination,
+            to_parking,
+            aircraft_size,
+        ) {
+            let taxi_route: Vec<String> = taxi_clearance.points
+                .iter()
+                .map(|p| p.name.clone())
+                .filter(|n| !n.is_empty())
+                .collect();
+            
+            let hold_short = taxi_clearance.hold_short_runway.clone();
+            let instructions = taxi_clearance.instructions.clone();
+            
+            tracked.taxi_route = Some(taxi_route.clone());
+            tracked.taxi_clearance = Some(taxi_clearance);
+            
+            tracked.aircraft.clearance = Some(NativeClearance {
+                kind: openatc_core::state::ClearanceKind::Taxi,
+                altitude_feet: None,
+                heading: None,
+                speed_knots: None,
+                runway: tracked.departure_runway.clone(),
+                taxi_route: Some(taxi_route),
+                hold_short_of: if !hold_short.is_empty() { Some(hold_short) } else { None },
+                sequence: self.next_sequence(),
+            });
+            tracked.last_clearance = Some(Instant::now());
+            
+            self.add_atc_transmission(state, id, &instructions);
+        }
     }
 
     /// Issue pushback clearance.
@@ -400,21 +627,69 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
+        
+        // Calculate pushback direction based on aircraft heading and parking position
+        // For now, use the aircraft's current heading + 180 (face opposite direction)
+        let pushback_heading = (tracked.aircraft.track_degrees + 180.0) % 360.0;
+        tracked.pushback_direction = Some(pushback_heading);
+        
+        let cardinal = heading_to_cardinal(pushback_heading);
+        
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Taxi,
             altitude_feet: None,
-            heading: None,
+            heading: Some(pushback_heading),
             speed_knots: None,
             runway: None,
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, "Pushback approved, face east");
+        self.add_atc_transmission(state, id, &format!("Pushback approved, face {}", cardinal));
+    }
+
+    /// Convert heading to cardinal direction.
+    fn heading_to_cardinal(heading: f64) -> String {
+        let dirs = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+        let idx = ((heading + 22.5) / 45.0).floor() as usize % 8;
+        dirs[idx].to_string()
+    }
+
+    /// Get the departure runway for this aircraft based on airport assignment.
+    fn get_departure_runway(&self, state: &EngineState) -> Option<String> {
+        if let Some(airport) = self.airport_cache.as_ref() {
+            if let Some(assignment) = state.airports.assignment(
+                &airport.icao,
+                &state.session.plan.runway,
+                &state.session.plan.arrival_runway,
+                state.session.telemetry.magnetic_heading_degrees.unwrap_or(0.0),
+                state.session.telemetry.wingspan_meters.unwrap_or(10.0) * 1.94384, // Approximate wind knots from wingspan
+                0.0, // Minimum length - we'll use airport default
+            ) {
+                return Some(assignment.departure);
+            }
+        }
+        None
+    }
+
+    /// Get the arrival runway for this aircraft based on airport assignment.
+    fn get_arrival_runway(&self, state: &EngineState) -> Option<String> {
+        if let Some(airport) = self.airport_cache.as_ref() {
+            if let Some(assignment) = state.airports.assignment(
+                &airport.icao,
+                &state.session.plan.runway,
+                &state.session.plan.arrival_runway,
+                state.session.telemetry.magnetic_heading_degrees.unwrap_or(0.0),
+                state.session.telemetry.wingspan_meters.unwrap_or(10.0) * 1.94384,
+                0.0,
+            ) {
+                return Some(assignment.arrival);
+            }
+        }
+        None
     }
 
     /// Issue hold short clearance.
@@ -422,18 +697,17 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let runway = "09"; // TODO: Determine actual runway
+        let runway = self.get_departure_runway(state).unwrap_or_else(|| "09".to_string());
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::HoldShort,
             altitude_feet: None,
             heading: None,
             speed_knots: None,
-            runway: Some(runway.to_string()),
+            runway: Some(runway.clone()),
             taxi_route: None,
-            hold_short_of: Some(runway.to_string()),
-            sequence,
+            hold_short_of: Some(runway.clone()),
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
@@ -443,10 +717,17 @@ impl NativeAircraftManager {
     /// Check if aircraft needs to hold short.
     fn check_hold_short(&mut self, state: &mut EngineState, id: u32) {
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
-        // TODO: Check if approaching runway hold short line
-        // For now, simulate based on phase transition
-        if tracked.aircraft.phase == NativePhase::TaxiOut && tracked.aircraft.ground_speed_knots < 5.0 {
-            tracked.aircraft.phase = NativePhase::HoldShort;
+        // Check if taxi clearance has hold short and we're approaching it
+        if let Some(taxi) = &tracked.taxi_clearance {
+            if !taxi.hold_short_runway.is_empty() {
+                // Check distance to hold short point using airport data
+                if let Some(airport) = self.airport_cache.as_ref() {
+                    // Simplified: if speed is low and we have a hold short, transition to hold short phase
+                    if tracked.aircraft.ground_speed_knots < 5.0 {
+                        tracked.aircraft.phase = NativePhase::HoldShort;
+                    }
+                }
+            }
         }
     }
 
@@ -455,18 +736,17 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let runway = "09"; // TODO: Determine actual runway
+        let runway = self.get_departure_runway(state).unwrap_or_else(|| "09".to_string());
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::LineUp,
             altitude_feet: None,
             heading: None,
             speed_knots: None,
-            runway: Some(runway.to_string()),
+            runway: Some(runway.clone()),
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
@@ -478,22 +758,25 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let runway = "09"; // TODO: Determine actual runway
+        let runway = self.get_departure_runway(state).unwrap_or_else(|| "09".to_string());
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
+        
+        // Get initial climb altitude from flight plan or default
+        let initial_alt = state.session.plan.initial_altitude_feet.max(3000) as i32;
+        
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Takeoff,
-            altitude_feet: Some(5000),
+            altitude_feet: Some(initial_alt),
             heading: None,
             speed_knots: None,
-            runway: Some(runway.to_string()),
+            runway: Some(runway.clone()),
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, &format!("Cleared for takeoff runway {}, climb 5000", runway));
+        self.add_atc_transmission(state, id, &format!("Cleared for takeoff runway {}, climb {}", runway, initial_alt));
     }
 
     /// Issue climb clearance.
@@ -501,23 +784,24 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let target_alt = 15000; // TODO: Based on flight plan
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
-        tracked.target_altitude = Some(target_alt);
+        
+        // Get cruise altitude from flight plan
+        let cruise_alt = state.session.plan.cruise_feet.max(state.session.plan.initial_altitude_feet) as i32;
+        tracked.target_altitude = Some(cruise_alt);
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Climb,
-            altitude_feet: Some(target_alt),
+            altitude_feet: Some(cruise_alt),
             heading: None,
             speed_knots: None,
             runway: None,
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, &format!("Climb and maintain {}", target_alt));
+        self.add_atc_transmission(state, id, &format!("Climb and maintain {}", cruise_alt));
     }
 
     /// Issue descent clearance.
@@ -525,23 +809,24 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let target_alt = 5000; // TODO: Based on approach
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
-        tracked.target_altitude = Some(target_alt);
+        
+        // For arrival, descend to approach altitude
+        let approach_alt = 5000; // Could be based on approach plate
+        tracked.target_altitude = Some(approach_alt);
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Descend,
-            altitude_feet: Some(target_alt),
+            altitude_feet: Some(approach_alt),
             heading: None,
             speed_knots: None,
             runway: None,
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, &format!("Descend and maintain {}", target_alt));
+        self.add_atc_transmission(state, id, &format!("Descend and maintain {}", approach_alt));
     }
 
     /// Issue approach clearance.
@@ -549,22 +834,25 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let runway = "09"; // TODO: Determine actual runway
+        let runway = self.get_arrival_runway(state).unwrap_or_else(|| "09".to_string());
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
+        
+        // Get approach type from flight plan
+        let approach_type = state.session.plan.approach.clone().unwrap_or_else(|| "ILS".to_string());
+        
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Approach,
             altitude_feet: None,
             heading: None,
             speed_knots: None,
-            runway: Some(runway.to_string()),
+            runway: Some(runway.clone()),
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, &format!("Cleared ILS runway {} approach", runway));
+        self.add_atc_transmission(state, id, &format!("Cleared {} runway {} approach", approach_type, runway));
     }
 
     /// Issue landing clearance.
@@ -572,18 +860,17 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
-        let runway = "09"; // TODO: Determine actual runway
+        let runway = self.get_arrival_runway(state).unwrap_or_else(|| "09".to_string());
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Land,
             altitude_feet: None,
             heading: None,
             speed_knots: None,
-            runway: Some(runway.to_string()),
+            runway: Some(runway.clone()),
             taxi_route: None,
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
@@ -595,21 +882,27 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
+        
+        // Get exit taxiway from taxi clearance if available
+        let exit_taxi = tracked.taxi_clearance.as_ref()
+            .and_then(|t| t.points.first())
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "Exit A".to_string());
+        
         tracked.aircraft.clearance = Some(NativeClearance {
             kind: openatc_core::state::ClearanceKind::Taxi,
             altitude_feet: None,
             heading: None,
             speed_knots: None,
             runway: None,
-            taxi_route: Some(vec!["Exit A".to_string()]),
+            taxi_route: Some(vec![exit_taxi.clone()]),
             hold_short_of: None,
-            sequence,
+            sequence: self.next_sequence(),
         });
         tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, "Exit runway via A, contact ground");
+        self.add_atc_transmission(state, id, &format!("Exit runway via {}, contact ground", exit_taxi));
     }
 
     /// Issue taxi-in clearance.
@@ -617,21 +910,49 @@ impl NativeAircraftManager {
         if self.should_throttle_clearance(id) {
             return;
         }
-        let sequence = self.next_sequence();
+        let Some(airport) = self.airport_cache.as_ref() else { return };
         let Some(tracked) = self.aircraft.get_mut(&id) else { return };
-        tracked.aircraft.clearance = Some(NativeClearance {
-            kind: openatc_core::state::ClearanceKind::Taxi,
-            altitude_feet: None,
-            heading: None,
-            speed_knots: None,
-            runway: None,
-            taxi_route: Some(vec!["B".to_string(), "Gate 1".to_string()]),
-            hold_short_of: None,
-            sequence,
-        });
-        tracked.last_clearance = Some(Instant::now());
+        
+        // Calculate taxi route to parking
+        let telemetry = &state.session.telemetry;
+        let aircraft_size = self.profiles
+            .as_ref()
+            .and_then(|p| p.aircraft(&tracked.aircraft.aircraft))
+            .map(|p| p.parking_size)
+            .unwrap_or('C');
+        
+        if let Ok(taxi_clearance) = calculate_taxi_route(
+            airport,
+            telemetry,
+            "Gate 1",
+            true,
+            aircraft_size,
+        ) {
+            let taxi_route: Vec<String> = taxi_clearance.points
+                .iter()
+                .map(|p| p.name.clone())
+                .filter(|n| !n.is_empty())
+                .collect();
+            
+            let instructions = taxi_clearance.instructions.clone();
+            
+            tracked.taxi_route = Some(taxi_route.clone());
+            tracked.taxi_clearance = Some(taxi_clearance);
+            
+            tracked.aircraft.clearance = Some(NativeClearance {
+                kind: openatc_core::state::ClearanceKind::Taxi,
+                altitude_feet: None,
+                heading: None,
+                speed_knots: None,
+                runway: None,
+                taxi_route: Some(taxi_route),
+                hold_short_of: None,
+                sequence: self.next_sequence(),
+            });
+            tracked.last_clearance = Some(Instant::now());
 
-        self.add_atc_transmission(state, id, "Taxi via B to gate 1");
+            self.add_atc_transmission(state, id, &instructions);
+        }
     }
 
     /// Check if we should throttle clearances for this aircraft.
