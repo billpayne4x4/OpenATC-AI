@@ -65,6 +65,9 @@ pub struct TrafficTarget {
     pub track_degrees: f64,
     /// Simulator weight-on-wheels flag.
     pub on_ground: bool,
+    /// Whether the target is actually on runway pavement. `None` means unknown.
+    #[serde(default)]
+    pub runway_occupancy: Option<bool>,
 }
 
 /// Worker-produced position and model for lightweight simulator instances.

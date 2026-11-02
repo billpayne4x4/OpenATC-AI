@@ -2680,14 +2680,36 @@ pub(crate) async fn atc_request(
         .then(|| state.traffic_targets());
     let line_up_available = airport.as_ref().is_some_and(|airport| {
         let runway = &state.session.plan.runway;
-        let Some(rolling) = state.ambient.rolling_departure_id(&airport.icao, runway) else {
-            return false;
+        let runway_state = state.ambient.runway_state(&airport.icao, runway);
+        let generated_state = airport
+            .runways
+            .iter()
+            .find(|candidate| candidate.first_name == *runway || candidate.second_name == *runway)
+            .map_or(crate::generated::RunwayUse::Clear, |candidate| {
+                state.generated.runway_use(&format!(
+                    "RUNWAY/{}/{}/{}",
+                    airport.icao, candidate.first_name, candidate.second_name
+                ))
+            });
+        let can_line_up = match runway_state {
+            crate::traffic::manager::RunwayState::LineUp
+            | crate::traffic::manager::RunwayState::Landing => false,
+            crate::traffic::manager::RunwayState::Rolling => true,
+            crate::traffic::manager::RunwayState::Clear => match generated_state {
+                crate::generated::RunwayUse::LineUp | crate::generated::RunwayUse::Landing => false,
+                crate::generated::RunwayUse::Departing => true,
+                crate::generated::RunwayUse::Clear => state.session.departure_wake_seconds > 0.0,
+            },
         };
+        if !can_line_up {
+            return false;
+        }
+        let rolled = state.ambient.rolling_departure_id(&airport.icao, runway);
         let merged = state.traffic_targets();
         openatc_core::holding::blocked_for_movement(
             airport,
             runway,
-            merged.iter().filter(|target| target.id != rolling),
+            merged.iter().filter(|target| Some(target.id) != rolled),
             60.0,
         )
         .is_none()

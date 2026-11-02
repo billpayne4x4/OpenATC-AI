@@ -1,9 +1,10 @@
-//! Persistent ambient surface departures.
+//! Ambient airport traffic.
 //!
-//! This layer is deliberately independent of the full-flight scene publisher. It provides the
-//! opening airport with taxi-out traffic that already has a departure route and can take off
-//! without waiting for a SID/STAR/arrival pair.
+//! Keeps the airport alive around the player with surface departures, arrivals and the
+//! runway queue. Complete flight planning and the SID/STAR/approach planners live in
+//! `generated`; this module owns the aircraft that are actually moving.
 
+use crate::traffic::{phase::TrafficPhase, phases, separation};
 use openatc_core::airport::Airport;
 use openatc_core::state::{GeneratedTraffic, Point, TrafficDebug, TrafficTarget};
 use openatc_core::traffic::animation::{self, Animation, Handling, Kind};
@@ -16,43 +17,6 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 const TAXI_STRAIGHT_METERS_PER_SECOND: f64 = 25.0 * 0.514_444;
-
-/// Speed through the takeoff roll. A short runway borrows extra acceleration so
-/// Vr is still met at the rotation point.
-fn takeoff_roll_speed(
-    handling: &Handling,
-    distance: f64,
-    runway_start: f64,
-    rotation_end: f64,
-    taxi: f64,
-) -> f64 {
-    let rotation = handling.rotation_knots * 0.514_444;
-    let roll = (rotation_end - runway_start).max(1.0);
-    let required = (rotation.powi(2) - taxi.powi(2)).max(0.0) / (2.0 * roll);
-    let acceleration = required.max(handling.acceleration_knots_sec * 0.514_444);
-    let rolled = (distance - runway_start).max(0.0);
-    (taxi.powi(2) + 2.0 * acceleration * rolled)
-        .sqrt()
-        .min(rotation)
-}
-
-/// Speed through the landing roll, braking harder only when the exit is close.
-fn landing_rollout_speed(
-    handling: &Handling,
-    distance: f64,
-    ground_start: f64,
-    runway_end: f64,
-    taxi: f64,
-    touchdown: f64,
-) -> f64 {
-    let roll = (runway_end - ground_start).max(1.0);
-    let required = ((touchdown.powi(2) - taxi.powi(2)).max(0.0) / (2.0 * roll)).max(0.1);
-    let braking = (handling.braking_knots_sec * 0.514_444).max(required);
-    let rolled = (distance - ground_start).max(0.0);
-    (touchdown.powi(2) - 2.0 * braking * rolled)
-        .max(taxi.powi(2))
-        .sqrt()
-}
 
 /// Deterministic mixture used for the random GA share and weighted operator draw.
 fn mix(mut value: u64) -> u64 {
@@ -136,18 +100,6 @@ struct AmbientCandidate {
     profile: Profile,
     model: Arc<Model>,
     wake_category: Option<u8>,
-}
-
-fn climb_speed(profile: &Profile, handling: &Handling) -> f64 {
-    (profile.approach_knots + 10.0).max(handling.rotation_knots + 10.0) * 0.514_444
-}
-
-fn approach_speed(profile: &Profile) -> f64 {
-    profile.approach_knots * 0.514_444
-}
-
-fn touchdown_speed(profile: &Profile) -> f64 {
-    (profile.approach_knots - 5.0).max(45.0) * 0.514_444
 }
 
 fn wake_category(profile: &Profile) -> Option<u8> {
@@ -352,6 +304,19 @@ fn ambient_identity(
     pick_weighted(&candidates, seed)
 }
 
+/// How the ambient traffic is using one runway.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RunwayState {
+    /// No aircraft using the runway.
+    Clear,
+    /// An aircraft is lined up and waiting.
+    LineUp,
+    /// An aircraft has started its takeoff roll.
+    Rolling,
+    /// Landing traffic is on or immediately over the runway.
+    Landing,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AmbientKind {
     Departure,
@@ -417,6 +382,47 @@ pub struct TrafficManager {
 }
 
 impl TrafficManager {
+    /// Runway use for sequencing the player and the ambient queue.
+    #[must_use]
+    pub(crate) fn runway_state(&self, airport: &str, runway: &str) -> RunwayState {
+        let mut line_up = false;
+        let mut rolling = false;
+        let mut landing = false;
+        for aircraft in &self.aircraft {
+            if aircraft.airport != airport || aircraft.runway != runway {
+                continue;
+            }
+            match aircraft.kind {
+                AmbientKind::Departure => {
+                    if aircraft.cleared && aircraft.distance >= aircraft.hold_distance {
+                        if aircraft.takeoff
+                            && aircraft.distance >= aircraft.runway_start
+                            && aircraft.distance < aircraft.runway_end + 600.0
+                        {
+                            rolling = true;
+                        } else {
+                            line_up = true;
+                        }
+                    }
+                }
+                AmbientKind::Arrival => {
+                    if aircraft.on_runway() {
+                        landing = true;
+                    }
+                }
+            }
+        }
+        if landing {
+            RunwayState::Landing
+        } else if line_up {
+            RunwayState::LineUp
+        } else if rolling {
+            RunwayState::Rolling
+        } else {
+            RunwayState::Clear
+        }
+    }
+
     /// The ambient departure already rolling on a runway, if any.
     #[must_use]
     pub fn rolling_departure_id(&self, airport: &str, runway: &str) -> Option<u32> {
@@ -549,6 +555,10 @@ impl TrafficManager {
                 ground_speed_knots: Some(telemetry.ground_speed_knots),
                 wingspan_meters: telemetry.wingspan_meters,
                 wake_category: telemetry.wake_category,
+                runway_occupancy: Some(
+                    telemetry.on_ground
+                        && openatc_core::airport::aircraft_on_runway(&airport, telemetry),
+                ),
                 ..Default::default()
             });
         }
@@ -588,24 +598,34 @@ impl TrafficManager {
                 (aircraft.kind, on_ground, aircraft.distance)
             };
             // Simple physical follow: do not drive into an aircraft ahead on the ground.
-            let follow_blocked = on_ground
-                && self
-                    .aircraft
-                    .iter()
-                    .enumerate()
-                    .any(|(other_index, other)| {
-                        other_index != index
-                            && other.kind == kind
-                            && other.distance > distance
-                            && other.distance - distance < 80.0
-                    });
             let player_blocked =
                 traffic
                     .iter()
                     .find(|target| target.id == 0)
                     .is_some_and(|player| {
-                        player_ahead_on_route(&self.aircraft[index], &airport, player)
+                        phases::ground::player_ahead_on_route(
+                            &self.aircraft[index].points,
+                            &self.aircraft[index].cumulative,
+                            self.aircraft[index].distance,
+                            &airport,
+                            player,
+                        )
                     });
+            let physical_blocked = on_ground && {
+                let (latitude, longitude, heading) = position_heading_at(
+                    &self.aircraft[index].points,
+                    &self.aircraft[index].cumulative,
+                    distance,
+                );
+                separation::ahead_conflict(
+                    latitude,
+                    longitude,
+                    heading,
+                    self.aircraft[index].profile.length,
+                    self.aircraft[index].id,
+                    &traffic,
+                )
+            };
             let own_runway = self.aircraft[index].runway.clone();
             let own_airport = self.aircraft[index].airport.clone();
             let own_id = self.aircraft[index].id;
@@ -656,9 +676,7 @@ impl TrafficManager {
                     .iter()
                     .enumerate()
                     .any(|(other_index, other)| {
-                        if other_index == index
-                            || !other.on_runway() && other.distance >= other.taxi_end
-                        {
+                        if other_index == index || other.on_runway() {
                             return false;
                         }
                         let (own_lat, own_lon, own_heading) = position_heading_at(
@@ -680,8 +698,7 @@ impl TrafficManager {
                             [other_lat, other_lon],
                         );
                         let relative = (bearing - own_heading).rem_euclid(360.0);
-                        let yields = relative > 10.0 && relative < 170.0;
-                        yields && self.aircraft[index].id > other.id
+                        relative > 10.0 && relative < 170.0
                     });
             let hold_for_clearance = self.aircraft[index].kind == AmbientKind::Departure
                 && distance >= self.aircraft[index].hold_distance
@@ -754,15 +771,15 @@ impl TrafficManager {
             {
                 self.aircraft[index].takeoff = true;
             }
-            let blocked = follow_blocked
-                || runway_blocked
+            let blocked = runway_blocked
                 || right_blocked
                 || player_blocked
+                || physical_blocked
                 || hold_for_clearance;
             let aircraft = &mut self.aircraft[index];
             aircraft.last = now;
             aircraft.blocked = blocked;
-            let taxi = taxi_speed(
+            let taxi = phases::ground::taxi_speed(
                 &aircraft.points,
                 &aircraft.cumulative,
                 aircraft.distance,
@@ -776,7 +793,7 @@ impl TrafficManager {
                 && aircraft.distance < aircraft.ground_end
             {
                 if aircraft.takeoff {
-                    takeoff_roll_speed(
+                    phases::takeoff::roll_speed(
                         &aircraft.handling,
                         aircraft.distance,
                         aircraft.runway_start,
@@ -808,7 +825,7 @@ impl TrafficManager {
             } else if aircraft.kind == AmbientKind::Arrival
                 && aircraft.distance < aircraft.runway_end
             {
-                landing_rollout_speed(
+                phases::landing::rollout_speed(
                     &aircraft.handling,
                     aircraft.distance,
                     aircraft.ground_start,
@@ -935,16 +952,7 @@ impl TrafficManager {
             .map(|aircraft| TrafficDebug {
                 id: aircraft.id,
                 callsign: aircraft.callsign.clone(),
-                stage: match aircraft.kind {
-                    AmbientKind::Departure if aircraft.distance < aircraft.ground_end => {
-                        "TaxiOut".to_owned()
-                    }
-                    AmbientKind::Departure => "Takeoff".to_owned(),
-                    AmbientKind::Arrival if aircraft.distance < aircraft.ground_start => {
-                        "Approach".to_owned()
-                    }
-                    AmbientKind::Arrival => "TaxiIn".to_owned(),
-                },
+                stage: aircraft.phase().label().to_owned(),
                 reason: if aircraft.blocked {
                     "holding: traffic or runway".to_owned()
                 } else {
@@ -1305,9 +1313,9 @@ impl TrafficManager {
             }
             let taxi_knots = handling.taxi_knots.max(1.0) * 0.514_444;
             let taxi_turn_knots = handling.taxi_turn_knots.max(1.0) * 0.514_444;
-            let climb_speed = climb_speed(&identity.profile, &handling);
-            let approach_speed = approach_speed(&identity.profile);
-            let touchdown_speed = touchdown_speed(&identity.profile);
+            let climb_speed = phases::sid::climb_speed(&identity.profile, &handling);
+            let approach_speed = phases::approach::speed(&identity.profile);
+            let touchdown_speed = phases::landing::touchdown_speed(&identity.profile);
             let climb_fpm = identity.profile.climb_fpm;
             let descent_fpm = identity.profile.descent_fpm;
             let callsign = identity.callsign.clone();
@@ -1365,6 +1373,10 @@ impl TrafficManager {
 }
 
 impl AmbientAircraft {
+    fn phase(&self) -> TrafficPhase {
+        TrafficPhase::from_stage(self.stage())
+    }
+
     fn stage(&self) -> Stage {
         match self.kind {
             AmbientKind::Departure => {
@@ -1680,24 +1692,6 @@ fn entry_waypoint(airport: &Airport, runway: &str, point: Point) -> Option<Waypo
     })
 }
 
-/// Distance from the threshold needed to accelerate to the rotation speed.
-fn takeoff_rotation_meters(handling: &Handling, airport: &Airport, runway: &str) -> f64 {
-    let length = airport
-        .runways
-        .iter()
-        .find(|candidate| candidate.first_name == runway || candidate.second_name == runway)
-        .map_or(2_000.0, |runway| {
-            (runway.second.east - runway.first.east).hypot(runway.second.north - runway.first.north)
-        });
-    // Plan for the slowest line-up so Vr is met even from a turn.
-    let taxi = handling.taxi_turn_knots.max(1.0);
-    let acceleration = handling.acceleration_knots_sec.max(0.1);
-    let required = ((handling.rotation_knots.powi(2) - taxi.powi(2)).max(0.0)
-        / (2.0 * acceleration))
-        * 0.514_444;
-    required.clamp(300.0, (length - 150.0).max(300.0))
-}
-
 fn departure_path(
     airport: &Airport,
     points: &[Point],
@@ -1729,7 +1723,7 @@ fn departure_path(
         }
     };
     let rotation = offset(
-        takeoff_rotation_meters(handling, airport, runway) / 1_852.0,
+        phases::takeoff::rotation_meters(handling, airport, runway) / 1_852.0,
         0.0,
     );
     let climb = offset(5.0, 1_500.0);
@@ -1923,83 +1917,6 @@ fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
         .map(|aircraft| aircraft.id)
 }
 
-/// Whether the player is ahead on this aircraft's remaining taxi route, or close in front.
-fn player_ahead_on_route(
-    aircraft: &AmbientAircraft,
-    airport: &Airport,
-    player: &TrafficTarget,
-) -> bool {
-    if !player.on_ground || !player.latitude.is_finite() || !player.longitude.is_finite() {
-        return false;
-    }
-    let goal = openatc_core::airport::airport_point(airport, player.latitude, player.longitude);
-    for (index, pair) in aircraft.points.windows(2).enumerate() {
-        let end = aircraft.cumulative.get(index + 1).copied().unwrap_or(0.0);
-        if end <= aircraft.distance + 2.0 {
-            continue;
-        }
-        let a = openatc_core::airport::airport_point(airport, pair[0].latitude, pair[0].longitude);
-        let b = openatc_core::airport::airport_point(airport, pair[1].latitude, pair[1].longitude);
-        let (dx, dn) = (b.east - a.east, b.north - a.north);
-        let length = dx.hypot(dn);
-        if length < 0.5 {
-            continue;
-        }
-        let along = ((goal.east - a.east) * dx + (goal.north - a.north) * dn) / length;
-        if !(0.0..=length).contains(&along) {
-            continue;
-        }
-        let across = ((goal.east - a.east) * dn - (goal.north - a.north) * dx).abs() / length;
-        let range = aircraft.cumulative[index] + along;
-        if range > aircraft.distance + 2.0 && range - aircraft.distance < 80.0 && across < 35.0 {
-            return true;
-        }
-    }
-    let (own_lat, own_lon, heading) =
-        position_heading_at(&aircraft.points, &aircraft.cumulative, aircraft.distance);
-    let own = openatc_core::airport::airport_point(airport, own_lat, own_lon);
-    let (east, north) = (goal.east - own.east, goal.north - own.north);
-    let gap = east.hypot(north);
-    let ahead = east * heading.to_radians().sin() + north * heading.to_radians().cos();
-    gap < 45.0 && ahead > -5.0
-}
-
-fn taxi_speed(
-    points: &[Waypoint],
-    cumulative: &[f64],
-    distance: f64,
-    straight: f64,
-    turn: f64,
-) -> f64 {
-    let index = cumulative
-        .iter()
-        .position(|value| *value >= distance)
-        .unwrap_or(points.len().saturating_sub(1))
-        .max(1);
-    let Some(previous) = points.get(index.saturating_sub(1)) else {
-        return straight;
-    };
-    let Some(current) = points.get(index) else {
-        return straight;
-    };
-    let Some(next) = points.get(index + 1) else {
-        return straight;
-    };
-    let first = openatc_core::arrival::bearing(
-        [previous.latitude, previous.longitude],
-        [current.latitude, current.longitude],
-    );
-    let second = openatc_core::arrival::bearing(
-        [current.latitude, current.longitude],
-        [next.latitude, next.longitude],
-    );
-    if openatc_core::navigation::turn(first, second).abs() > 15.0 {
-        turn
-    } else {
-        straight
-    }
-}
-
 fn ambient_frame(aircraft: &AmbientAircraft) -> Option<GeneratedTraffic> {
     let index = aircraft
         .cumulative
@@ -2048,6 +1965,7 @@ fn ambient_frame(aircraft: &AmbientAircraft) -> Option<GeneratedTraffic> {
             ground_speed_knots: Some(aircraft.speed * 1.943_844),
             wingspan_meters: Some(aircraft.profile.wingspan),
             wake_category: aircraft.wake_category,
+            runway_occupancy: Some(aircraft.on_runway()),
             com1_khz: aircraft.frequency_khz,
             ..Default::default()
         },
@@ -2351,15 +2269,43 @@ mod phase_tests {
         let jet = handling.remove(&Kind::Jet).expect("jet handling");
         let c172 = openatc_core::traffic::profiles::aircraft("C172").expect("C172 profile");
         let a320 = openatc_core::traffic::profiles::aircraft("A320").expect("A320 profile");
-        assert!(climb_speed(c172, &piston) < climb_speed(a320, &jet));
-        assert!((approach_speed(c172) - 65.0 * 0.514_444).abs() < 0.01);
-        assert!((touchdown_speed(c172) - 60.0 * 0.514_444).abs() < 0.01);
+        assert!(phases::sid::climb_speed(c172, &piston) < phases::sid::climb_speed(a320, &jet));
+        assert!((phases::approach::speed(c172) - 65.0 * 0.514_444).abs() < 0.01);
+        assert!((phases::landing::touchdown_speed(c172) - 60.0 * 0.514_444).abs() < 0.01);
         assert_eq!(wake_category(c172), Some(0));
         assert_eq!(wake_category(a320), Some(1));
         let start = 0.0;
         let end = 300.0;
         let rotation = piston.rotation_knots * 0.514_444;
-        assert!((takeoff_roll_speed(&piston, end, start, end, 5.0) - rotation).abs() < 0.01);
+        assert!(
+            (phases::takeoff::roll_speed(&piston, end, start, end, 5.0) - rotation).abs() < 0.01
+        );
+    }
+
+    #[test]
+    fn runway_state_distinguishes_line_up_rolling_and_landing() {
+        let mut manager = TrafficManager::default();
+        assert_eq!(manager.runway_state("LFMN", "04R"), RunwayState::Clear);
+        let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        departure.airport = "LFMN".into();
+        departure.runway = "04R".into();
+        departure.hold_distance = 600.0;
+        departure.distance = 600.0;
+        departure.cleared = true;
+        departure.takeoff = false;
+        manager.aircraft.push(departure);
+        assert_eq!(manager.runway_state("LFMN", "04R"), RunwayState::LineUp);
+        manager.aircraft[0].takeoff = true;
+        manager.aircraft[0].distance = 700.0;
+        assert_eq!(manager.runway_state("LFMN", "04R"), RunwayState::Rolling);
+        manager.aircraft[0].takeoff = false;
+        manager.aircraft[0].cleared = false;
+        let mut arrival = ambient(AmbientKind::Arrival, 500.0, 500.0, 2_000.0);
+        arrival.airport = "LFMN".into();
+        arrival.runway = "04L".into();
+        manager.aircraft.push(arrival);
+        assert_eq!(manager.runway_state("LFMN", "04L"), RunwayState::Landing);
+        assert_eq!(manager.runway_state("LFMN", "04R"), RunwayState::Clear);
     }
 
     #[test]
@@ -2394,6 +2340,42 @@ mod phase_tests {
     }
 
     #[test]
+    fn ambient_stops_for_another_aircraft_in_the_same_hold_box() {
+        let airport = openatc_core::airport::demo_airport();
+        let aircraft = ambient(AmbientKind::Departure, 0.0, 0.0, 900.0);
+        let ahead = TrafficTarget {
+            id: 2,
+            callsign: "TRAFFIC2".into(),
+            aircraft: "A320".into(),
+            latitude: 0.0,
+            longitude: 0.0002,
+            track_degrees: 90.0,
+            on_ground: true,
+            ..Default::default()
+        };
+        assert!(separation::ahead_conflict(
+            0.0,
+            0.0,
+            90.0,
+            aircraft.profile.length,
+            1,
+            &[ahead.clone()],
+        ));
+        let behind = TrafficTarget {
+            longitude: -0.0002,
+            ..ahead
+        };
+        assert!(!separation::ahead_conflict(
+            0.0,
+            0.0,
+            90.0,
+            aircraft.profile.length,
+            1,
+            &[behind],
+        ));
+    }
+
+    #[test]
     fn ambient_stops_for_a_player_ahead_on_its_route() {
         let airport = openatc_core::airport::demo_airport();
         let mut aircraft = ambient(AmbientKind::Departure, 0.0, 0.0, 900.0);
@@ -2405,12 +2387,24 @@ mod phase_tests {
             on_ground: true,
             ..Default::default()
         };
-        assert!(player_ahead_on_route(&aircraft, &airport, &ahead));
+        assert!(phases::ground::player_ahead_on_route(
+            &aircraft.points,
+            &aircraft.cumulative,
+            aircraft.distance,
+            &airport,
+            &ahead
+        ));
         let behind = TrafficTarget {
             longitude: -0.0005,
             ..ahead
         };
-        assert!(!player_ahead_on_route(&aircraft, &airport, &behind));
+        assert!(!phases::ground::player_ahead_on_route(
+            &aircraft.points,
+            &aircraft.cumulative,
+            aircraft.distance,
+            &airport,
+            &behind
+        ));
     }
 
     #[test]
@@ -2440,20 +2434,27 @@ mod phase_tests {
             + (rotation.powi(2) - taxi.powi(2))
                 / (2.0 * handling.acceleration_knots_sec * 0.514_444);
         assert!(
-            (takeoff_roll_speed(&handling, start, start, rotation_distance, taxi) - taxi).abs()
-                < 0.01
-        );
-        assert!(
-            (takeoff_roll_speed(&handling, rotation_distance, start, rotation_distance, taxi)
-                - rotation)
+            (phases::takeoff::roll_speed(&handling, start, start, rotation_distance, taxi) - taxi)
                 .abs()
                 < 0.01
         );
-        let later = takeoff_roll_speed(&handling, start + 600.0, start, rotation_distance, taxi);
+        assert!(
+            (phases::takeoff::roll_speed(
+                &handling,
+                rotation_distance,
+                start,
+                rotation_distance,
+                taxi
+            ) - rotation)
+                .abs()
+                < 0.01
+        );
+        let later =
+            phases::takeoff::roll_speed(&handling, start + 600.0, start, rotation_distance, taxi);
         let rate = (later.powi(2) - taxi.powi(2)) / (2.0 * 600.0);
         assert!((rate - handling.acceleration_knots_sec * 0.514_444).abs() < 0.001);
         assert!(
-            takeoff_roll_speed(
+            phases::takeoff::roll_speed(
                 &handling,
                 rotation_distance + 500.0,
                 start,
@@ -2464,7 +2465,8 @@ mod phase_tests {
         // A short runway accelerates harder but still reaches Vr at rotation.
         let short_end = start + 600.0;
         assert!(
-            (takeoff_roll_speed(&handling, short_end, start, short_end, taxi) - rotation).abs()
+            (phases::takeoff::roll_speed(&handling, short_end, start, short_end, taxi) - rotation)
+                .abs()
                 < 0.01
         );
     }
@@ -2476,7 +2478,7 @@ mod phase_tests {
         let touchdown_speed = 70.0;
         let touchdown = 1_000.0;
         let long_exit = 4_000.0;
-        let at_touchdown = landing_rollout_speed(
+        let at_touchdown = phases::landing::rollout_speed(
             &handling,
             touchdown,
             touchdown,
@@ -2485,7 +2487,7 @@ mod phase_tests {
             touchdown_speed,
         );
         assert!((at_touchdown - touchdown_speed).abs() < 0.01);
-        let later = landing_rollout_speed(
+        let later = phases::landing::rollout_speed(
             &handling,
             touchdown + 500.0,
             touchdown,
@@ -2496,7 +2498,7 @@ mod phase_tests {
         let rate = (at_touchdown.powi(2) - later.powi(2)) / (2.0 * 500.0);
         assert!((rate - handling.braking_knots_sec * 0.514_444).abs() < 0.01);
         let short_exit = 1_400.0;
-        let at_exit = landing_rollout_speed(
+        let at_exit = phases::landing::rollout_speed(
             &handling,
             short_exit,
             touchdown,
@@ -2506,7 +2508,7 @@ mod phase_tests {
         );
         assert!((at_exit - taxi).abs() < 0.01);
         assert!(
-            landing_rollout_speed(
+            phases::landing::rollout_speed(
                 &handling,
                 short_exit + 200.0,
                 touchdown,

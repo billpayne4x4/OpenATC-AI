@@ -1028,47 +1028,55 @@ pub fn takeoff_wording(
     // aircraft keeps the runway, so the player holds short; a departure already on the runway means
     // lining up and waiting rather than a take-off clearance.
     if let Some(airport) = state.airport.clone() {
-        let ambient_departing = state
-            .ambient
-            .rolling_departure_id(&airport.icao, &plan.runway)
-            .is_some();
-        let use_of_runway = if ambient_departing {
-            crate::generated::RunwayUse::Departing
-        } else {
-            airport
-                .runways
-                .iter()
-                .find(|r| r.first_name == plan.runway || r.second_name == plan.runway)
-                .map_or(crate::generated::RunwayUse::Clear, |r| {
-                    state.generated.runway_use(&format!(
-                        "RUNWAY/{}/{}/{}",
-                        airport.icao, r.first_name, r.second_name
-                    ))
-                })
-        };
-        match use_of_runway {
-            crate::generated::RunwayUse::Landing => {
-                state.flow.takeoff_cleared = false;
-                return_with_reply(
-                    state,
-                    result,
-                    "flight_hold_short_landing",
-                    "pilot_hold_short_readback",
-                );
-                return;
-            }
-            crate::generated::RunwayUse::Departing => {
-                state.flow.takeoff_cleared = false;
-                return_with_reply(
-                    state,
-                    result,
-                    "flight_line_up_and_wait",
-                    "pilot_line_up_and_wait_readback",
-                );
-                return;
-            }
-            crate::generated::RunwayUse::Clear => state.flow.takeoff_cleared = true,
+        let ambient_state = state.ambient.runway_state(&airport.icao, &plan.runway);
+        let generated_use = airport
+            .runways
+            .iter()
+            .find(|r| r.first_name == plan.runway || r.second_name == plan.runway)
+            .map_or(crate::generated::RunwayUse::Clear, |r| {
+                state.generated.runway_use(&format!(
+                    "RUNWAY/{}/{}/{}",
+                    airport.icao, r.first_name, r.second_name
+                ))
+            });
+        if ambient_state == crate::traffic::manager::RunwayState::Landing
+            || generated_use == crate::generated::RunwayUse::Landing
+        {
+            state.flow.takeoff_cleared = false;
+            return_with_reply(
+                state,
+                result,
+                "flight_hold_short_landing",
+                "pilot_hold_short_readback",
+            );
+            return;
         }
+        if ambient_state == crate::traffic::manager::RunwayState::LineUp
+            || generated_use == crate::generated::RunwayUse::LineUp
+        {
+            state.flow.takeoff_cleared = false;
+            return_with_reply(
+                state,
+                result,
+                "flight_hold_short_traffic",
+                "pilot_hold_short_readback",
+            );
+            return;
+        }
+        let line_up = ambient_state == crate::traffic::manager::RunwayState::Rolling
+            || state.session.departure_wake_seconds > 0.0
+            || generated_use == crate::generated::RunwayUse::Departing;
+        if line_up {
+            state.flow.takeoff_cleared = false;
+            return_with_reply(
+                state,
+                result,
+                "flight_line_up_and_wait",
+                "pilot_line_up_and_wait_readback",
+            );
+            return;
+        }
+        state.flow.takeoff_cleared = true;
     } else {
         state.flow.takeoff_cleared = true;
     }
@@ -3409,6 +3417,11 @@ mod sequencing_tests {
                 "flight_hold_short_landing",
                 "pilot_hold_short_readback",
                 "short",
+            ),
+            (
+                "flight_hold_short_traffic",
+                "pilot_hold_short_readback",
+                "holding in position",
             ),
         ] {
             return_with_reply(&mut state, &mut result, instruction, readback);

@@ -29,7 +29,6 @@ mod support;
 mod surface;
 mod traffic;
 mod traffic_models;
-mod traffic_ops;
 mod traffic_profiles;
 mod traffic_runtime;
 mod workers;
@@ -82,7 +81,7 @@ pub struct EngineState {
     /// Arrival stand changes are retried at a bounded rate.
     pub parking: parking::Monitor,
     /// Persistent ambient airport traffic.
-    pub ambient: traffic_ops::TrafficManager,
+    pub ambient: traffic::manager::TrafficManager,
     /// Audio-only simulated airport chatter.
     pub chatter: chatter::ChatterManager,
     /// CSL animation channel names shared by generated and ambient traffic.

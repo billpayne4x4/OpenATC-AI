@@ -18029,3 +18029,7 @@ say = ["{callsign}, exit runway {runway} {side} via taxiway {taxiway}, contact {
 [arrival_vacate_any_contact_ground]
 slots = ["callsign", "runway", "station", "frequency"]
 say = ["{callsign}, vacate runway {runway}, contact {station} {frequency}.", "{callsign}, exit runway {runway} when able, contact {station} on {frequency}.", "{callsign}, runway {runway}, vacate and contact {station} {frequency}."]
+
+[flight_hold_short_traffic]
+slots = ["callsign", "runway"]
+say = ["{callsign}, hold short of runway {runway}, traffic holding in position.", "{callsign}, hold short runway {runway}, traffic lined up and waiting."]

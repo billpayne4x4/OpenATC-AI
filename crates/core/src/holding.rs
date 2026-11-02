@@ -61,7 +61,9 @@ pub fn blocked_surface<'a>(
         if !valid(target) {
             return Some("holding_standby");
         }
-        if on_other_parallel_runway(airport, runway, target) {
+        if on_other_parallel_runway(airport, runway, target)
+            || target.runway_occupancy == Some(false)
+        {
             continue;
         }
         let p = airport_point(airport, target.latitude, target.longitude);
@@ -99,8 +101,8 @@ fn valid(target: &crate::state::TrafficTarget) -> bool {
         && target.longitude.abs() <= 180.0
 }
 
-/// A final-approach target inside the fixed protection envelope. This is deliberately
-/// conservative and is used for landing and crossing clearances.
+/// A final-approach target inside the fixed protection envelope. Used for landing
+/// and crossing clearances.
 fn blocked_final<'a>(
     airport: &Airport,
     runway: &str,
@@ -349,6 +351,46 @@ mod tests {
         );
         assert_eq!(
             blocked_for_movement(&airport, "09", std::iter::once(&target), 60.0),
+            Some("holding_runway_occupied")
+        );
+    }
+
+    #[test]
+    fn a_takeoff_waits_for_a_close_final_but_not_a_distant_one() {
+        let airport = crate::airport::demo_airport();
+        let mut target = TrafficTarget {
+            latitude: 0.0,
+            longitude: -5.0 / 60.0,
+            altitude_feet: 1200.0,
+            track_degrees: 90.0,
+            ground_speed_knots: Some(140.0),
+            on_ground: false,
+            ..Default::default()
+        };
+        assert!(blocked_for_movement(&airport, "09", std::iter::once(&target), 90.0).is_none());
+        target.longitude = -3.0 / 60.0;
+        assert_eq!(
+            blocked_for_movement(&airport, "09", std::iter::once(&target), 90.0),
+            Some("holding_traffic_final")
+        );
+    }
+
+    #[test]
+    fn an_aircraft_holding_short_is_not_reported_as_runway_occupancy() {
+        let airport = crate::airport::demo_airport();
+        let mut target = TrafficTarget {
+            latitude: 0.0,
+            longitude: -0.010_8,
+            altitude_feet: airport.elevation_feet,
+            track_degrees: 90.0,
+            on_ground: true,
+            runway_occupancy: Some(false),
+            ..Default::default()
+        };
+        assert!(blocked_surface(&airport, "09", std::iter::once(&target)).is_none());
+        target.runway_occupancy = Some(true);
+        assert_eq!(
+            blocked_surface(&airport, "09", std::iter::once(&target)),
             Some("holding_runway_occupied")
         );
     }

@@ -316,6 +316,25 @@ fn blocked_for_crossing<'a>(
     }
 }
 
+/// Runway protection for a takeoff movement, using time rather than a fixed radius.
+fn blocked_for_takeoff<'a>(
+    state: &State,
+    ctx: &RequestContext<'a>,
+    airport: &Airport,
+    runway: &str,
+    seconds: f64,
+) -> Option<&'static str> {
+    if let Some(targets) = ctx.traffic {
+        return crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds);
+    }
+    match state.telemetry.traffic.as_deref() {
+        Some(targets) => {
+            crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds)
+        }
+        None => Some("holding_standby"),
+    }
+}
+
 /// Give the hold instruction its pilot readback without adding another transmission.
 fn hold_readback(state: &mut State, runway: &str) {
     let text = crate::dialogue::say(
@@ -811,7 +830,7 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             if ctx.line_up_available {
                 None
             } else {
-                blocked_for_context(state, ctx, airport, &state.plan.runway)
+                blocked_for_takeoff(state, ctx, airport, &state.plan.runway, 90.0)
             }
         });
         if let Some(response) = blocked {
@@ -1320,10 +1339,9 @@ pub fn apply_request(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
             ctx.pilot_tag,
         );
     }
-    // A social clause never authorises movement, and a control clause is never handled as small
-    // talk. These guards are deliberately narrow: they only reject a transmission whose text
-    // has no control clause at all for an authorising intent, or that carries an explicit
-    // movement clause under the conversation intent.
+    // A social clause must not authorise movement, and a control clause is not small talk.
+    // Reject only transmissions with no control clause for an authorising intent, or with
+    // an explicit movement clause under the conversation intent.
     let spoken = ctx.request.text.trim();
     if !spoken.is_empty() {
         let intent = ctx.request.intent.as_str();
@@ -1552,6 +1570,54 @@ mod tests {
         };
         let seconds = crate::airport::crossing_seconds(&route);
         assert!((30.0..60.0).contains(&seconds), "{seconds}");
+    }
+
+    #[test]
+    fn a_clear_runway_gets_takeoff_clearance_without_a_hold() {
+        let airport = demo_airport();
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.plan.callsign = "VH-ABC".into();
+        state.plan.runway = "09".into();
+        state.telemetry.position_valid = true;
+        state.telemetry.on_ground = true;
+        state.telemetry.latitude = 0.0;
+        state.telemetry.longitude = 0.0;
+        state.taxi_clearance.approved = true;
+        state.taxi_clearance.points.push(Point::default());
+        let targets: Vec<TrafficTarget> = Vec::new();
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: Some(&airport),
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: Some(&targets),
+                line_up_available: false,
+            },
+        );
+        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(
+            outcome
+                .message
+                .to_lowercase()
+                .contains("cleared for takeoff")
+        );
     }
 
     #[test]
