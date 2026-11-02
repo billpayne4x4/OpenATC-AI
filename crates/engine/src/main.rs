@@ -4,6 +4,7 @@
 
 mod airport_ops;
 mod atc;
+mod automation;
 mod cabin;
 mod chatter;
 mod config_cache;
@@ -120,8 +121,12 @@ pub struct EngineState {
     pub phrase_history: radio::PhraseHistory,
     /// Aircraft crew controls, live readbacks and checklist progress.
     pub crew: crew::CrewSession,
+    /// Loaded aircraft specifications from the simulator.
+    pub loaded_aircraft_specs: Option<openatc_core::ops::AcfSpecs>,
     /// Automatic station transitions and arrival permissions.
     pub flow: flight::FlightFlow,
+    /// AI automation engine for full flight automation.
+    pub automation: automation::AutomationEngine,
     /// Live session (plan, telemetry, phase, transcript, ...).
     pub session: State,
     /// Operator settings.
@@ -639,7 +644,9 @@ async fn main() {
         pending_copilot_reply: None,
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
+        loaded_aircraft_specs: None,
         flow: flight::FlightFlow::default(),
+        automation: Default::default(),
         session: State::default(),
         settings,
         stations: Vec::new(),
@@ -712,6 +719,7 @@ async fn main() {
         .route("/traffic/models/install", post(traffic_models::install))
         .route("/traffic/models/cancel", post(traffic_models::cancel))
         .route("/atc/offer", post(initiative::answer))
+        .route("/automation", post(routes::post_automation))
         .route("/simulator/root", post(routes::post_simulator_root))
         .route("/debug/cancel-actions", post(routes::debug_cancel_actions))
         .route("/debug/jump/prepare", post(debug_jump::prepare))
@@ -806,7 +814,9 @@ fn test_state() -> EngineState {
         pending_copilot_reply: None,
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
+        loaded_aircraft_specs: None,
         flow: flight::FlightFlow::default(),
+        automation: Default::default(),
         session: State::default(),
         settings,
         stations: Vec::new(),

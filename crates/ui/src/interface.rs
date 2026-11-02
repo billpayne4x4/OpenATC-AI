@@ -93,6 +93,7 @@ pub struct Interface {
     pub(crate) settings_section: usize,
     pub(crate) setup_server_url: String,
     pub(crate) traffic_profiles: serde_json::Value,
+    pub(crate) automation_status: serde_json::Value,
     /// Native simulator traffic ownership and active count.
     pub native_traffic_status: String,
     pub(crate) traffic_selected: u32,
@@ -263,6 +264,7 @@ pub struct Interface {
     pub radio_power: bool,
     /// Matched aircraft profile reported by the simulator plugin.
     pub aircraft_profile: String,
+    pub loaded_aircraft_specs: Option<openatc_core::ops::AcfSpecs>,
     /// Bus power state.
     pub bus_power: bool,
     /// Local notices under the transcript.
@@ -412,6 +414,7 @@ impl Interface {
             settings_section: 0,
             setup_server_url: "http://127.0.0.1:8099".into(),
             traffic_profiles: serde_json::Value::Null,
+            automation_status: serde_json::Value::Null,
             native_traffic_status: String::new(),
             traffic_selected: 0,
             traffic_notice: String::new(),
@@ -513,6 +516,7 @@ impl Interface {
             engine_fault: String::new(),
             radio_power: true,
             aircraft_profile: String::new(),
+            loaded_aircraft_specs: None,
             bus_power: true,
             local_notices: Vec::new(),
             last_power_refusal: String::new(),
