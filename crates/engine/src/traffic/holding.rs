@@ -594,6 +594,7 @@ mod tests {
     use super::*;
     use openatc_core::{
         airport::{Airport, Runway},
+        apply::RunwaySequence,
         state::{Clearance, Point, RouteFix, TrafficTarget},
         stations::Coverage,
     };
@@ -714,7 +715,7 @@ mod tests {
                 units: openatc_core::UnitSystem::Imperial,
                 region: &region,
                 traffic: None,
-                line_up_available: false,
+                runway_sequence: RunwaySequence::Clear,
             },
         );
         assert!(result.accepted, "{}", result.message);

@@ -9,7 +9,7 @@ use axum::{
 use openatc_core::{
     apply::add_transmission,
     ops::update_flight_phase,
-    state::{Request, SurfaceStage, Telemetry},
+    state::{Request, SurfaceStage, TakeoffState, Telemetry},
 };
 use serde_json::json;
 
@@ -177,10 +177,6 @@ pub async fn post_telemetry(
             return Json(json!({"accepted":true})).into_response();
         }
         let radio_busy = telemetry.radio_busy
-            || state
-                .pending_copilot_reply
-                .as_ref()
-                .is_some_and(|reply| reply.request.radio == state.session.control_radio)
             || telemetry.radio_sequence_seen.is_some_and(|seen| {
                 state.session.transcript.iter().any(|entry| {
                     entry.sequence > seen
@@ -189,6 +185,7 @@ pub async fn post_telemetry(
                         && entry.radio.unwrap_or_default() == state.session.control_radio
                 })
             });
+        super::routes::reconcile_pending_reply(&mut state);
         if super::discipline::tick(&mut state, !radio_busy) || radio_busy {
             return Json(json!({"accepted":true})).into_response();
         }
@@ -290,11 +287,16 @@ pub async fn post_telemetry(
                 return Json(json!({"accepted":true})).into_response();
             }
         }
+        super::flight::takeoff_tick(&mut state);
+        if state.session.next_sequence != sequence {
+            return Json(json!({"accepted":true})).into_response();
+        }
         let route = &state.session.taxi_clearance;
         let eligible = matches!(
             state.session.phase,
             openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::TaxiIn
         ) && route.stage() == SurfaceStage::AtHold
+            && route.takeoff_state == TakeoffState::Idle
             && (!route.to_parking || !route.hold_short_runway.is_empty())
             && telemetry.on_ground
             && !telemetry.paused
@@ -468,7 +470,7 @@ mod tests {
     use openatc_core::aircraft::AircraftBehaviour;
     use openatc_core::{
         airport::Airport,
-        state::{PhaseCode, Point, TaxiClearance},
+        state::{Point, TaxiClearance},
         stations::Station,
     };
 

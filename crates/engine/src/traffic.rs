@@ -289,7 +289,6 @@ pub(crate) fn ready(state: &EngineState) -> bool {
     !state.session.telemetry.paused
         && state.session.telemetry.radio_power
         && !state.session.telemetry.radio_busy
-        && state.pending_copilot_reply.is_none()
         && !state
             .session
             .telemetry

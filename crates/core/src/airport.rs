@@ -943,6 +943,7 @@ pub fn calculate_taxi_route(
         holding_channel: 0,
         holding_marker_point,
         waiting_for_traffic: false,
+        takeoff_state: crate::state::TakeoffState::Idle,
         waiting_seconds: 0.0,
         guidance_complete: false,
         hold_short_runway: hold_short,
@@ -1987,6 +1988,49 @@ pub fn on_taxiway(airport: &Airport, point: &Point, margin: f64) -> bool {
         };
         segment_distance(*point, first.point, second.point) <= margin
     })
+}
+
+/// Whether a local point lies on non-runway taxiway pavement within `margin` metres.
+///
+/// Runway-flagged graph edges are excluded, so a node that only touches runway
+/// pavement is not a valid spawn or holding point.
+#[must_use]
+pub fn on_non_runway_taxiway(airport: &Airport, point: &Point, margin: f64) -> bool {
+    let margin = margin.max(0.0);
+    airport
+        .edges
+        .iter()
+        .filter(|edge| !edge.runway)
+        .any(|edge| {
+            let Some(first) = airport.nodes.iter().find(|node| node.id == edge.first) else {
+                return false;
+            };
+            let Some(second) = airport.nodes.iter().find(|node| node.id == edge.second) else {
+                return false;
+            };
+            segment_distance(*point, first.point, second.point) <= margin
+        })
+}
+
+/// Shortest distance from a local point to a runway-flagged graph edge.
+///
+/// `None` means the airport has no runway-flagged edges in its taxi graph.
+#[must_use]
+pub fn runway_edge_distance(airport: &Airport, point: &Point) -> Option<f64> {
+    let mut nearest: Option<f64> = None;
+    for edge in airport.edges.iter().filter(|edge| edge.runway) {
+        let Some(first) = airport.nodes.iter().find(|node| node.id == edge.first) else {
+            continue;
+        };
+        let Some(second) = airport.nodes.iter().find(|node| node.id == edge.second) else {
+            continue;
+        };
+        let distance = segment_distance(*point, first.point, second.point);
+        if nearest.is_none_or(|current| distance < current) {
+            nearest = Some(distance);
+        }
+    }
+    nearest
 }
 /// A separately authorized runway taxi route. Painted taxiway geometry is preferred;
 /// an apron connector is accepted only where installed pavement reaches the runway.

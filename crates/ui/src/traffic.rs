@@ -19,10 +19,11 @@ pub(crate) fn targets(state: &State) -> impl Iterator<Item = &openatc_core::stat
         .iter()
         .flatten()
         .filter(|target| {
-            !state
-                .generated_traffic
-                .iter()
-                .any(|f| f.target.id == target.id)
+            !state.generated_traffic.iter().any(|frame| {
+                frame.target.id == target.id
+                    || (!frame.target.callsign.is_empty()
+                        && frame.target.callsign == target.callsign)
+            })
         })
         .chain(state.generated_traffic.iter().map(|frame| &frame.target))
 }

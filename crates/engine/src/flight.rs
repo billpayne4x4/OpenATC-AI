@@ -10,10 +10,10 @@
 use crate::EngineState;
 use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::{
-    apply::add_transmission,
+    apply::{TakeoffDecision, add_transmission},
     dialogue::say,
     ops::distance_nm,
-    state::{PhaseCode, Request, SpeechTag},
+    state::{PhaseCode, Request, SpeechTag, TakeoffState},
     stations::{Station, nearby, tuned},
 };
 use serde_json::{Value, json};
@@ -995,6 +995,7 @@ fn weather(state: &EngineState, station: &Station) -> String {
 
 /// Speak a sequencing instruction and record the pilot readback that matches it, so the copilot
 /// never acknowledges a take-off clearance that was not given.
+#[cfg(test)]
 fn return_with_reply(
     state: &mut EngineState,
     result: &mut openatc_core::apply::RequestOutcome,
@@ -1018,70 +1019,152 @@ fn return_with_reply(
     }
 }
 
+/// Apply the committed takeoff clearance phraseology.
+///
+/// The runway decision is made once in `apply_ready`; this function only replaces the
+/// generic clearance with the full callsign, weather and climb instruction. It never
+/// turns a committed clearance into a hold.
 pub fn takeoff_wording(
     state: &mut EngineState,
     station: &Station,
     result: &mut openatc_core::apply::RequestOutcome,
 ) {
-    let plan = &state.session.plan;
-    // Sequencing: the same decisions ATC makes for generated traffic apply to the player. A landing
-    // aircraft keeps the runway, so the player holds short; a departure already on the runway means
-    // lining up and waiting rather than a take-off clearance.
-    if let Some(airport) = state.airport.clone() {
-        let ambient_state = state.ambient.runway_state(&airport.icao, &plan.runway);
-        let generated_use = airport
-            .runways
-            .iter()
-            .find(|r| r.first_name == plan.runway || r.second_name == plan.runway)
-            .map_or(crate::generated::RunwayUse::Clear, |r| {
-                state.generated.runway_use(&format!(
-                    "RUNWAY/{}/{}/{}",
-                    airport.icao, r.first_name, r.second_name
-                ))
-            });
-        if ambient_state == crate::traffic::manager::RunwayState::Landing
-            || generated_use == crate::generated::RunwayUse::Landing
-        {
-            state.flow.takeoff_cleared = false;
-            return_with_reply(
-                state,
-                result,
-                "flight_hold_short_landing",
-                "pilot_hold_short_readback",
-            );
-            return;
-        }
-        if ambient_state == crate::traffic::manager::RunwayState::LineUp
-            || generated_use == crate::generated::RunwayUse::LineUp
-        {
-            state.flow.takeoff_cleared = false;
-            return_with_reply(
-                state,
-                result,
-                "flight_hold_short_traffic",
-                "pilot_hold_short_readback",
-            );
-            return;
-        }
-        let line_up = ambient_state == crate::traffic::manager::RunwayState::Rolling
-            || state.session.departure_wake_seconds > 0.0
-            || generated_use == crate::generated::RunwayUse::Departing;
-        if line_up {
-            state.flow.takeoff_cleared = false;
-            return_with_reply(
-                state,
-                result,
-                "flight_line_up_and_wait",
-                "pilot_line_up_and_wait_readback",
-            );
-            return;
-        }
-        state.flow.takeoff_cleared = true;
-    } else {
-        state.flow.takeoff_cleared = true;
+    if state.session.taxi_clearance.takeoff_state != TakeoffState::Cleared {
+        return;
     }
-    let sid = state.airport.as_ref().is_some_and(|a| {
-        a.procedures
+    state.flow.takeoff_cleared = true;
+    result.message = takeoff_clearance_text(state, station);
+    if let Some(entry) = state
+        .session
+        .transcript
+        .iter_mut()
+        .rev()
+        .find(|entry| entry.speaker == "ATC")
+    {
+        entry.text.clone_from(&result.message);
+        entry.pilot_reply = say(
+            "pilot_takeoff_readback",
+            &[
+                ("runway", state.session.plan.runway.clone()),
+                ("callsign", state.session.plan.callsign.clone()),
+            ],
+        );
+    }
+}
+
+/// Progress a held or lined-up departure without another ready call.
+pub(crate) fn takeoff_tick(state: &mut EngineState) {
+    if state.session.demo
+        || !state.session.telemetry.on_ground
+        || state.session.telemetry.paused
+        || !state.session.telemetry.position_valid
+        || !state.session.telemetry.radio_power
+        || state.session.phase != PhaseCode::Taxi
+    {
+        return;
+    }
+    let route = &state.session.taxi_clearance;
+    if !route.approved || !route.guidance_complete {
+        return;
+    }
+    if !matches!(
+        route.takeoff_state,
+        TakeoffState::Held | TakeoffState::LineUpAndWait
+    ) {
+        return;
+    }
+    let Some(airport) = state.airport.clone() else {
+        return;
+    };
+    let runway = state.session.plan.runway.clone();
+    if !route.hold_short_runway.is_empty()
+        && route.hold_short_runway != runway
+        && !route.backtrack_required
+    {
+        return;
+    }
+    let stations = nearby(&state.stations, &state.session.telemetry);
+    let Some(station) = state
+        .session
+        .control_frequency()
+        .and_then(|frequency| tuned(&stations, frequency))
+        .cloned()
+        .filter(|station| {
+            station.airport == airport.icao
+                && (station.service == "Tower"
+                    || station.services.iter().any(|service| service == "Tower"))
+        })
+    else {
+        return;
+    };
+    if !crate::traffic::ready(state) {
+        return;
+    }
+    let sequence = crate::routes::runway_sequence(state, &airport, &runway);
+    let targets = state.traffic_targets();
+    let decision = openatc_core::apply::takeoff_decision(
+        &airport,
+        &runway,
+        targets.iter(),
+        sequence,
+        state.session.departure_wake_seconds,
+    );
+    match decision {
+        TakeoffDecision::Hold(_) => return,
+        TakeoffDecision::LineUpAndWait => {
+            if state.session.taxi_clearance.takeoff_state == TakeoffState::Held {
+                line_up_departure(state, &station, &runway);
+            }
+            return;
+        }
+        TakeoffDecision::Cleared => {}
+    }
+    clear_takeoff(state, &station, &runway);
+}
+
+fn line_up_departure(state: &mut EngineState, station: &Station, runway: &str) {
+    let slots = [
+        ("callsign", state.session.plan.callsign.clone()),
+        ("runway", runway.to_owned()),
+    ];
+    let text = say("flight_line_up_and_wait", &slots);
+    let voice = tag(state, station);
+    add_transmission(&mut state.session, "ATC", &text, &voice);
+    if let Some(entry) = state.session.transcript.last_mut() {
+        entry.pilot_reply = say("pilot_line_up_and_wait_readback", &slots);
+    }
+    state.session.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+    state.session.taxi_clearance.waiting_for_traffic = false;
+}
+
+fn clear_takeoff(state: &mut EngineState, station: &Station, runway: &str) {
+    let text = takeoff_clearance_text(state, station);
+    let voice = tag(state, station);
+    add_transmission(&mut state.session, "ATC", &text, &voice);
+    if let Some(entry) = state.session.transcript.last_mut() {
+        entry.pilot_reply = say(
+            "pilot_takeoff_readback",
+            &[
+                ("runway", runway.to_owned()),
+                ("callsign", state.session.plan.callsign.clone()),
+            ],
+        );
+    }
+    state.session.taxi_clearance.takeoff_state = TakeoffState::Cleared;
+    state.session.taxi_clearance.waiting_for_traffic = false;
+    state.session.taxi_clearance.approved = false;
+    state.flow.takeoff_cleared = true;
+    state
+        .session
+        .on_event(openatc_core::aircraft::AircraftEvent::Departure);
+}
+
+/// Full takeoff clearance text for the current flight plan.
+fn takeoff_clearance_text(state: &EngineState, station: &Station) -> String {
+    let plan = &state.session.plan;
+    let sid = state.airport.as_ref().is_some_and(|airport| {
+        airport
+            .procedures
             .iter()
             .any(|p| p.kind.eq_ignore_ascii_case("SID") && p.name == plan.sid)
     });
@@ -1133,7 +1216,7 @@ pub fn takeoff_wording(
     } else {
         String::new()
     };
-    result.message = say(
+    say(
         "flight_takeoff",
         &[
             ("callsign", plan.callsign.clone()),
@@ -1142,23 +1225,7 @@ pub fn takeoff_wording(
             ("climb", climb),
             ("expected", expected),
         ],
-    );
-    if let Some(entry) = state
-        .session
-        .transcript
-        .iter_mut()
-        .rev()
-        .find(|e| e.speaker == "ATC")
-    {
-        entry.text.clone_from(&result.message);
-        entry.pilot_reply = say(
-            "pilot_takeoff_readback",
-            &[
-                ("runway", state.session.plan.runway.clone()),
-                ("callsign", state.session.plan.callsign.clone()),
-            ],
-        );
-    }
+    )
 }
 
 fn compliance(state: &mut EngineState, station: &Station) {
@@ -3378,6 +3445,133 @@ mod ownership_tests {
 #[cfg(test)]
 mod sequencing_tests {
     use super::*;
+
+    fn departure_state() -> EngineState {
+        let mut state = crate::test_state();
+        state.session.demo = false;
+        state.session.phase = PhaseCode::Taxi;
+        state.session.plan.callsign = "TEST123".into();
+        state.session.plan.runway = "09".into();
+        state.session.plan.departure = "KTEST".into();
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.com1_khz = 118_700;
+        state.airport = Some(openatc_core::airport::Airport {
+            icao: "KTEST".into(),
+            runways: vec![openatc_core::airport::Runway {
+                first_name: "09".into(),
+                second_name: "27".into(),
+                second: openatc_core::state::Point {
+                    east: 3000.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        state.stations = vec![Station {
+            airport: "KTEST".into(),
+            name: "KTEST Tower".into(),
+            service: "Tower".into(),
+            khz: 118_700,
+            ..Default::default()
+        }];
+        state.session.taxi_clearance = openatc_core::state::TaxiClearance {
+            airport: "KTEST".into(),
+            approved: true,
+            guidance_complete: true,
+            hold_short_runway: "09".into(),
+            points: vec![openatc_core::state::Point::default()],
+            takeoff_state: TakeoffState::Held,
+            ..Default::default()
+        };
+        state
+    }
+
+    #[test]
+    fn a_held_departure_is_cleared_without_another_ready_call() {
+        let mut state = departure_state();
+        takeoff_tick(&mut state);
+        assert_eq!(
+            state.session.taxi_clearance.takeoff_state,
+            TakeoffState::Cleared
+        );
+        assert!(!state.session.taxi_clearance.approved);
+        let entry = state
+            .session
+            .transcript
+            .last()
+            .expect("takeoff transmission");
+        assert!(
+            entry.text.to_lowercase().contains("cleared for takeoff"),
+            "{}",
+            entry.text
+        );
+        assert!(
+            entry
+                .pilot_reply
+                .to_lowercase()
+                .contains("cleared for takeoff"),
+            "{}",
+            entry.pilot_reply
+        );
+    }
+
+    #[test]
+    fn a_stale_copilot_reply_does_not_stop_the_takeoff_sequencer() {
+        let mut state = departure_state();
+        state.pending_copilot_reply = Some(crate::routes::PreparedReply {
+            generation: state.session_generation,
+            sequence: 0,
+            frequency: 118_700,
+            request: Request::default(),
+        });
+        takeoff_tick(&mut state);
+        assert_eq!(
+            state.session.taxi_clearance.takeoff_state,
+            TakeoffState::Cleared
+        );
+        assert!(state.pending_copilot_reply.is_some());
+    }
+
+    #[test]
+    fn a_hold_reply_is_not_rewritten_as_a_takeoff_clearance() {
+        let mut state = departure_state();
+        let mut result = openatc_core::apply::RequestOutcome {
+            accepted: false,
+            message: "Holding short of runway 09.".into(),
+        };
+        let station = state.stations[0].clone();
+        takeoff_wording(&mut state, &station, &mut result);
+        assert_eq!(result.message, "Holding short of runway 09.");
+        assert!(!state.flow.takeoff_cleared);
+    }
+
+    #[test]
+    fn a_committed_takeoff_clearance_gets_the_full_phrase() {
+        let mut state = departure_state();
+        state.session.taxi_clearance.takeoff_state = TakeoffState::Cleared;
+        let mut result = openatc_core::apply::RequestOutcome {
+            accepted: true,
+            message: "Cleared for takeoff.".into(),
+        };
+        let station = state.stations[0].clone();
+        takeoff_wording(&mut state, &station, &mut result);
+        assert!(
+            result
+                .message
+                .to_lowercase()
+                .contains("cleared for takeoff"),
+            "{}",
+            result.message
+        );
+        assert!(
+            result.message.to_lowercase().contains("runway 09"),
+            "{}",
+            result.message
+        );
+        assert!(state.flow.takeoff_cleared);
+    }
 
     #[test]
     fn a_sequencing_instruction_never_reads_back_as_a_takeoff_clearance() {

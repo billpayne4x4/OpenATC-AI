@@ -22,6 +22,10 @@ pub(crate) struct Ahead {
 }
 
 /// Find the closest ground target ahead of this aircraft.
+///
+/// Only targets in the same taxi queue are considered, and only within the gap that
+/// queue allows. A taxiway queue never looks a kilometre ahead: an aircraft on a parallel
+/// runway or a separate route is not a follower's leader.
 #[must_use]
 pub(crate) fn closest_ahead(
     latitude: f64,
@@ -30,6 +34,7 @@ pub(crate) fn closest_ahead(
     own_length: f64,
     own_id: u32,
     traffic: &[TrafficTarget],
+    queue_gap: impl Fn(u32) -> Option<f64>,
 ) -> Option<Ahead> {
     let mut closest: Option<Ahead> = None;
     for other in traffic
@@ -42,6 +47,9 @@ pub(crate) fn closest_ahead(
         if other.runway_occupancy == Some(true) {
             continue;
         }
+        let Some(maximum_gap) = queue_gap(other.id) else {
+            continue;
+        };
         let other_length = openatc_core::traffic::profiles::aircraft(&other.aircraft)
             .map_or(40.0, |profile| profile.length);
         let required = required_gap(own_length, other_length);
@@ -49,6 +57,9 @@ pub(crate) fn closest_ahead(
             [latitude, longitude],
             [other.latitude, other.longitude],
         ) * 1852.0;
+        if gap > maximum_gap {
+            continue;
+        }
         let bearing = openatc_core::arrival::bearing(
             [latitude, longitude],
             [other.latitude, other.longitude],
@@ -124,6 +135,7 @@ pub(crate) fn follow_speed(leader: Ahead, taxi_speed: f64) -> f64 {
 /// Compares current positions and headings. Route distance is not a reliable ordering
 /// signal when aircraft join the same taxiway from different nodes.
 #[must_use]
+#[cfg(test)]
 pub(crate) fn ahead_conflict(
     latitude: f64,
     longitude: f64,
@@ -201,6 +213,23 @@ mod tests {
             1,
             &[target(2, -0.0002, 90.0)]
         ));
+    }
+
+    #[test]
+    fn a_taxi_leader_must_be_nearby_and_in_the_same_queue() {
+        let near = target(2, 0.0008, 90.0);
+        let far = target(3, 0.009, 90.0);
+        assert!(
+            closest_ahead(0.0, 0.0, 90.0, 8.0, 1, std::slice::from_ref(&near), |_| {
+                Some(150.0)
+            })
+            .is_some()
+        );
+        assert!(closest_ahead(0.0, 0.0, 90.0, 8.0, 1, &[far], |_| Some(150.0)).is_none());
+        assert!(
+            closest_ahead(0.0, 0.0, 90.0, 8.0, 1, &[near], |_| None).is_none(),
+            "traffic on another runway or route is not the taxi leader"
+        );
     }
 
     #[test]

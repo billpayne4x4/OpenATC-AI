@@ -5,16 +5,17 @@
 use super::Shared;
 use super::llm::{clean_reply, text as chat_complete};
 use super::support::service_ok;
+use crate::EngineState;
 use axum::{
     Json,
     extract::{FromRequest, State as AxumState},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::airport::{demo_airport, load_airport_from_simulator};
 use openatc_core::apply::{
-    AssignOrder, RequestContext, SimpleRng, add_transmission, apply_request, assign_controller,
+    AssignOrder, RequestContext, RunwaySequence, SimpleRng, add_transmission, apply_request,
+    assign_controller,
 };
 use openatc_core::catalog::render_template;
 use openatc_core::identify::interpret_text;
@@ -1302,6 +1303,25 @@ fn prepare_reply(state: &mut crate::EngineState, request: Request) {
     });
 }
 
+/// Drop a prepared readback that belongs to an older controller instruction.
+///
+/// A prepared reply is only a playback handshake. Clear it when a newer controller
+/// instruction makes it obsolete; it must not block the radio or the takeoff sequencer.
+pub(crate) fn reconcile_pending_reply(state: &mut crate::EngineState) {
+    let latest = state
+        .session
+        .transcript
+        .iter()
+        .rev()
+        .find(|entry| entry.speaker == "ATC" && !entry.background)
+        .map_or(0, |entry| entry.sequence);
+    if let Some(pending) = state.pending_copilot_reply.as_ref()
+        && (pending.generation != state.session_generation || latest > pending.sequence)
+    {
+        state.pending_copilot_reply = None;
+    }
+}
+
 /// Record the crew transmission without advancing clearance or surface state.
 pub async fn post_copilot_prepare(AxumState(shared): AxumState<Shared>) -> Response {
     let mut state = shared.write().await;
@@ -1311,6 +1331,7 @@ pub async fn post_copilot_prepare(AxumState(shared): AxumState<Shared>) -> Respo
             &[],
         ));
     }
+    reconcile_pending_reply(&mut state);
     if state.pending_copilot_reply.is_some() {
         return Json(json!({"state":snapshot(&state.session,&state.settings)})).into_response();
     }
@@ -2232,6 +2253,49 @@ pub(crate) fn assign_airspace_controller(
     }
 }
 
+/// Runway state used to sequence the player's departure.
+pub(crate) fn runway_sequence(
+    state: &EngineState,
+    airport: &openatc_core::airport::Airport,
+    runway: &str,
+) -> RunwaySequence {
+    use crate::generated::RunwayUse;
+    use crate::traffic::manager::RunwayState;
+    let player_remaining = (state.session.phase == PhaseCode::Taxi
+        && state.session.plan.runway == runway
+        && state.session.taxi_clearance.approved)
+        .then(|| {
+            crate::traffic::manager::player_runway_remaining(
+                airport,
+                runway,
+                &state.session.telemetry,
+            )
+        })
+        .flatten();
+    let ambient = state
+        .ambient
+        .runway_state_for(&airport.icao, runway, player_remaining, None);
+    let generated = airport
+        .runways
+        .iter()
+        .find(|candidate| candidate.first_name == runway || candidate.second_name == runway)
+        .map_or(RunwayUse::Clear, |candidate| {
+            state.generated.runway_use(&format!(
+                "RUNWAY/{}/{}/{}",
+                airport.icao, candidate.first_name, candidate.second_name
+            ))
+        });
+    if ambient == RunwayState::Landing || generated == RunwayUse::Landing {
+        RunwaySequence::Landing
+    } else if ambient == RunwayState::LineUp || generated == RunwayUse::LineUp {
+        RunwaySequence::LineUp
+    } else if ambient == RunwayState::Rolling || generated == RunwayUse::Departing {
+        RunwaySequence::Rolling
+    } else {
+        RunwaySequence::Clear
+    }
+}
+
 pub(crate) async fn atc_request(
     shared: &Shared,
     settings: &Settings,
@@ -2733,41 +2797,8 @@ pub(crate) async fn atc_request(
         .traffic
         .is_some()
         .then(|| state.traffic_targets());
-    let line_up_available = airport.as_ref().is_some_and(|airport| {
-        let runway = &state.session.plan.runway;
-        let runway_state = state.ambient.runway_state(&airport.icao, runway);
-        let generated_state = airport
-            .runways
-            .iter()
-            .find(|candidate| candidate.first_name == *runway || candidate.second_name == *runway)
-            .map_or(crate::generated::RunwayUse::Clear, |candidate| {
-                state.generated.runway_use(&format!(
-                    "RUNWAY/{}/{}/{}",
-                    airport.icao, candidate.first_name, candidate.second_name
-                ))
-            });
-        let can_line_up = match runway_state {
-            crate::traffic::manager::RunwayState::LineUp
-            | crate::traffic::manager::RunwayState::Landing => false,
-            crate::traffic::manager::RunwayState::Rolling => true,
-            crate::traffic::manager::RunwayState::Clear => match generated_state {
-                crate::generated::RunwayUse::LineUp | crate::generated::RunwayUse::Landing => false,
-                crate::generated::RunwayUse::Departing => true,
-                crate::generated::RunwayUse::Clear => state.session.departure_wake_seconds > 0.0,
-            },
-        };
-        if !can_line_up {
-            return false;
-        }
-        let rolled = state.ambient.rolling_departure_id(&airport.icao, runway);
-        let merged = state.traffic_targets();
-        openatc_core::holding::blocked_for_movement(
-            airport,
-            runway,
-            merged.iter().filter(|target| Some(target.id) != rolled),
-            60.0,
-        )
-        .is_none()
+    let runway_sequence = airport.as_ref().map_or(RunwaySequence::Clear, |airport| {
+        runway_sequence(&state, airport, &state.session.plan.runway)
     });
     let ctx = RequestContext {
         squawk: &squawk,
@@ -2782,7 +2813,7 @@ pub(crate) async fn atc_request(
         units,
         region: &region,
         traffic: targets.as_deref(),
-        line_up_available,
+        runway_sequence,
     };
     let mut result = apply_request(&mut state.session, &ctx);
     if result.accepted && ["acknowledge", "readback"].contains(&request.intent.as_str()) {
@@ -3206,6 +3237,80 @@ fn clearance_rejection(
 #[cfg(test)]
 mod chatter_tests {
     use super::*;
+    use openatc_core::aircraft::AircraftBehaviour;
+    #[test]
+    fn a_prepared_readback_is_dropped_when_a_newer_instruction_supersedes_it() {
+        let mut state = crate::test_state();
+        let tag = SpeechTag::default();
+        add_transmission(&mut state.session, "ATC", "Hold short of runway 04R.", &tag);
+        add_transmission(
+            &mut state.session,
+            "COPILOT",
+            "Holding short of runway 04R.",
+            &tag,
+        );
+        let sequence = state.session.transcript.last().unwrap().sequence;
+        state.pending_copilot_reply = Some(PreparedReply {
+            generation: state.session_generation,
+            sequence,
+            frequency: 118_700,
+            request: Request::default(),
+        });
+        reconcile_pending_reply(&mut state);
+        assert!(state.pending_copilot_reply.is_some());
+
+        add_transmission(
+            &mut state.session,
+            "ATC",
+            "Line up and wait runway 04R.",
+            &tag,
+        );
+        reconcile_pending_reply(&mut state);
+        assert!(state.pending_copilot_reply.is_none());
+    }
+
+    #[test]
+    fn background_traffic_does_not_supersede_a_prepared_readback() {
+        let mut state = crate::test_state();
+        let tag = SpeechTag::default();
+        add_transmission(&mut state.session, "ATC", "Hold short of runway 04R.", &tag);
+        add_transmission(
+            &mut state.session,
+            "COPILOT",
+            "Holding short of runway 04R.",
+            &tag,
+        );
+        let sequence = state.session.transcript.last().unwrap().sequence;
+        state.pending_copilot_reply = Some(PreparedReply {
+            generation: state.session_generation,
+            sequence,
+            frequency: 118_700,
+            request: Request::default(),
+        });
+        add_transmission(
+            &mut state.session,
+            "ATC",
+            "Traffic on final, runway 04R.",
+            &tag,
+        );
+        state.session.transcript.last_mut().unwrap().background = true;
+        reconcile_pending_reply(&mut state);
+        assert!(state.pending_copilot_reply.is_some());
+    }
+
+    #[test]
+    fn a_prepared_copilot_reply_does_not_block_controller_readiness() {
+        let mut state = crate::test_state();
+        state.session.telemetry.position_valid = true;
+        state.pending_copilot_reply = Some(PreparedReply {
+            generation: state.session_generation,
+            sequence: 1,
+            frequency: 118_700,
+            request: Request::default(),
+        });
+        assert!(crate::traffic::ready(&state));
+    }
+
     #[tokio::test]
     async fn speech_proxy_pronounces_taxiways_without_editing_the_transcript() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

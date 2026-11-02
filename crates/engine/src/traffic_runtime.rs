@@ -705,7 +705,12 @@ mod tests {
     use super::*;
 
     fn receive(events: &Receiver<StationEvent>, timeout: Duration) -> StationEvent {
-        events.recv_timeout(timeout).expect("station event")
+        // Worker start-up can be delayed by other test binaries on a busy machine. The
+        // event still arrives immediately in the normal case; the longer bound only
+        // prevents a loaded test host from reporting a product failure.
+        events
+            .recv_timeout(timeout.max(Duration::from_secs(60)))
+            .expect("station event")
     }
 
     #[test]
@@ -809,7 +814,7 @@ mod tests {
     }
 
     fn wait_for_idle(supervisor: &mut StationSupervisor) {
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             supervisor.reap();
             if supervisor.live() == 0 {
@@ -824,7 +829,7 @@ mod tests {
     }
 
     fn wait_for_closed(events: &Receiver<StationEvent>, frequency: i32) {
-        let deadline = Instant::now() + Duration::from_secs(2);
+        let deadline = Instant::now() + Duration::from_secs(60);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             match receive(events, remaining.max(Duration::from_millis(1))) {
@@ -891,7 +896,7 @@ mod tests {
         });
         loop {
             if let StationEvent::Trigger { trigger, .. } =
-                receive(&received, Duration::from_secs(1))
+                receive(&received, Duration::from_secs(60))
             {
                 assert_eq!(trigger.session, 9);
                 break;

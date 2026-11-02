@@ -395,7 +395,7 @@ Published taxi networks are preferred. Where they are missing, painted scenery c
 
 At the final departure hold, Ground sends you to the published Tower frequency. If already on Tower, stay with that controller. Reaching the hold does not invent a ready-for-departure call: report ready yourself or use an available supported copilot exchange.
 
-Holding-point detection considers approach geometry and the aircraft's reference position; it does not require the aircraft to be perfectly stopped to recognise arrival. Tower checks available runway and final-approach traffic and either clears takeoff or explains the hold. A previously reported ready aircraft can receive clearance when blocking traffic clears. If the runway is clear and no aircraft is lined up, Tower issues takeoff clearance directly. If a departure is already rolling, the next aircraft receives line up and wait immediately; if one is already lined up, the next holds short. Only one aircraft may hold in position on a runway, and a landing clearance on the same runway prevents a new line-up. Final-approach protection uses the time needed for the movement, not a fixed five-mile radius.
+Holding-point detection considers approach geometry and the aircraft's reference position; it does not require the aircraft to be perfectly stopped to recognise arrival. Tower checks runway, final-approach traffic and the runway sequence and either clears takeoff or explains the hold. The player and ambient traffic use the same takeoff decision: a clear runway with no wake interval and no conflict gets a direct takeoff clearance, a rolling departure or live wake interval gets line up and wait, and landing or short-final traffic gets a hold. A ready report is not consumed by a hold: the hold stays in force until the runway clears, and Tower then issues line up and wait or takeoff clearance without another ready call. If the runway is clear and no aircraft is lined up, Tower issues takeoff clearance directly. If a departure is already rolling, the next aircraft receives line up and wait immediately; if one is already lined up, the next holds short. The aircraft physically at the hold is the queue leader, so a lined-up aircraft behind the player never keeps the player waiting. Wake spacing also produces line up and wait, followed automatically by takeoff clearance when the interval expires. Only one aircraft may hold in position on a runway, and a landing clearance on the same runway prevents a new line-up. Final-approach protection uses the time needed for the movement, not a fixed five-mile radius.
 
 Generated departures keep the order in which they reached the holding point. An aircraft already lining up or rolling keeps the runway; a later arrival on a taxiway that joins nearer the threshold does not jump ahead. Ground starts the Tower handoff while the aircraft is still taxiing, so the aircraft can request ready immediately at the hold.
 
@@ -1217,13 +1217,20 @@ Aircraft hold short of the runway, contact Tower when the player is tuned to the
 frequency, receive line-up and takeoff clearances, and only then enter the runway.
 The departure queue is first-in, first-out: the lead aircraft gets takeoff clearance
 when the runway is clear, the next lines up as the leader starts its roll, and then
-waits for the runway and wake interval before taking off. The player is offered line
-up and wait when an ambient departure is already rolling ahead on the same runway. Taxi, rotation, climb,
+waits for the runway and wake interval before taking off. The player is sequenced the
+same way, with line up and wait followed by takeoff clearance as the runway and wake
+interval clear. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
 does not use jet speeds. Ambient aircraft detect the player's position and yield
 rather than taxiing through. Followers on the same taxi route keep a speed-controlled
 gap to the aircraft ahead instead of stopping and starting in a queue; right-of-way
-is applied only where different routes converge. Runway protection is per physical runway, so a landing
+is applied only where different routes converge. Departures are seeded along the
+surface route from the spawn node toward the hold, spread across the usable taxiway
+and spaced from the hold and from each other.
+A seed is rejected if it is inside the runway strip or within the runway-edge margin,
+and aircraft are never queued on a runway-flagged graph edge. If the safe taxiway is
+shorter than the requested spacing, fewer aircraft are seeded rather than stacked at
+the hold. Runway protection is per physical runway, so a landing
 on 04L does not hold a departure from 04R. The destination airport is seeded while
 the player is still about 30 NM away. The hold point is derived from
 the painted hold-line geometry and set back on the approach side, and the aircraft
@@ -1231,7 +1238,9 @@ stops there rather than at the nearest graph node. The takeoff run starts at the
 runway end nearest that hold, so the aircraft enters at the near threshold and rolls
 away from it. Takeoff accelerates at the handling acceleration rate to rotation
 speed, using a firmer rate only when the runway is shorter than the nominal roll,
-then climbs at three degrees. Ambient departures and arrivals use separate same-flow
+then climbs at the gradient implied by its published climb rate and climb speed.
+A jet therefore climbs steeply after liftoff while a light aircraft climbs shallowly,
+instead of both following a fixed three-degree line. Ambient departures and arrivals use separate same-flow
 runways when the airport has a usable parallel; runway occupancy is tracked per
 physical runway, so traffic on 04R does not block 04L. Ambient airliners are chosen
 from the airport's operator preferences in `traffic/hubs.toml`, with matching
@@ -1239,7 +1248,9 @@ callsigns and installed paints. Regional airlines can appear with turboprops or
 regional jets, and a random share of general aviation uses registrations and light
 aircraft, turboprops or business jets. Ambient arrivals are sequenced one at a time,
 decelerate through final, and brake through rollout at the handling braking rate,
-with a firmer stop only when the exit is close. They use a stand-side runway exit. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
+with a firmer stop only when the exit is close. They use a stand-side runway exit
+after at least 700 m of rollout; an arrival with no exit beyond that distance is not
+seeded rather than turning around at the threshold. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
 rollout and taxi-in; the phase states and runway-lighting policy are detailed in
 [CSL animation and runway lights](#csl-animation-and-runway-lights) below. Startup,
 cruise and shutdown phases belong to the complete-flight generated layer. Startup
@@ -1258,7 +1269,9 @@ the player.
 
 **Settings → Traffic → Traffic debug** shows the exact planned hold point for each
 ambient departure, the published airport hold lines, the current blocker and the
-phase reason on the taxi map. `/debug/ambient` reports the graph route, hold distance,
+phase reason on the taxi map. The debug markers draw over the normal taxi traffic;
+a red line runs to the blocker, and the hold point is a ring rather than a line to
+the destination. `/debug/ambient` reports the graph route, hold distance,
 chosen runway and taxiway sampling for the ambient layer; `/debug/generated` reports
 the legacy generated layer.
 
