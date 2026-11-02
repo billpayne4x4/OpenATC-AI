@@ -1221,8 +1221,9 @@ waits for the runway and wake interval before taking off. The player is offered 
 up and wait when an ambient departure is already rolling ahead on the same runway. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
 does not use jet speeds. Ambient aircraft detect the player's position and yield
-rather than taxiing through. Followers keep a speed-controlled gap to the aircraft
-ahead instead of stopping and starting in a queue. Runway protection is per physical runway, so a landing
+rather than taxiing through. Followers on the same taxi route keep a speed-controlled
+gap to the aircraft ahead instead of stopping and starting in a queue; right-of-way
+is applied only where different routes converge. Runway protection is per physical runway, so a landing
 on 04L does not hold a departure from 04R. The destination airport is seeded while
 the player is still about 30 NM away. The hold point is derived from
 the painted hold-line geometry and set back on the approach side, and the aircraft

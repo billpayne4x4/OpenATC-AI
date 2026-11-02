@@ -331,6 +331,7 @@ struct AmbientAircraft {
     wake_category: Option<u8>,
     airport: String,
     runway: String,
+    route: String,
     spawn_node: i64,
     model: Arc<Model>,
     kind: AmbientKind,
@@ -676,6 +677,7 @@ impl TrafficManager {
                 && (rolling_lead.is_none() || self.aircraft[index].takeoff);
             // Give way to traffic on the right at a converging taxiway. The higher id yields
             // when both aircraft see each other, which breaks the mutual-yield case.
+            let leader_id = ahead.map(|leader| leader.id);
             let right_blocked = on_ground
                 && queue_lead != Some(self.aircraft[index].id)
                 && self
@@ -683,7 +685,12 @@ impl TrafficManager {
                     .iter()
                     .enumerate()
                     .any(|(other_index, other)| {
-                        if other_index == index || other.on_runway() {
+                        if other_index == index
+                            || other.on_runway()
+                            || Some(other.id) == leader_id
+                            || (!other.route.is_empty()
+                                && other.route == self.aircraft[index].route)
+                        {
                             return false;
                         }
                         let (own_lat, own_lon, own_heading) = position_heading_at(
@@ -693,19 +700,17 @@ impl TrafficManager {
                         );
                         let (other_lat, other_lon, _) =
                             position_heading_at(&other.points, &other.cumulative, other.distance);
-                        let separation = openatc_core::arrival::distance_nm(
-                            [own_lat, own_lon],
-                            [other_lat, other_lon],
-                        ) * 1852.0;
-                        if separation > 100.0 {
-                            return false;
-                        }
-                        let bearing = openatc_core::arrival::bearing(
-                            [own_lat, own_lon],
-                            [other_lat, other_lon],
-                        );
-                        let relative = (bearing - own_heading).rem_euclid(360.0);
-                        relative > 10.0 && relative < 170.0
+                        separation::right_conflict(
+                            own_lat,
+                            own_lon,
+                            own_heading,
+                            other_lat,
+                            other_lon,
+                            other.id,
+                            leader_id,
+                            other.route == self.aircraft[index].route,
+                            100.0,
+                        )
                     });
             let hold_for_clearance = self.aircraft[index].kind == AmbientKind::Departure
                 && distance >= self.aircraft[index].hold_distance
@@ -1218,7 +1223,8 @@ impl TrafficManager {
             let longitude = airport.reference_longitude
                 + node.point.east
                     / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
-            let Some(surface_points) = plan_taxi(airport, node.id, route_runway, size) else {
+            let Some((surface_points, route)) = plan_taxi(airport, node.id, route_runway, size)
+            else {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("no taxi graph route from node {}", node.id);
                 continue;
@@ -1337,6 +1343,7 @@ impl TrafficManager {
                 wake_category: identity.wake_category,
                 airport: airport.icao.clone(),
                 runway: route_runway.clone(),
+                route,
                 spawn_node: node.id,
                 model: identity.model,
                 kind,
@@ -1501,7 +1508,12 @@ fn spawn_node<'a>(
         })
 }
 
-fn plan_taxi(airport: &Airport, start: i64, runway: &str, size: char) -> Option<Vec<Point>> {
+fn plan_taxi(
+    airport: &Airport,
+    start: i64,
+    runway: &str,
+    size: char,
+) -> Option<(Vec<Point>, String)> {
     use std::cmp::Reverse;
     use std::collections::{BTreeMap, BinaryHeap};
     let runway_data = airport
@@ -1546,7 +1558,7 @@ fn plan_taxi(airport: &Airport, start: i64, runway: &str, size: char) -> Option<
                 .unwrap_or(std::cmp::Ordering::Equal)
         })?
         .id;
-    let mut adjacency: BTreeMap<i64, Vec<(i64, f64)>> = BTreeMap::new();
+    let mut adjacency: BTreeMap<i64, Vec<(i64, f64, String)>> = BTreeMap::new();
     for edge in &airport.edges {
         if edge.runway || edge.size < size {
             continue;
@@ -1558,16 +1570,17 @@ fn plan_taxi(airport: &Airport, start: i64, runway: &str, size: char) -> Option<
         adjacency
             .entry(edge.first)
             .or_default()
-            .push((edge.second, cost));
+            .push((edge.second, cost, edge.name.clone()));
         if !edge.one_way {
             adjacency
                 .entry(edge.second)
                 .or_default()
-                .push((edge.first, cost));
+                .push((edge.first, cost, edge.name.clone()));
         }
     }
     let mut costs = BTreeMap::from([(start, 0.0)]);
     let mut previous = BTreeMap::new();
+    let mut previous_edge = BTreeMap::new();
     let mut heap = BinaryHeap::from([(Reverse(0u64), start)]);
     while let Some((Reverse(bits), node)) = heap.pop() {
         let cost = f64::from_bits(bits);
@@ -1577,11 +1590,12 @@ fn plan_taxi(airport: &Airport, start: i64, runway: &str, size: char) -> Option<
         if cost > costs.get(&node).copied().unwrap_or(f64::INFINITY) {
             continue;
         }
-        for (next, step) in adjacency.get(&node).into_iter().flatten() {
+        for (next, step, name) in adjacency.get(&node).into_iter().flatten() {
             let next_cost = cost + step;
             if next_cost < costs.get(next).copied().unwrap_or(f64::INFINITY) {
                 costs.insert(*next, next_cost);
                 previous.insert(*next, node);
+                previous_edge.insert(*next, name.clone());
                 heap.push((Reverse(next_cost.to_bits()), *next));
             }
         }
@@ -1591,19 +1605,24 @@ fn plan_taxi(airport: &Airport, start: i64, runway: &str, size: char) -> Option<
     }
     let mut path = vec![target];
     let mut node = target;
+    let mut via = Vec::new();
     while let Some(previous_node) = previous.get(&node) {
+        if let Some(name) = previous_edge.get(&node) {
+            via.push(name.clone());
+        }
         path.push(*previous_node);
         node = *previous_node;
     }
     path.reverse();
+    via.reverse();
     if path.len() < 2 || path.first() != Some(&start) {
         return None;
     }
-    Some(
-        path.into_iter()
-            .filter_map(|id| nodes.get(&id).copied())
-            .collect(),
-    )
+    let points = path
+        .into_iter()
+        .filter_map(|id| nodes.get(&id).copied())
+        .collect();
+    Some((points, via.join(", ")))
 }
 
 fn surface_waypoints(airport: &Airport, points: &[Point]) -> Vec<Waypoint> {
@@ -2210,6 +2229,7 @@ mod phase_tests {
             wake_category: Some(1),
             airport: "TEST".to_owned(),
             runway: "04L".to_owned(),
+            route: String::new(),
             spawn_node: 1,
             model: Arc::new(Model {
                 id: "test".to_owned(),

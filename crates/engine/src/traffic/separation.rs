@@ -70,6 +70,38 @@ pub(crate) fn closest_ahead(
     closest
 }
 
+/// Whether a target on the right needs a lateral yield.
+///
+/// The immediate route leader and any aircraft on the same route are excluded.
+#[must_use]
+pub(crate) fn right_conflict(
+    latitude: f64,
+    longitude: f64,
+    heading: f64,
+    other_latitude: f64,
+    other_longitude: f64,
+    other_id: u32,
+    leader_id: Option<u32>,
+    same_route: bool,
+    maximum_gap: f64,
+) -> bool {
+    if same_route || Some(other_id) == leader_id {
+        return false;
+    }
+    let separation = openatc_core::arrival::distance_nm(
+        [latitude, longitude],
+        [other_latitude, other_longitude],
+    ) * 1852.0;
+    if separation > maximum_gap {
+        return false;
+    }
+    let bearing =
+        openatc_core::arrival::bearing([latitude, longitude], [other_latitude, other_longitude]);
+    let relative = (bearing - heading).rem_euclid(360.0);
+    let ahead = separation * relative.to_radians().cos();
+    ahead > -10.0 && relative > 10.0 && relative < 170.0
+}
+
 /// Speed a follower may use behind the leader without closing the gap too quickly.
 #[must_use]
 pub(crate) fn follow_speed(leader: Ahead, taxi_speed: f64) -> f64 {
@@ -168,6 +200,30 @@ mod tests {
             37.0,
             1,
             &[target(2, -0.0002, 90.0)]
+        ));
+    }
+
+    #[test]
+    fn a_route_leader_is_not_a_right_of_way_conflict() {
+        assert!(!right_conflict(
+            0.0,
+            0.0,
+            90.0,
+            -0.0004,
+            0.0008,
+            2,
+            Some(2),
+            false,
+            100.0,
+        ));
+        assert!(!right_conflict(
+            0.0, 0.0, 90.0, -0.0004, 0.0008, 2, None, true, 100.0,
+        ));
+        assert!(right_conflict(
+            0.0, 0.0, 90.0, -0.0004, 0.0008, 2, None, false, 100.0,
+        ));
+        assert!(!right_conflict(
+            0.0, 0.0, 90.0, 0.0, -0.0008, 2, None, false, 100.0,
         ));
     }
 
