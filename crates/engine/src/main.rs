@@ -196,6 +196,17 @@ impl EngineState {
     /// Native simulator traffic plus the frames this engine draws itself.
     pub(crate) fn traffic_targets(&self) -> Vec<openatc_core::state::TrafficTarget> {
         let mut targets = self.session.telemetry.traffic.clone().unwrap_or_default();
+        // Some simulator builds report an injected model back as native traffic with a
+        // different id. The drawn frame is authoritative; drop the native echo so the
+        // aircraft does not appear twice or block itself.
+        let drawn: std::collections::BTreeSet<&str> = self
+            .session
+            .generated_traffic
+            .iter()
+            .map(|frame| frame.target.callsign.as_str())
+            .filter(|callsign| !callsign.is_empty())
+            .collect();
+        targets.retain(|target| target.id == 0 || !drawn.contains(target.callsign.as_str()));
         let mut ids: std::collections::BTreeSet<u32> =
             targets.iter().map(|target| target.id).collect();
         for frame in &self.session.generated_traffic {
@@ -865,6 +876,20 @@ mod traffic_target_tests {
             }),
             animation: Default::default(),
         }
+    }
+
+    #[test]
+    fn a_native_echo_of_a_drawn_aircraft_is_removed_by_callsign() {
+        let mut state = test_state();
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 7,
+            callsign: "AMBIENT2".into(),
+            ..Default::default()
+        }]);
+        state.session.generated_traffic = vec![frame(14_680_064, "AMBIENT2")];
+        let targets = state.traffic_targets();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].id, 14_680_064);
     }
 
     #[test]
