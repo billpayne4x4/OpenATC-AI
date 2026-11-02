@@ -8,8 +8,8 @@ use super::intents::Realism;
 use super::ops::{phase_name, request_available};
 use super::regions::Region;
 use super::state::{
-    Clearance, Controller, Controllers, PhaseCode, Request, SpeechTag, State, TrafficTarget,
-    Transmission,
+    Clearance, Controller, Controllers, PhaseCode, Request, SpeechTag, State, TakeoffState,
+    TrafficTarget, Transmission,
 };
 use super::{UnitSystem, altitude_text};
 
@@ -258,6 +258,66 @@ const CATALOGUE_TITLES: [&str; 23] = [
     "declare emergency",
 ];
 
+/// Runway sequencing state for a departure request.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RunwaySequence {
+    /// No aircraft using the runway.
+    #[default]
+    Clear,
+    /// An aircraft is lined up and waiting.
+    LineUp,
+    /// A departure is rolling.
+    Rolling,
+    /// An arrival is landing or rolling out.
+    Landing,
+}
+
+/// Next clearance for an aircraft waiting at the departure hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TakeoffDecision {
+    /// Hold short; the key selects the reason phrase.
+    Hold(&'static str),
+    /// Enter the runway and wait.
+    LineUpAndWait,
+    /// Cleared for takeoff.
+    Cleared,
+}
+
+/// Common departure sequencing for the player and ambient traffic.
+///
+/// The caller supplies the runway occupancy state, its own wake interval and the
+/// traffic picture excluding itself. A clear runway with no conflict returns
+/// `Cleared`; line-up is used only for a rolling departure or an active wake interval.
+#[must_use]
+pub fn takeoff_decision<'a>(
+    airport: &Airport,
+    runway: &str,
+    targets: impl Iterator<Item = &'a TrafficTarget> + Clone,
+    sequence: RunwaySequence,
+    wake_seconds: f64,
+) -> TakeoffDecision {
+    // Never authorize runway entry into short-final traffic on the same runway.
+    // Runway occupancy from a rolling departure is not short final, so that case
+    // still receives line up and wait.
+    if crate::holding::blocked_for_movement(airport, runway, targets.clone(), 60.0)
+        .is_some_and(|reason| reason != "holding_runway_occupied")
+    {
+        return TakeoffDecision::Hold("flight_hold_short_landing");
+    }
+    match sequence {
+        RunwaySequence::Landing => TakeoffDecision::Hold("flight_hold_short_landing"),
+        RunwaySequence::LineUp => TakeoffDecision::Hold("flight_hold_short_traffic"),
+        RunwaySequence::Rolling => TakeoffDecision::LineUpAndWait,
+        RunwaySequence::Clear if wake_seconds > 0.0 => TakeoffDecision::LineUpAndWait,
+        RunwaySequence::Clear => {
+            match crate::holding::blocked_for_movement(airport, runway, targets, 90.0) {
+                Some(reason) => TakeoffDecision::Hold(reason),
+                None => TakeoffDecision::Cleared,
+            }
+        }
+    }
+}
+
 /// Request data, airport, voices and policy used by controller handlers.
 pub struct RequestContext<'a> {
     /// Discrete code allocated by the engine for a new IFR clearance.
@@ -280,8 +340,8 @@ pub struct RequestContext<'a> {
     pub region: &'a Region,
     /// Combined native and simulated traffic, when the engine has it.
     pub traffic: Option<&'a [TrafficTarget]>,
-    /// A departing aircraft is rolling ahead on this runway, so the player may line up.
-    pub line_up_available: bool,
+    /// Current use of the departure runway, sampled once for this request.
+    pub runway_sequence: RunwaySequence,
 }
 
 /// Runway occupancy using the combined traffic picture when the caller supplied one.
@@ -299,25 +359,6 @@ fn blocked_for_context<'a>(
 }
 
 fn blocked_for_crossing<'a>(
-    state: &State,
-    ctx: &RequestContext<'a>,
-    airport: &Airport,
-    runway: &str,
-    seconds: f64,
-) -> Option<&'static str> {
-    if let Some(targets) = ctx.traffic {
-        return crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds);
-    }
-    match state.telemetry.traffic.as_deref() {
-        Some(targets) => {
-            crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds)
-        }
-        None => Some("holding_standby"),
-    }
-}
-
-/// Runway protection for a takeoff movement, using time rather than a fixed radius.
-fn blocked_for_takeoff<'a>(
     state: &State,
     ctx: &RequestContext<'a>,
     airport: &Airport,
@@ -813,41 +854,30 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
         }
     }
     if !state.demo {
-        if state.departure_wake_seconds > 0.0 && !ctx.line_up_available {
-            state.taxi_clearance.waiting_for_traffic = true;
-            state.taxi_clearance.waiting_seconds = 0.0;
-            let runway = state.plan.runway.clone();
-            let outcome = reply(
-                state,
-                ctx,
-                false,
-                crate::dialogue::say("holding_wake", &[("runway", runway.clone())]),
-            );
-            hold_readback(state, &runway);
-            return outcome;
-        }
-        let blocked = ctx.airport.map_or(Some("holding_standby"), |airport| {
-            if ctx.line_up_available {
-                None
-            } else {
-                blocked_for_takeoff(state, ctx, airport, &state.plan.runway, 90.0)
+        let runway = state.plan.runway.clone();
+        let Some(airport) = ctx.airport else {
+            return hold_for_takeoff(state, ctx, "holding_standby", false, &runway);
+        };
+        let Some(targets) = ctx.traffic else {
+            return hold_for_takeoff(state, ctx, "holding_standby", false, &runway);
+        };
+        match takeoff_decision(
+            airport,
+            &runway,
+            targets.iter(),
+            ctx.runway_sequence,
+            state.departure_wake_seconds,
+        ) {
+            TakeoffDecision::Hold(response) => {
+                let with_callsign = response.starts_with("flight_");
+                return hold_for_takeoff(state, ctx, response, with_callsign, &runway);
             }
-        });
-        if let Some(response) = blocked {
-            state.taxi_clearance.waiting_for_traffic = true;
-            state.taxi_clearance.waiting_seconds = 0.0;
-            let runway = state.plan.runway.clone();
-            let outcome = reply(
-                state,
-                ctx,
-                false,
-                crate::dialogue::say(response, &[("runway", runway.clone())]),
-            );
-            hold_readback(state, &runway);
-            return outcome;
+            TakeoffDecision::LineUpAndWait => return line_up_and_wait(state, ctx, &runway),
+            TakeoffDecision::Cleared => {}
         }
     }
     state.taxi_clearance.waiting_for_traffic = false;
+    state.taxi_clearance.takeoff_state = TakeoffState::Cleared;
     state.on_event(crate::aircraft::AircraftEvent::Departure);
     state.taxi_clearance.approved = false;
     let prefix = if state.demo { "DEMO: " } else { "" };
@@ -863,6 +893,49 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             ],
         ),
     )
+}
+
+/// Hold the departure at the runway and keep the approved taxi route alive so the
+/// sequencer can issue the next instruction when the runway clears.
+fn hold_for_takeoff(
+    state: &mut State,
+    ctx: &RequestContext<'_>,
+    response: &str,
+    with_callsign: bool,
+    runway: &str,
+) -> RequestOutcome {
+    state.taxi_clearance.waiting_for_traffic = true;
+    state.taxi_clearance.waiting_seconds = 0.0;
+    state.taxi_clearance.takeoff_state = TakeoffState::Held;
+    let mut slots = vec![("runway", runway.to_owned())];
+    if with_callsign {
+        slots.insert(0, ("callsign", state.plan.callsign.clone()));
+    }
+    let outcome = reply(state, ctx, false, crate::dialogue::say(response, &slots));
+    hold_readback(state, runway);
+    outcome
+}
+
+/// Authorize runway entry while the departure ahead is still rolling.
+fn line_up_and_wait(state: &mut State, ctx: &RequestContext<'_>, runway: &str) -> RequestOutcome {
+    state.taxi_clearance.waiting_for_traffic = false;
+    state.taxi_clearance.waiting_seconds = 0.0;
+    state.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+    let slots = [
+        ("callsign", state.plan.callsign.clone()),
+        ("runway", runway.to_owned()),
+    ];
+    let outcome = reply(
+        state,
+        ctx,
+        true,
+        crate::dialogue::say("flight_line_up_and_wait", &slots),
+    );
+    let readback = crate::dialogue::say("pilot_line_up_and_wait_readback", &slots);
+    if let Some(entry) = state.transcript.last_mut() {
+        entry.pilot_reply = readback;
+    }
+    outcome
 }
 
 /// Ground workflows: clearance, pushback, taxi, ready. `None` if not ours.
@@ -1543,14 +1616,14 @@ mod tests {
             units: UnitSystem::Imperial,
             region: &region,
             traffic: Some(&targets),
-            line_up_available: false,
+            runway_sequence: RunwaySequence::Clear,
         };
         assert!(blocked_for_crossing(&state, &ctx, &airport, "09", 60.0).is_none());
         target.longitude = -1.0 / 60.0;
         let targets = vec![target];
         let ctx = RequestContext {
             traffic: Some(&targets),
-            line_up_available: false,
+            runway_sequence: RunwaySequence::Clear,
             ..ctx
         };
         assert_eq!(
@@ -1608,7 +1681,7 @@ mod tests {
                 units: UnitSystem::Imperial,
                 region: &region,
                 traffic: Some(&targets),
-                line_up_available: false,
+                runway_sequence: RunwaySequence::Clear,
             },
         );
         assert!(outcome.accepted, "{}", outcome.message);
@@ -1617,6 +1690,49 @@ mod tests {
                 .message
                 .to_lowercase()
                 .contains("cleared for takeoff")
+        );
+        assert!(
+            !outcome.message.to_lowercase().contains("line up"),
+            "a clear runway must not produce a line-up instruction: {}",
+            outcome.message
+        );
+        assert_eq!(state.taxi_clearance.takeoff_state, TakeoffState::Cleared);
+    }
+
+    #[test]
+    fn a_clear_runway_is_cleared_directly_by_the_shared_decision() {
+        let airport = demo_airport();
+        let empty: Vec<TrafficTarget> = Vec::new();
+        assert_eq!(
+            takeoff_decision(&airport, "09", empty.iter(), RunwaySequence::Clear, 0.0),
+            TakeoffDecision::Cleared
+        );
+        assert_eq!(
+            takeoff_decision(&airport, "09", empty.iter(), RunwaySequence::Clear, 60.0),
+            TakeoffDecision::LineUpAndWait
+        );
+        assert_eq!(
+            takeoff_decision(&airport, "09", empty.iter(), RunwaySequence::Rolling, 0.0),
+            TakeoffDecision::LineUpAndWait
+        );
+        let final_target = TrafficTarget {
+            latitude: 0.0,
+            longitude: -0.044,
+            altitude_feet: 1_200.0,
+            track_degrees: 90.0,
+            ground_speed_knots: Some(140.0),
+            on_ground: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            takeoff_decision(
+                &airport,
+                "09",
+                std::iter::once(&final_target),
+                RunwaySequence::Rolling,
+                0.0,
+            ),
+            TakeoffDecision::Hold("flight_hold_short_landing")
         );
     }
 
@@ -1650,12 +1766,191 @@ mod tests {
                 units: UnitSystem::Imperial,
                 region: &region,
                 traffic: None,
-                line_up_available: false,
+                runway_sequence: RunwaySequence::Clear,
             },
         );
         assert!(!outcome.accepted);
         let entry = state.transcript.last().expect("hold transmission");
         assert_eq!(entry.pilot_reply, "Holding short of runway 27, VH-ABC.");
+    }
+
+    #[test]
+    fn a_lined_up_aircraft_holds_the_departure_without_spending_the_clearance() {
+        let airport = demo_airport();
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.plan.callsign = "VH-ABC".into();
+        state.plan.runway = "09".into();
+        state.telemetry.position_valid = true;
+        state.telemetry.on_ground = true;
+        state.telemetry.latitude = 0.0;
+        state.telemetry.longitude = 0.0;
+        state.taxi_clearance.approved = true;
+        state.taxi_clearance.guidance_complete = true;
+        state.taxi_clearance.points.push(Point::default());
+        let targets: Vec<TrafficTarget> = Vec::new();
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: Some(&airport),
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: Some(&targets),
+                runway_sequence: RunwaySequence::LineUp,
+            },
+        );
+        assert!(!outcome.accepted);
+        assert!(
+            outcome.message.to_lowercase().contains("hold short"),
+            "{}",
+            outcome.message
+        );
+        assert!(
+            state.taxi_clearance.approved,
+            "a hold must not spend the approved taxi clearance"
+        );
+        assert_eq!(state.taxi_clearance.takeoff_state, TakeoffState::Held);
+        assert_eq!(
+            state.taxi_clearance.stage(),
+            crate::state::SurfaceStage::AtHold
+        );
+
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: Some(&airport),
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: Some(&targets),
+                runway_sequence: RunwaySequence::Clear,
+            },
+        );
+        assert!(outcome.accepted, "{}", outcome.message);
+        assert_eq!(state.taxi_clearance.takeoff_state, TakeoffState::Cleared);
+        assert!(!state.taxi_clearance.approved);
+    }
+
+    #[test]
+    fn a_rolling_departure_lines_up_the_player_and_keeps_the_route() {
+        let airport = demo_airport();
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.plan.callsign = "VH-ABC".into();
+        state.plan.runway = "09".into();
+        state.telemetry.position_valid = true;
+        state.telemetry.on_ground = true;
+        state.taxi_clearance.approved = true;
+        state.taxi_clearance.guidance_complete = true;
+        state.taxi_clearance.points.push(Point::default());
+        let targets: Vec<TrafficTarget> = Vec::new();
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: Some(&airport),
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: Some(&targets),
+                runway_sequence: RunwaySequence::Rolling,
+            },
+        );
+        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(
+            outcome.message.to_lowercase().contains("line up and wait"),
+            "{}",
+            outcome.message
+        );
+        assert!(state.taxi_clearance.approved);
+        assert_eq!(
+            state.taxi_clearance.takeoff_state,
+            TakeoffState::LineUpAndWait
+        );
+    }
+
+    #[test]
+    fn wake_spacing_lines_up_before_clearing_takeoff() {
+        let airport = demo_airport();
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.departure_wake_seconds = 60.0;
+        state.plan.callsign = "VH-ABC".into();
+        state.plan.runway = "09".into();
+        state.telemetry.position_valid = true;
+        state.telemetry.on_ground = true;
+        state.taxi_clearance.approved = true;
+        state.taxi_clearance.guidance_complete = true;
+        state.taxi_clearance.points.push(Point::default());
+        let targets: Vec<TrafficTarget> = Vec::new();
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: Some(&airport),
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: Some(&targets),
+                runway_sequence: RunwaySequence::Clear,
+            },
+        );
+        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(
+            outcome.message.to_lowercase().contains("line up and wait"),
+            "{}",
+            outcome.message
+        );
+        assert_eq!(
+            state.taxi_clearance.takeoff_state,
+            TakeoffState::LineUpAndWait
+        );
     }
 
     #[test]
@@ -1706,7 +2001,7 @@ mod tests {
                         units: UnitSystem::Imperial,
                         region: &region,
                         traffic: None,
-                        line_up_available: false,
+                        runway_sequence: RunwaySequence::Clear,
                     },
                 )
             };
@@ -1776,7 +2071,7 @@ mod tests {
                         units: UnitSystem::Imperial,
                         region: &region,
                         traffic: None,
-                        line_up_available: false,
+                        runway_sequence: RunwaySequence::Clear,
                     },
                 )
             };
@@ -1834,7 +2129,7 @@ mod tests {
                     units: UnitSystem::Imperial,
                     region: &region,
                     traffic: None,
-                    line_up_available: false,
+                    runway_sequence: RunwaySequence::Clear,
                 },
             );
             (state, outcome)
@@ -2049,7 +2344,7 @@ mod tests {
             units: UnitSystem::Imperial,
             region: &region,
             traffic: None,
-            line_up_available: false,
+            runway_sequence: RunwaySequence::Clear,
         };
         let outcome = apply_request(&mut state, &ctx);
         let want = &case["expected"];

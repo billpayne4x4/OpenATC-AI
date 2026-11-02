@@ -569,6 +569,7 @@ mod tests {
     use super::*;
     use openatc_core::{
         airport::Airport,
+        apply::RunwaySequence,
         state::{Clearance, SpeechTag, TaxiClearance},
     };
 
@@ -696,7 +697,7 @@ mod tests {
             units: openatc_core::UnitSystem::Imperial,
             region: &region,
             traffic: None,
-            line_up_available: false,
+            runway_sequence: RunwaySequence::Clear,
         };
         let outcome = openatc_core::apply::apply_request(&mut s.session, &ctx);
         assert!(!outcome.accepted);

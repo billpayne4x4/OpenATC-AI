@@ -22,6 +22,8 @@ use std::{
 };
 
 const MAX_BYTES: usize = 128 * 1024 * 1024;
+/// Retained tile stacks kept between planning jobs.
+const MAXIMUM_TILES: usize = 128;
 const GRID: usize = 128;
 /// Unresolved objects have no geometry. Keep the gate closed while their anchor is within this
 /// distance of the corridor; beyond it, even a large object cannot reach the aircraft envelope.
@@ -227,7 +229,6 @@ impl Terrain {
         // tiles for a pair of airports. A smaller cap makes the engine evict a tile and read it
         // back for every corridor, which turns a preparation into minutes of repeated parsing.
         const BUDGET: usize = 1024 * 1024 * 1024;
-        const MAXIMUM_TILES: usize = 128;
         let key = (latitude, longitude);
         self.clock += 1;
         self.touched.insert(key, self.clock);
@@ -3892,7 +3893,8 @@ mod tests {
                 .unwrap()
                 .as_nanos()
         ));
-        for longitude in 0i32..25 {
+        let count = MAXIMUM_TILES + 1;
+        for longitude in 0i32..count as i32 {
             let path = root
                 .join("Global Scenery/X-Plane 12 Global Scenery/Earth nav data")
                 .join(format!("+00{:+04}", longitude.div_euclid(10) * 10))
@@ -3902,10 +3904,10 @@ mod tests {
         }
         let mut terrain = Terrain::new(&root).unwrap();
         terrain.cache = None;
-        for longitude in 0..25 {
-            terrain.tile(0, longitude).unwrap();
+        for longitude in 0..count {
+            terrain.tile(0, longitude as i32).unwrap();
         }
-        assert_eq!(terrain.tiles.len(), 24);
+        assert_eq!(terrain.tiles.len(), MAXIMUM_TILES);
         assert!(!terrain.tiles.contains_key(&(0, 0)));
         assert!(terrain.retained_bytes <= 512 * 1024 * 1024);
         let held: Vec<_> = terrain
@@ -3914,10 +3916,10 @@ mod tests {
             .map(|stack| stack.as_ref().unwrap().clone())
             .collect();
         assert!(terrain.tile(0, 0).is_err());
-        assert_eq!(terrain.tiles.len(), 24);
+        assert_eq!(terrain.tiles.len(), MAXIMUM_TILES);
         drop(held);
         assert!(terrain.tile(0, 0).is_ok());
-        assert_eq!(terrain.tiles.len(), 24);
+        assert_eq!(terrain.tiles.len(), MAXIMUM_TILES);
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -4028,6 +4030,7 @@ mod tests {
         let triangles = std::mem::take(&mut tile.triangles);
         let bins = std::mem::take(&mut tile.bins);
         tile.resolve_strings(tile.bounds, &triangles, &bins);
+        tile.index_obstacles();
         let obstacle = &tile.obstacles[0];
         assert_eq!(
             mesh_height(

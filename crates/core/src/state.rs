@@ -729,6 +729,21 @@ pub struct Point {
     pub height: f64,
 }
 
+/// Departure sequencing state at the runway holding point.
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TakeoffState {
+    /// Not in the takeoff sequence.
+    #[default]
+    Idle,
+    /// At the holding point; entry to the runway is not authorized.
+    Held,
+    /// Authorized to enter the runway and wait.
+    LineUpAndWait,
+    /// Cleared for takeoff.
+    Cleared,
+}
+
 /// Approved taxi path.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -769,6 +784,8 @@ pub struct TaxiClearance {
     pub holding_marker_point: Option<Point>,
     /// Traffic or missing traffic data currently blocks departure.
     pub waiting_for_traffic: bool,
+    /// Where the departure stands in the runway takeoff sequence.
+    pub takeoff_state: TakeoffState,
     /// Movement window used when re-checking a traffic hold; zero uses the fixed envelope.
     #[serde(default)]
     pub waiting_seconds: f64,

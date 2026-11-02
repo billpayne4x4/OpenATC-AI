@@ -493,7 +493,7 @@ fn draw_map(
             ui.calc_text_size(&beam.label)[0],
         );
     }
-    if interface.taxi_traffic_visible && !interface.settings.show_traffic_debug {
+    if interface.taxi_traffic_visible {
         for target in crate::traffic::targets(state).take(126) {
             if !target.latitude.is_finite()
                 || !target.longitude.is_finite()
@@ -603,9 +603,6 @@ fn draw_map(
                     .filled(true)
                     .build();
                 if held {
-                    draw.add_line(screen, hold_screen, rgba(220, 60, 60, 180))
-                        .thickness(1.5)
-                        .build();
                     draw.add_text(
                         [hold_screen[0] + 4.0, hold_screen[1] + 4.0],
                         rgba(220, 60, 60, 220),
