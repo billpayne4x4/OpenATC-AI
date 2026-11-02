@@ -17941,3 +17941,95 @@ say = ["Cleared to land runway {runway}, {callsign}"]
 [tower_readback_takeoff]
 slots = ["callsign", "runway"]
 say = ["Cleared for takeoff runway {runway}, {callsign}"]
+
+[ambient_hold_short]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, hold short."]
+
+[ambient_hold_short_readback]
+slots = ["callsign", "runway"]
+say = ["Holding short runway {runway}, {callsign}."]
+
+[ambient_line_up]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, line up and wait."]
+
+[ambient_line_up_readback]
+slots = ["callsign", "runway"]
+say = ["Line up and wait, runway {runway}, {callsign}."]
+
+[ambient_takeoff]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, cleared for takeoff."]
+
+[ambient_takeoff_readback]
+slots = ["callsign", "runway"]
+say = ["Cleared for takeoff, runway {runway}, {callsign}."]
+
+[ambient_landing]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, cleared to land."]
+
+[ambient_landing_readback]
+slots = ["callsign", "runway"]
+say = ["Cleared to land, runway {runway}, {callsign}."]
+
+[chatter_ground_ready]
+slots = ["station", "callsign"]
+say = ["{station}, {callsign}, ready to taxi."]
+
+[chatter_ground_taxi]
+slots = ["callsign", "runway", "via"]
+say = ["{callsign}, taxi to runway {runway} via {via}.", "{callsign}, taxi to runway {runway}, via {via}."]
+
+[chatter_ground_taxi_readback]
+slots = ["callsign", "runway", "via"]
+say = ["Taxi to runway {runway} via {via}, {callsign}.", "Runway {runway} via {via}, {callsign}.", "{callsign}, runway {runway} via {via}."]
+
+[chatter_ground_taxi_direct]
+slots = ["callsign", "runway"]
+say = ["{callsign}, taxi to runway {runway}."]
+
+[chatter_ground_taxi_direct_readback]
+slots = ["callsign", "runway"]
+say = ["Taxi to runway {runway}, {callsign}."]
+
+[chatter_tower_departure]
+slots = ["station", "callsign"]
+say = ["{station}, {callsign}, ready for departure."]
+
+[chatter_tower_lineup]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, line up and wait."]
+
+[chatter_tower_lineup_readback]
+slots = ["callsign", "runway"]
+say = ["Line up and wait runway {runway}, {callsign}."]
+
+[chatter_tower_final]
+slots = ["station", "callsign", "runway"]
+say = ["{station}, {callsign}, on final runway {runway}."]
+
+[chatter_tower_landing]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, cleared to land."]
+
+[chatter_tower_landing_readback]
+slots = ["callsign", "runway"]
+say = ["Cleared to land runway {runway}, {callsign}."]
+
+[windshear_advise]
+slots = ["callsign", "station"]
+say = ["{callsign}, windshear reported at {station}. Advise intentions."]
+
+[arrival_vacate_contact_ground]
+slots = ["callsign", "runway", "side", "taxiway", "station", "frequency"]
+say = ["{callsign}, exit runway {runway} {side} via taxiway {taxiway}, contact {station} {frequency}.", "{callsign}, vacate runway {runway} {side} via taxiway {taxiway}, contact {station} on {frequency}.", "{callsign}, runway {runway} {side} at taxiway {taxiway}, contact {station} {frequency}."]
+
+[arrival_vacate_any_contact_ground]
+slots = ["callsign", "runway", "station", "frequency"]
+say = ["{callsign}, vacate runway {runway}, contact {station} {frequency}.", "{callsign}, exit runway {runway} when able, contact {station} on {frequency}.", "{callsign}, runway {runway}, vacate and contact {station} {frequency}."]
+
+[flight_hold_short_traffic]
+slots = ["callsign", "runway"]
+say = ["{callsign}, hold short of runway {runway}, traffic holding in position.", "{callsign}, hold short runway {runway}, traffic lined up and waiting."]

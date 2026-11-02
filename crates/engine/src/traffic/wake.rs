@@ -121,6 +121,7 @@ impl Monitor {
     fn arrival_conflict(
         &mut self,
         t: &Telemetry,
+        targets: &[TrafficTarget],
         airport: Option<&Airport>,
         runway: &str,
         delta: f64,
@@ -153,7 +154,7 @@ impl Monitor {
         }) {
             self.arrival = None;
         }
-        for target in t.traffic.as_ref().into_iter().flatten().take(126) {
+        for target in targets.iter().take(126) {
             let Some(previous) = self
                 .previous
                 .get(&target.id)
@@ -229,6 +230,7 @@ impl Monitor {
 }
 
 pub(super) fn observe(state: &mut EngineState) {
+    let observed = state.traffic_targets();
     let t = &state.session.telemetry;
     let monitor = &mut state.traffic.wake;
     let now = Instant::now();
@@ -261,12 +263,14 @@ pub(super) fn observe(state: &mut EngineState) {
     state.session.departure_wake_seconds = 0.0;
     state.session.arrival_wake_conflict = monitor.arrival_conflict(
         t,
+        &observed,
         state.arrival_airport.as_ref(),
         &state.session.plan.arrival_runway,
         delta,
     );
 
-    if let Some(targets) = &t.traffic {
+    // Keep the ownship in the previous-position map even when the native feed is empty.
+    {
         let own = TrafficTarget {
             id: 0,
             callsign: state.session.plan.callsign.clone(),
@@ -283,7 +287,7 @@ pub(super) fn observe(state: &mut EngineState) {
             on_ground: t.on_ground,
             ..Default::default()
         };
-        let targets = targets
+        let targets = observed
             .iter()
             .filter(|p| p.id != 0)
             .take(126)
@@ -365,8 +369,6 @@ pub(super) fn observe(state: &mut EngineState) {
                 event.distance_pending = false;
             }
         }
-    } else {
-        monitor.previous.clear();
     }
     while monitor.departures.len() > 64 {
         // Bounded history must not turn lost distance-only wake evidence into permission.
@@ -461,6 +463,66 @@ mod tests {
             observe(&mut s);
             assert!(!s.session.arrival_wake_conflict);
         }
+    }
+
+    #[test]
+    fn an_ambient_frame_participates_in_arrival_wake_spacing() {
+        let mut s = crate::test_state();
+        s.session.plan.arrival_runway = "09".into();
+        s.arrival_airport = Some(Airport {
+            icao: "KTEST".into(),
+            runways: vec![Runway {
+                first_name: "09".into(),
+                second_name: "27".into(),
+                width: 45.0,
+                second: Point {
+                    east: 3000.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        s.session.telemetry = Telemetry {
+            position_valid: true,
+            aircraft_icao: "C172".into(),
+            on_ground: false,
+            longitude: -4.0 / 60.0,
+            heading_degrees: 90.0,
+            ground_speed_knots: 90.0,
+            simulation_seconds: Some(10.0),
+            traffic: Some(Vec::new()),
+            ..Default::default()
+        };
+        let ambient = |longitude: f64| openatc_core::state::GeneratedTraffic {
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            target: TrafficTarget {
+                id: 2,
+                callsign: "HEAVY2".into(),
+                aircraft: "B77W".into(),
+                longitude,
+                altitude_feet: 30.0,
+                track_degrees: 90.0,
+                wingspan_meters: Some(60.0),
+                wake_category: Some(2),
+                on_ground: false,
+                ..Default::default()
+            },
+            model: std::sync::Arc::new(openatc_core::traffic::csl::Model {
+                id: "heavy".into(),
+                objects: Vec::new(),
+                vertical_offset: None,
+                matches: Vec::new(),
+            }),
+            animation: Default::default(),
+        };
+        s.session.generated_traffic = vec![ambient(-0.0001)];
+        observe(&mut s);
+        s.session.generated_traffic = vec![ambient(0.0001)];
+        s.session.telemetry.simulation_seconds = Some(11.0);
+        observe(&mut s);
+        assert!(s.session.arrival_wake_conflict);
     }
 
     #[test]

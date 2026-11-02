@@ -65,6 +65,9 @@ pub struct TrafficTarget {
     pub track_degrees: f64,
     /// Simulator weight-on-wheels flag.
     pub on_ground: bool,
+    /// Whether the target is actually on runway pavement. `None` means unknown.
+    #[serde(default)]
+    pub runway_occupancy: Option<bool>,
 }
 
 /// Worker-produced position and model for lightweight simulator instances.
@@ -766,6 +769,9 @@ pub struct TaxiClearance {
     pub holding_marker_point: Option<Point>,
     /// Traffic or missing traffic data currently blocks departure.
     pub waiting_for_traffic: bool,
+    /// Movement window used when re-checking a traffic hold; zero uses the fixed envelope.
+    #[serde(default)]
+    pub waiting_seconds: f64,
     /// Guidance ends at the authorized hold point; clearance remains recorded.
     pub guidance_complete: bool,
     /// Runway at the next authorized hold point (may precede destination).

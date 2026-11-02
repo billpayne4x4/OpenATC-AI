@@ -104,6 +104,41 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
     widgets::section_title(ui, "TRAFFIC MOTION");
     traffic_rate(ui, interface);
     wake_standard(ui, interface);
+    widgets::section_title(ui, "TRAFFIC MIX");
+    let mut mix_changed = false;
+    let mut airline = i32::from(interface.settings.airline_traffic);
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##airline-traffic", 0, 10, &mut airline) {
+        interface.settings.airline_traffic = airline.clamp(0, 10) as u8;
+        mix_changed = true;
+    }
+    ui.text_wrapped("Airliner share");
+    let mut regional = i32::from(interface.settings.regional_traffic);
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##regional-traffic", 0, 10, &mut regional) {
+        interface.settings.regional_traffic = regional.clamp(0, 10) as u8;
+        mix_changed = true;
+    }
+    ui.text_wrapped(
+        "Regional airline share, including turboprops and regional jets. Set to 0 to remove them.",
+    );
+    let mut cargo = i32::from(interface.settings.cargo_traffic);
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##cargo-traffic", 0, 10, &mut cargo) {
+        interface.settings.cargo_traffic = cargo.clamp(0, 10) as u8;
+        mix_changed = true;
+    }
+    ui.text_wrapped("Freight share");
+    let mut ga = i32::from(interface.settings.ga_traffic);
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##ga-traffic", 0, 10, &mut ga) {
+        interface.settings.ga_traffic = ga.clamp(0, 10) as u8;
+        mix_changed = true;
+    }
+    ui.text_wrapped("General aviation share, including light aircraft, turboprops and business jets. Set to 0 to remove GA.");
+    if mix_changed {
+        interface.save_settings();
+    }
     ui.checkbox(
         "Add local pattern traffic",
         &mut interface.settings.local_pattern_traffic,

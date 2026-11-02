@@ -70,13 +70,9 @@ fn refresh(state: &mut EngineState, station: &Station) -> Vec<(TrafficTarget, En
         .traffic
         .advisories
         .retain(|_, a| a.station == station_key);
-    let candidates: Vec<_> = state
-        .session
-        .telemetry
-        .traffic
-        .as_ref()
-        .into_iter()
-        .flatten()
+    let targets = state.traffic_targets();
+    let candidates: Vec<_> = targets
+        .iter()
         .take(126)
         .filter(|t| t.id != 0)
         .filter_map(|t| {

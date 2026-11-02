@@ -323,12 +323,22 @@ pub async fn post_telemetry(
             && (route.hold_short_runway != state.session.plan.runway
                 || state.session.departure_wake_seconds <= 0.0)
             && state.airport.as_ref().is_some_and(|a| {
-                openatc_core::holding::blocked(
-                    a,
-                    &state.session.taxi_clearance.hold_short_runway,
-                    &telemetry,
-                )
-                .is_none()
+                let telemetry = state.telemetry_with_traffic();
+                let Some(targets) = telemetry.traffic.as_deref() else {
+                    return false;
+                };
+                let runway = &state.session.taxi_clearance.hold_short_runway;
+                if route.waiting_seconds > 0.0 {
+                    openatc_core::holding::blocked_for_movement(
+                        a,
+                        runway,
+                        targets.iter(),
+                        route.waiting_seconds,
+                    )
+                    .is_none()
+                } else {
+                    openatc_core::holding::blocked(a, runway, &telemetry).is_none()
+                }
             });
         if route.holding_channel == channel && !retry {
             return Json(json!({"accepted":true})).into_response();

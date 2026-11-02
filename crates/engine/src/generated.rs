@@ -3878,6 +3878,7 @@ fn travel_outside_coverage(anchor: Option<[f64; 2]>, own: [f64; 2], coverage_nm:
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum RunwayUse {
     Clear,
+    LineUp,
     Departing,
     Landing,
 }
@@ -3886,6 +3887,7 @@ impl Runtime {
     /// Report whether generated traffic occupies this runway, and how. A landing aircraft takes
     /// priority over a departure, so a following aircraft is told to hold short rather than line up.
     pub(super) fn runway_use(&self, resource: &str) -> RunwayUse {
+        let mut line_up = false;
         let mut departing = false;
         for pose in self.world.snapshot() {
             let Some(flight) = self.flights.get(&pose.id) else {
@@ -3901,12 +3903,14 @@ impl Runtime {
                 openatc_core::traffic::motion::Stage::Approach
                 | openatc_core::traffic::motion::Stage::MissedApproach
                 | openatc_core::traffic::motion::Stage::Rollout => return RunwayUse::Landing,
-                openatc_core::traffic::motion::Stage::LineUp
-                | openatc_core::traffic::motion::Stage::Takeoff => departing = true,
+                openatc_core::traffic::motion::Stage::LineUp => line_up = true,
+                openatc_core::traffic::motion::Stage::Takeoff => departing = true,
                 _ => {}
             }
         }
-        if departing {
+        if line_up {
+            RunwayUse::LineUp
+        } else if departing {
             RunwayUse::Departing
         } else {
             RunwayUse::Clear
@@ -6500,13 +6504,13 @@ mod tests {
         };
         let mut runtime = Runtime::default();
         assert_eq!(runtime.runway_use(key), RunwayUse::Clear);
-        // A departure occupying the runway means the next aircraft lines up and waits.
+        // An aircraft holding in position means the next aircraft holds short.
         let id = 1;
         runtime
             .world
             .insert(runtime.world.generation(), id, route(Stage::LineUp));
         runtime.flights.insert(id, prepared(route(Stage::LineUp)));
-        assert_eq!(runtime.runway_use(key), RunwayUse::Departing);
+        assert_eq!(runtime.runway_use(key), RunwayUse::LineUp);
         // A landing aircraft takes priority, so the following aircraft holds short instead.
         let mut landing = Runtime::default();
         landing

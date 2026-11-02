@@ -418,6 +418,112 @@ mod tests {
         assert!(parse("[example]\nslots=[]\nsay=['{unknown}']").is_err());
     }
     #[test]
+    fn ambient_traffic_chatter_and_hazard_phrases_render_from_the_shipped_toml() {
+        let callsign = "N123AB";
+        let runway = "27";
+        let station = "Brisbane Ground";
+        let via = "Alpha, Bravo";
+        let simple = [
+            ("callsign", callsign.to_owned()),
+            ("runway", runway.to_owned()),
+        ];
+        let ready = [
+            ("station", station.to_owned()),
+            ("callsign", callsign.to_owned()),
+        ];
+        let taxi = [
+            ("callsign", callsign.to_owned()),
+            ("runway", runway.to_owned()),
+            ("via", via.to_owned()),
+        ];
+        let final_call = [
+            ("station", station.to_owned()),
+            ("callsign", callsign.to_owned()),
+            ("runway", runway.to_owned()),
+        ];
+        let handoff = [
+            ("callsign", callsign.to_owned()),
+            ("runway", runway.to_owned()),
+            ("side", "left".to_owned()),
+            ("taxiway", "Alpha".to_owned()),
+            ("station", station.to_owned()),
+            ("frequency", "121.700".to_owned()),
+        ];
+        let handoff_any = [
+            ("callsign", callsign.to_owned()),
+            ("runway", runway.to_owned()),
+            ("station", station.to_owned()),
+            ("frequency", "121.700".to_owned()),
+        ];
+        let cases: [(&str, &[(&str, String)], &[&str]); 22] = [
+            ("ambient_hold_short", &simple, &[callsign, runway]),
+            ("ambient_hold_short_readback", &simple, &[callsign, runway]),
+            ("ambient_line_up", &simple, &[callsign, runway]),
+            ("ambient_line_up_readback", &simple, &[callsign, runway]),
+            ("ambient_takeoff", &simple, &[callsign, runway]),
+            ("ambient_takeoff_readback", &simple, &[callsign, runway]),
+            ("ambient_landing", &simple, &[callsign, runway]),
+            ("ambient_landing_readback", &simple, &[callsign, runway]),
+            ("chatter_ground_ready", &ready, &[station, callsign]),
+            ("chatter_ground_taxi", &taxi, &[callsign, runway, via]),
+            (
+                "chatter_ground_taxi_readback",
+                &taxi,
+                &[callsign, runway, via],
+            ),
+            ("chatter_ground_taxi_direct", &simple, &[callsign, runway]),
+            (
+                "chatter_ground_taxi_direct_readback",
+                &simple,
+                &[callsign, runway],
+            ),
+            ("chatter_tower_departure", &ready, &[station, callsign]),
+            ("chatter_tower_lineup", &simple, &[callsign, runway]),
+            (
+                "chatter_tower_lineup_readback",
+                &simple,
+                &[callsign, runway],
+            ),
+            (
+                "chatter_tower_final",
+                &final_call,
+                &[station, callsign, runway],
+            ),
+            ("chatter_tower_landing", &simple, &[callsign, runway]),
+            (
+                "chatter_tower_landing_readback",
+                &simple,
+                &[callsign, runway],
+            ),
+            ("windshear_advise", &ready, &[callsign, station]),
+            (
+                "arrival_vacate_contact_ground",
+                &handoff,
+                &[callsign, runway, "left", "Alpha", station, "121.700"],
+            ),
+            (
+                "arrival_vacate_any_contact_ground",
+                &handoff_any,
+                &[callsign, runway, station, "121.700"],
+            ),
+        ];
+        for (key, slots, expected) in cases {
+            let rendered = say(key, slots);
+            assert!(!rendered.is_empty(), "{key} did not render");
+            for value in expected {
+                assert!(
+                    rendered.contains(value),
+                    "{key} dropped {value}: {rendered}"
+                );
+            }
+            assert!(
+                !rendered.contains('{'),
+                "{key} left an unfilled placeholder: {rendered}"
+            );
+        }
+    }
+
+    #[test]
     fn response_values_do_not_interpolate_each_other() {
         let rendered = say(
             "copilot_repeat_instruction",
