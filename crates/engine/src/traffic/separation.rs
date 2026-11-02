@@ -8,6 +8,85 @@ pub(crate) fn required_gap(own_length: f64, other_length: f64) -> f64 {
     ((own_length + other_length) / 2.0 + 15.0).clamp(45.0, 80.0)
 }
 
+/// Closest aircraft physically ahead on the taxiway.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Ahead {
+    /// Target identity.
+    pub(crate) id: u32,
+    /// Centre-to-centre gap in metres.
+    pub(crate) gap: f64,
+    /// Gap needed at taxi speed.
+    pub(crate) required: f64,
+    /// Leader ground speed in metres per second.
+    pub(crate) speed: f64,
+}
+
+/// Find the closest ground target ahead of this aircraft.
+#[must_use]
+pub(crate) fn closest_ahead(
+    latitude: f64,
+    longitude: f64,
+    heading: f64,
+    own_length: f64,
+    own_id: u32,
+    traffic: &[TrafficTarget],
+) -> Option<Ahead> {
+    let mut closest: Option<Ahead> = None;
+    for other in traffic
+        .iter()
+        .filter(|target| target.id != own_id && target.on_ground)
+    {
+        if !other.latitude.is_finite() || !other.longitude.is_finite() {
+            continue;
+        }
+        if other.runway_occupancy == Some(true) {
+            continue;
+        }
+        let other_length = openatc_core::traffic::profiles::aircraft(&other.aircraft)
+            .map_or(40.0, |profile| profile.length);
+        let required = required_gap(own_length, other_length);
+        let gap = openatc_core::arrival::distance_nm(
+            [latitude, longitude],
+            [other.latitude, other.longitude],
+        ) * 1852.0;
+        let bearing = openatc_core::arrival::bearing(
+            [latitude, longitude],
+            [other.latitude, other.longitude],
+        );
+        let relative = (bearing - heading).rem_euclid(360.0);
+        if relative >= 45.0 && relative <= 315.0 {
+            continue;
+        }
+        let candidate = Ahead {
+            id: other.id,
+            gap,
+            required,
+            speed: other.ground_speed_knots.unwrap_or(0.0) * 0.514_444,
+        };
+        if closest.is_none_or(|current| candidate.gap < current.gap) {
+            closest = Some(candidate);
+        }
+    }
+    closest
+}
+
+/// Speed a follower may use behind the leader without closing the gap too quickly.
+#[must_use]
+pub(crate) fn follow_speed(leader: Ahead, taxi_speed: f64) -> f64 {
+    let stop = leader.required * 0.55;
+    if leader.gap <= stop {
+        0.0
+    } else if leader.speed < 0.1 {
+        if leader.gap < leader.required {
+            0.0
+        } else {
+            f64::INFINITY
+        }
+    } else {
+        (leader.speed + (leader.gap - stop) * 0.4).min(taxi_speed)
+    }
+}
+
 /// True when another ground target is physically ahead inside the protected gap.
 ///
 /// Compares current positions and headings. Route distance is not a reliable ordering
@@ -90,6 +169,30 @@ mod tests {
             1,
             &[target(2, -0.0002, 90.0)]
         ));
+    }
+
+    #[test]
+    fn followers_keep_moving_behind_a_moving_taxi_leader() {
+        let required = required_gap(37.0, 37.0);
+        let leader = Ahead {
+            id: 2,
+            gap: required + 10.0,
+            required,
+            speed: 5.0,
+        };
+        assert!(follow_speed(leader, 8.0) > 5.0);
+        let close = Ahead {
+            gap: required * 0.7,
+            ..leader
+        };
+        let speed = follow_speed(close, 8.0);
+        assert!(speed > 0.0 && speed <= 8.0);
+        let stopped = Ahead {
+            speed: 0.0,
+            gap: required - 1.0,
+            ..leader
+        };
+        assert_eq!(follow_speed(stopped, 8.0), 0.0);
     }
 
     #[test]

@@ -611,21 +611,27 @@ impl TrafficManager {
                             player,
                         )
                     });
-            let physical_blocked = on_ground && {
-                let (latitude, longitude, heading) = position_heading_at(
-                    &self.aircraft[index].points,
-                    &self.aircraft[index].cumulative,
-                    distance,
-                );
-                separation::ahead_conflict(
-                    latitude,
-                    longitude,
-                    heading,
-                    self.aircraft[index].profile.length,
-                    self.aircraft[index].id,
-                    &traffic,
-                )
-            };
+            let (latitude, longitude, heading) = position_heading_at(
+                &self.aircraft[index].points,
+                &self.aircraft[index].cumulative,
+                distance,
+            );
+            let ahead = on_ground
+                .then(|| {
+                    separation::closest_ahead(
+                        latitude,
+                        longitude,
+                        heading,
+                        self.aircraft[index].profile.length,
+                        self.aircraft[index].id,
+                        &traffic,
+                    )
+                })
+                .flatten();
+            let follow_speed = ahead.map_or(f64::INFINITY, |leader| {
+                separation::follow_speed(leader, self.aircraft[index].taxi_knots)
+            });
+            let physical_blocked = follow_speed <= 0.01;
             let own_runway = self.aircraft[index].runway.clone();
             let own_airport = self.aircraft[index].airport.clone();
             let own_id = self.aircraft[index].id;
@@ -671,6 +677,7 @@ impl TrafficManager {
             // Give way to traffic on the right at a converging taxiway. The higher id yields
             // when both aircraft see each other, which breaks the mutual-yield case.
             let right_blocked = on_ground
+                && queue_lead != Some(self.aircraft[index].id)
                 && self
                     .aircraft
                     .iter()
@@ -836,6 +843,9 @@ impl TrafficManager {
             } else {
                 taxi
             };
+            if aircraft.speed > follow_speed {
+                aircraft.speed = follow_speed;
+            }
             let heading_before =
                 position_heading_at(&aircraft.points, &aircraft.cumulative, aircraft.distance).2;
             aircraft.distance += aircraft.speed * dt;
