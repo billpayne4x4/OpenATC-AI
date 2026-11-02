@@ -61,6 +61,9 @@ pub fn blocked_surface<'a>(
         if !valid(target) {
             return Some("holding_standby");
         }
+        if on_other_parallel_runway(airport, runway, target) {
+            continue;
+        }
         let p = airport_point(airport, target.latitude, target.longitude);
         let east = p.east - frame.start.east;
         let north = p.north - frame.start.north;
@@ -109,6 +112,9 @@ fn blocked_final<'a>(
     for target in targets {
         if !valid(target) {
             return Some("holding_standby");
+        }
+        if on_other_parallel_runway(airport, runway, target) {
+            continue;
         }
         let p = airport_point(airport, target.latitude, target.longitude);
         // Ground traffic on a parallel taxiway is not runway occupancy even when it sits
@@ -161,6 +167,9 @@ fn blocked_final_timing<'a>(
     seconds: f64,
 ) -> Option<&'static str> {
     for target in targets.filter(|target| !target.on_ground) {
+        if on_other_parallel_runway(airport, runway, target) {
+            continue;
+        }
         let Some((along, across, length, heading)) =
             crate::traffic::runway_position(airport, runway, target.latitude, target.longitude)
         else {
@@ -245,7 +254,7 @@ pub(crate) fn on_other_parallel_runway(
             else {
                 continue;
             };
-            if across.abs() > 200.0 || along < -2.0 * 1852.0 || along > length + 2.0 * 1852.0 {
+            if across.abs() > 200.0 || along < -20.0 * 1852.0 || along > length + 20.0 * 1852.0 {
                 continue;
             }
             if parallel_runways(airport, runway, name) {
@@ -263,7 +272,10 @@ fn runway_heading(start: crate::state::Point, end: crate::state::Point) -> f64 {
         .rem_euclid(360.0)
 }
 
-fn runway_endpoints(airport: &Airport, name: &str) -> Option<(crate::state::Point, crate::state::Point)> {
+fn runway_endpoints(
+    airport: &Airport,
+    name: &str,
+) -> Option<(crate::state::Point, crate::state::Point)> {
     airport.runways.iter().find_map(|runway| {
         if runway.first_name == name {
             Some((runway.first, runway.second))
@@ -285,7 +297,11 @@ fn parallel_runways(airport: &Airport, first: &str, second: &str) -> bool {
     ) else {
         return false;
     };
-    let angle = crate::navigation::turn(runway_heading(start, end), runway_heading(other_start, other_end)).abs();
+    let angle = crate::navigation::turn(
+        runway_heading(start, end),
+        runway_heading(other_start, other_end),
+    )
+    .abs();
     if angle.min((180.0 - angle).abs()) >= 20.0 {
         return false;
     }
@@ -334,6 +350,58 @@ mod tests {
         assert_eq!(
             blocked_for_movement(&airport, "09", std::iter::once(&target), 60.0),
             Some("holding_runway_occupied")
+        );
+    }
+
+    #[test]
+    fn a_final_on_the_parallel_runway_does_not_block_the_departure_runway() {
+        use crate::airport::{Airport, Runway};
+        let airport = Airport {
+            icao: "LFMN".into(),
+            runways: vec![
+                Runway {
+                    first_name: "04L".into(),
+                    second_name: "22R".into(),
+                    width: 45.0,
+                    second: Point {
+                        east: 3000.0,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                Runway {
+                    first_name: "04R".into(),
+                    second_name: "22L".into(),
+                    width: 45.0,
+                    first: Point {
+                        north: 300.0,
+                        ..Default::default()
+                    },
+                    second: Point {
+                        east: 3000.0,
+                        north: 300.0,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let target = TrafficTarget {
+            latitude: 0.0,
+            longitude: -1.8 / 60.0,
+            altitude_feet: 1200.0,
+            track_degrees: 90.0,
+            ground_speed_knots: Some(140.0),
+            on_ground: false,
+            ..Default::default()
+        };
+        let mut distant = target.clone();
+        distant.longitude = -5.0 / 60.0;
+        assert!(blocked_for_movement(&airport, "04R", std::iter::once(&distant), 120.0).is_none());
+        assert_eq!(
+            blocked_for_movement(&airport, "04L", std::iter::once(&target), 120.0),
+            Some("holding_traffic_final")
         );
     }
 

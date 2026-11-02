@@ -1209,12 +1209,20 @@ clipped terrain maxima so unrelated triangle vertices cannot inflate those bound
 The renderer applies terrain placement separately from the worker's nominal path.
 
 A separate persistent ambient layer supplies the opening airport with ground traffic.
-It starts aircraft on the taxiway graph, builds a graph route to the active departure
-runway, and gives each aircraft a stand-to-runway-to-takeoff profile. Aircraft hold
-short of the runway, contact Tower when the player is tuned to the frequency, receive
-line-up and takeoff clearances, and only then enter the runway. Taxi, rotation,
-climb, approach and braking speeds come from each aircraft's handling and profile;
-light GA does not use jet speeds. The hold point is derived from
+It fills the airport while the player is still parked at the gate, then stops creating
+new aircraft once ground movement begins; stopping at a hold does not restart it.
+Aircraft start at gates or along the initial taxi route, build a graph route to the
+active departure runway, and give each aircraft a stand-to-runway-to-takeoff profile.
+Aircraft hold short of the runway, contact Tower when the player is tuned to the
+frequency, receive line-up and takeoff clearances, and only then enter the runway.
+The departure queue is first-in, first-out: the lead aircraft gets takeoff clearance
+when the runway is clear, the next lines up as the leader starts its roll, and then
+waits for the runway and wake interval before taking off. Taxi, rotation, climb,
+approach and braking speeds come from each aircraft's handling and profile; light GA
+does not use jet speeds. Ambient aircraft detect the player's position and yield
+rather than taxiing through. Runway protection is per physical runway, so a landing
+on 04L does not hold a departure from 04R. The destination airport is seeded while
+the player is still about 30 NM away. The hold point is derived from
 the painted hold-line geometry and set back on the approach side, and the aircraft
 stops there rather than at the nearest graph node. The takeoff run starts at the
 runway end nearest that hold, so the aircraft enters at the near threshold and rolls
