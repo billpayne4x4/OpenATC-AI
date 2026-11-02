@@ -11,7 +11,11 @@ mod conversation;
 #[cfg(test)]
 mod conversation_tests;
 pub(crate) mod holding;
+pub mod manager;
+pub mod phase;
+pub mod phases;
 mod policy;
+pub mod separation;
 mod wake;
 use crate::{EngineState, Shared};
 use axum::{

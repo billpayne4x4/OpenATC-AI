@@ -216,7 +216,13 @@ pub fn advisory_text(
     };
     let pressure = pressure_text(&parse_metar(&report_word(report, "rawOb")), region, true);
     if hazard.kind == "windshear" {
-        return format!("{callsign}, windshear reported at {station}. Advise intentions.");
+        return crate::dialogue::say(
+            "windshear_advise",
+            &[
+                ("callsign", callsign.to_owned()),
+                ("station", station.to_owned()),
+            ],
+        );
     }
     if hazard.kind == "ifr" {
         let mut ceiling = String::new();

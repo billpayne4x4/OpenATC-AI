@@ -4,8 +4,8 @@
 
 mod airport_ops;
 mod atc;
-mod automation;
 mod cabin;
+mod chatter;
 mod config_cache;
 mod context;
 mod crew;
@@ -29,11 +29,9 @@ mod support;
 mod surface;
 mod traffic;
 mod traffic_models;
-mod traffic_ops;
 mod traffic_profiles;
 mod traffic_runtime;
 mod workers;
-mod chatter;
 
 use openatc_core::airport::Airport;
 use openatc_core::regions::{Region, load_regions};
@@ -44,7 +42,6 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing;
 
 /// Product version with the compile timestamp.
 pub const VERSION: &str = concat!("0.2.1 (", env!("OPENATC_BUILD"), ")");
@@ -84,7 +81,9 @@ pub struct EngineState {
     /// Arrival stand changes are retried at a bounded rate.
     pub parking: parking::Monitor,
     /// Persistent ambient airport traffic.
-    pub ambient: traffic_ops::TrafficManager,
+    pub ambient: traffic::manager::TrafficManager,
+    /// Audio-only simulated airport chatter.
+    pub chatter: chatter::ChatterManager,
     /// CSL animation channel names shared by generated and ambient traffic.
     pub traffic_channels: BTreeMap<String, openatc_core::traffic::animation::Channel>,
     /// Animation rates shared by generated and ambient traffic.
@@ -100,8 +99,6 @@ pub struct EngineState {
     pub traffic: traffic::Traffic,
     /// Frequency station threads and their transmission queues.
     pub(crate) station_bus: traffic_runtime::StationBus,
-    /// Audio-only airport chatter sessions.
-    pub chatter: chatter::ChatterManager,
     /// Selected mission clock and branching outcomes.
     pub mission: missions::Runtime,
     /// Codes recently assigned by this engine, including previous flights.
@@ -123,12 +120,8 @@ pub struct EngineState {
     pub phrase_history: radio::PhraseHistory,
     /// Aircraft crew controls, live readbacks and checklist progress.
     pub crew: crew::CrewSession,
-    /// Loaded aircraft specifications from the simulator.
-    pub loaded_aircraft_specs: Option<openatc_core::ops::AcfSpecs>,
     /// Automatic station transitions and arrival permissions.
     pub flow: flight::FlightFlow,
-    /// AI automation engine for full flight automation.
-    pub automation: automation::AutomationEngine,
     /// Live session (plan, telemetry, phase, transcript, ...).
     pub session: State,
     /// Operator settings.
@@ -200,6 +193,28 @@ pub struct EngineState {
 pub type Shared = Arc<RwLock<EngineState>>;
 
 impl EngineState {
+    /// Native simulator traffic plus the frames this engine draws itself.
+    pub(crate) fn traffic_targets(&self) -> Vec<openatc_core::state::TrafficTarget> {
+        let mut targets = self.session.telemetry.traffic.clone().unwrap_or_default();
+        let mut ids: std::collections::BTreeSet<u32> =
+            targets.iter().map(|target| target.id).collect();
+        for frame in &self.session.generated_traffic {
+            if frame.target.id != 0 && ids.insert(frame.target.id) {
+                targets.push(frame.target.clone());
+            }
+        }
+        targets
+    }
+
+    /// Copy of the current sample with the combined traffic picture attached.
+    pub(crate) fn telemetry_with_traffic(&self) -> openatc_core::state::Telemetry {
+        let mut telemetry = self.session.telemetry.clone();
+        if telemetry.traffic.is_some() {
+            telemetry.traffic = Some(self.traffic_targets());
+        }
+        telemetry
+    }
+
     /// Use the configured callsign only while the plan has none of its own.
     pub(crate) fn apply_settings_callsign(&mut self) {
         if self.session.clearance.is_some() || !self.session.plan.callsign.trim().is_empty() {
@@ -386,36 +401,6 @@ async fn weather_loop(shared: Shared) {
         reload_prompts_if_changed(&shared, &mut prompts_stamp).await;
         // Weather transmissions use simulator observations only. Internet
         // METAR fetches remain available as explicitly labelled planning data.
-    }
-}
-
-/// Periodically fetch real-time traffic from ADSB.lol if enabled.
-async fn adsb_loop(shared: Shared) {
-    loop {
-        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-        let (enabled, url, api_key, radius_nm, interval_sec) = {
-            let state = shared.read().await;
-            (
-                state.settings.adsb_lol_enabled,
-                state.settings.adsb_lol_url.clone(),
-                state.settings.adsb_lol_api_key.clone(),
-                state.settings.adsb_lol_radius_nm,
-                state.settings.adsb_lol_update_interval_sec,
-            )
-        };
-        if !enabled {
-            continue;
-        }
-        // TODO: Implement ADSB.lol fetch and merge with generated traffic
-        // This would require:
-        // 1. Fetch from API with radius and interval settings
-        // 2. Parse aircraft positions
-        // 3. Merge with generated traffic in state
-        // For now, just log that the feature is configured
-        tracing::debug!(
-            "ADSB.lol configured: url={}, radius={}nm, interval={}s",
-            url, radius_nm, interval_sec
-        );
     }
 }
 
@@ -639,6 +624,7 @@ async fn main() {
         parking: Default::default(),
         initiative: Default::default(),
         ambient: Default::default(),
+        chatter: Default::default(),
         traffic_channels: generated::animation_channels(&config_dir),
         traffic_handling: generated::animation_handling(&config_dir),
         aircraft: Default::default(),
@@ -653,10 +639,7 @@ async fn main() {
         pending_copilot_reply: None,
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
-        loaded_aircraft_specs: None,
         flow: flight::FlightFlow::default(),
-        automation: Default::default(),
-        chatter: Default::default(),
         session: State::default(),
         settings,
         stations: Vec::new(),
@@ -696,8 +679,6 @@ async fn main() {
     setup::start_initial(&shared).await;
     let weather = shared.clone();
     tokio::spawn(async move { weather_loop(weather).await });
-    let adsb = shared.clone();
-    tokio::spawn(async move { adsb_loop(adsb).await });
     let lifetime = Arc::new(lifecycle::PluginSession::new(plugin_parent));
     let app = axum::Router::new()
         .route("/health", get(routes::health))
@@ -731,7 +712,6 @@ async fn main() {
         .route("/traffic/models/install", post(traffic_models::install))
         .route("/traffic/models/cancel", post(traffic_models::cancel))
         .route("/atc/offer", post(initiative::answer))
-        .route("/automation", post(routes::post_automation))
         .route("/simulator/root", post(routes::post_simulator_root))
         .route("/debug/cancel-actions", post(routes::debug_cancel_actions))
         .route("/debug/jump/prepare", post(debug_jump::prepare))
@@ -811,6 +791,7 @@ fn test_state() -> EngineState {
         parking: Default::default(),
         initiative: Default::default(),
         ambient: Default::default(),
+        chatter: Default::default(),
         traffic_channels: generated::animation_channels(&config_dir),
         traffic_handling: generated::animation_handling(&config_dir),
         aircraft: Default::default(),
@@ -825,10 +806,7 @@ fn test_state() -> EngineState {
         pending_copilot_reply: None,
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
-        loaded_aircraft_specs: None,
         flow: flight::FlightFlow::default(),
-        automation: Default::default(),
-        chatter: Default::default(),
         session: State::default(),
         settings,
         stations: Vec::new(),
@@ -864,6 +842,45 @@ fn test_state() -> EngineState {
     };
     state.apply_settings_callsign();
     state
+}
+
+#[cfg(test)]
+mod traffic_target_tests {
+    use super::*;
+
+    fn frame(id: u32, callsign: &str) -> openatc_core::state::GeneratedTraffic {
+        openatc_core::state::GeneratedTraffic {
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            target: openatc_core::state::TrafficTarget {
+                id,
+                callsign: callsign.into(),
+                ..Default::default()
+            },
+            model: std::sync::Arc::new(openatc_core::traffic::csl::Model {
+                id: format!("test-{id}"),
+                objects: Vec::new(),
+                vertical_offset: None,
+                matches: Vec::new(),
+            }),
+            animation: Default::default(),
+        }
+    }
+
+    #[test]
+    fn native_and_simulated_targets_share_one_view_without_duplicates() {
+        let mut state = test_state();
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 1,
+            callsign: "NATIVE1".into(),
+            ..Default::default()
+        }]);
+        state.session.generated_traffic = vec![frame(1, "DUPLICATE"), frame(2, "AMBIENT2")];
+        let targets = state.traffic_targets();
+        assert_eq!(targets.len(), 2);
+        assert!(targets.iter().any(|target| target.callsign == "NATIVE1"));
+        assert!(targets.iter().any(|target| target.callsign == "AMBIENT2"));
+    }
 }
 
 #[cfg(test)]
