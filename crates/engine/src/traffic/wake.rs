@@ -387,18 +387,22 @@ pub(super) fn observe(state: &mut EngineState) {
     else {
         return;
     };
-    state.session.departure_wake_seconds = monitor.departure_delay(
-        0,
-        airport,
-        &state.session.plan.runway,
-        if t.aircraft_icao.is_empty() {
-            &state.session.plan.aircraft
-        } else {
-            &t.aircraft_icao
-        },
-        t.latitude,
-        t.longitude,
-    );
+    state.session.departure_wake_seconds = if state.settings.allow_wake_waits {
+        monitor.departure_delay(
+            0,
+            airport,
+            &state.session.plan.runway,
+            if t.aircraft_icao.is_empty() {
+                &state.session.plan.aircraft
+            } else {
+                &t.aircraft_icao
+            },
+            t.latitude,
+            t.longitude,
+        )
+    } else {
+        0.0
+    };
 }
 
 #[cfg(test)]
@@ -632,6 +636,12 @@ mod tests {
             observe(&mut s);
             s.session.telemetry.simulation_seconds = Some(11.0);
             s.session.telemetry.traffic.as_mut().unwrap()[0].on_ground = false;
+            observe(&mut s);
+            assert_eq!(s.session.departure_wake_seconds, 120.0);
+            s.settings.allow_wake_waits = false;
+            observe(&mut s);
+            assert_eq!(s.session.departure_wake_seconds, 0.0);
+            s.settings.allow_wake_waits = true;
             observe(&mut s);
             assert_eq!(s.session.departure_wake_seconds, 120.0);
             s.session.telemetry.paused = true;

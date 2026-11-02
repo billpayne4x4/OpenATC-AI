@@ -3518,6 +3518,26 @@ mod sequencing_tests {
     }
 
     #[test]
+    fn a_lined_up_departure_clears_when_the_wake_interval_expires() {
+        let mut state = departure_state();
+        state.session.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+        state.session.departure_wake_seconds = 22.0;
+        takeoff_tick(&mut state);
+        assert_eq!(
+            state.session.taxi_clearance.takeoff_state,
+            TakeoffState::LineUpAndWait
+        );
+        assert!(!state.flow.takeoff_cleared);
+        state.session.departure_wake_seconds = 0.0;
+        takeoff_tick(&mut state);
+        assert_eq!(
+            state.session.taxi_clearance.takeoff_state,
+            TakeoffState::Cleared
+        );
+        assert!(state.flow.takeoff_cleared);
+    }
+
+    #[test]
     fn a_stale_copilot_reply_does_not_stop_the_takeoff_sequencer() {
         let mut state = departure_state();
         state.pending_copilot_reply = Some(crate::routes::PreparedReply {

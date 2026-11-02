@@ -2962,6 +2962,12 @@ fn readbacks_row(ui: &imgui::Ui, interface: &mut Interface) {
         &mut interface.settings.player_traffic_holding,
     );
     ui.text_wrapped("Allows a discretionary delay hold when arrival spacing needs more time and a protected holding route is available. Turning this off prevents new optional holds; accepted holds, wake separation, runway protection and go-arounds still apply. Holding and safety instructions do not use a random chance.");
+    widgets::section_title(ui, "WAKE SEPARATION");
+    ui.checkbox(
+        "Allow wake separation waits",
+        &mut interface.settings.allow_wake_waits,
+    );
+    ui.text_wrapped("When off, departure wake intervals are ignored for the player and ambient traffic. Runway occupancy, landing, crossing and go-around protection still apply.");
     widgets::section_title(ui, "OPTIONAL ATC OFFERS");
     ui.checkbox(
         "Allow ATC to offer en-route shortcuts",

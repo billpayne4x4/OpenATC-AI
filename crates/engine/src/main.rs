@@ -610,15 +610,35 @@ async fn main() {
         controllers = saved;
     }
     let workers = Arc::new(workers::Workers::new(settings.cpu_workers));
-    let wake_text = [
-        config_dir.join("traffic/wake.toml"),
-        exe_dir.join("traffic/wake.toml"),
-    ]
-    .into_iter()
-    .find_map(|path| std::fs::read_to_string(path).ok())
-    .unwrap_or_else(|| include_str!("../../../traffic/wake.toml").to_owned());
-    if let Err(error) = openatc_core::traffic::wake_policy::load(&wake_text) {
-        eprintln!("Wake policy rejected: {error}");
+    let mut wake_loaded = false;
+    for path in [
+        config_dir.join("traffic/wake"),
+        exe_dir.join("traffic/wake"),
+        exe_dir.join("../traffic/wake"),
+    ] {
+        if !path.is_dir() {
+            continue;
+        }
+        match openatc_core::traffic::wake_policy::load_dir(&path) {
+            Ok(()) => {
+                wake_loaded = true;
+                break;
+            }
+            Err(error) => eprintln!("Wake policy folder {} rejected: {error}", path.display()),
+        }
+    }
+    if !wake_loaded {
+        let wake_text = [
+            config_dir.join("traffic/wake.toml"),
+            exe_dir.join("traffic/wake.toml"),
+            exe_dir.join("../traffic/wake.toml"),
+        ]
+        .into_iter()
+        .find_map(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_else(|| include_str!("../../../traffic/wake.toml").to_owned());
+        if let Err(error) = openatc_core::traffic::wake_policy::load(&wake_text) {
+            eprintln!("Wake policy rejected: {error}");
+        }
     }
     let traffic_profiles = traffic_profiles::Store::default();
     if let Err(error) = traffic_profiles.get(&config_dir, &workers, false).await {

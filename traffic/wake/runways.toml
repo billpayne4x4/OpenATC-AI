@@ -1,0 +1,9 @@
+version = 1
+
+[runways]
+# Parallel runways at or above this separation are independent for surface occupancy.
+parallel_independent_m = 760.0
+# Wake protection applies to parallel runways closer than this.
+parallel_wake_m = 760.0
+# Runway headings within this angle are treated as related crossing paths.
+crossing_degrees = 12.0

@@ -86,6 +86,9 @@ pub(crate) fn departure_wake_delay(
     latitude: f64,
     longitude: f64,
 ) -> f64 {
+    if !state.settings.allow_wake_waits {
+        return 0.0;
+    }
     state
         .traffic
         .wake

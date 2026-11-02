@@ -5,7 +5,7 @@ use crate::EngineState;
 use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::{
     airport::{Runway, airport_point},
-    state::{PhaseCode, Point},
+    state::{PhaseCode, Point, TakeoffState},
     stations::{Station, nearby, tuned},
 };
 use std::time::{Duration, Instant};
@@ -193,12 +193,20 @@ fn unauthorized_runway(state: &EngineState) -> Option<String> {
     let airport = state.airport.as_ref()?;
     let point = airport_point(airport, t.latitude, t.longitude);
     let route = &state.session.taxi_clearance;
+    let lined_up = matches!(
+        route.takeoff_state,
+        TakeoffState::LineUpAndWait | TakeoffState::Cleared
+    );
     airport
         .runways
         .iter()
         .find(|r| {
             on_pavement(r, point)
                 && !(state.flow.takeoff_cleared
+                    && airport.icao == state.session.plan.departure
+                    && !state.session.has_departed
+                    && matches_runway(r, &state.session.plan.runway))
+                && !(lined_up
                     && airport.icao == state.session.plan.departure
                     && !state.session.has_departed
                     && matches_runway(r, &state.session.plan.runway))
@@ -810,6 +818,24 @@ mod tests {
         s.session.taxi_clearance.crossing_runway.clear();
         s.flow.takeoff_cleared = true;
         assert!(unauthorized_runway(&s).is_none());
+    }
+
+    #[test]
+    fn line_up_permission_authorizes_the_departure_runway() {
+        let mut s = state();
+        s.session.telemetry.latitude = 0.0;
+        s.session.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+        assert!(unauthorized_runway(&s).is_none());
+        s.session.taxi_clearance.takeoff_state = TakeoffState::Cleared;
+        assert!(unauthorized_runway(&s).is_none());
+        s.session.taxi_clearance.takeoff_state = TakeoffState::Held;
+        assert_eq!(unauthorized_runway(&s).as_deref(), Some("09/27"));
+        s.session.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+        s.session.has_departed = true;
+        assert_eq!(unauthorized_runway(&s).as_deref(), Some("09/27"));
+        s.session.has_departed = false;
+        s.session.plan.departure = "OTHER".into();
+        assert_eq!(unauthorized_runway(&s).as_deref(), Some("09/27"));
     }
 
     #[test]

@@ -231,6 +231,9 @@ pub struct Settings {
     pub traffic_circuit_ga_nm: f64,
     /// Wake-separation table: auto, icao, recat_eu, faa_cwt or mats.
     pub wake_standard: String,
+    /// Allow departure wake-separation waits.
+    #[serde(default = "yes")]
+    pub allow_wake_waits: bool,
     /// Speak simulated pilot reports based on observed local traffic movements.
     pub hear_traffic_radio: bool,
     /// Allow conversations with simulated pilots for identified traffic.
@@ -504,6 +507,7 @@ impl Default for Settings {
             traffic_circuit_turboprop_nm: 20.0,
             traffic_circuit_ga_nm: 10.0,
             wake_standard: "auto".into(),
+            allow_wake_waits: true,
             hear_traffic_radio: true,
             talk_to_traffic: false,
             informal_pilot_chat: false,
