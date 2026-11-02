@@ -285,6 +285,16 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
             interface.settings.native_traffic_count = count as u8;
         }
     }
+    
+    // Native AI participation in OpenATC ATC
+    if interface.settings.manage_native_traffic || interface.settings.suppress_native_traffic {
+        ui.checkbox(
+            "Native AI participates in OpenATC ATC",
+            &mut interface.settings.native_ai_participation,
+        );
+        ui.text_wrapped("When enabled, X-Plane native AI aircraft will receive ATC clearances, taxi instructions, takeoff/landing clearances, and participate in wake turbulence separation. Requires native AI ownership (suppress or manage native traffic).");
+    }
+    
     ui.text_wrapped("Native AI uses X-Plane flight models. Start with a small count and measure FPS. Your existing aircraft models and simulator routes are used; another traffic provider always keeps priority.");
     if !interface.native_traffic_status.is_empty() {
         ui.text_wrapped(&interface.native_traffic_status);

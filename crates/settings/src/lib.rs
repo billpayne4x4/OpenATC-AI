@@ -192,6 +192,8 @@ pub struct Settings {
     pub manage_native_traffic: bool,
     /// Suppress `X-Plane` AI while `OpenATC` is connected; other plugins retain ownership.
     pub suppress_native_traffic: bool,
+    /// Let native AI aircraft participate in OpenATC ATC when native traffic is owned.
+    pub native_ai_participation: bool,
     /// Mute the simulator's own radio audio while `OpenATC` is connected. Turn this off when
     /// another plugin, such as a pushback helper, speaks through the radio channel.
     pub mute_native_radio: bool,
@@ -509,6 +511,7 @@ impl Default for Settings {
             player_traffic_holding: true,
             manage_native_traffic: false,
             suppress_native_traffic: true,
+            native_ai_participation: false,
             mute_native_radio: true,
             native_traffic_count: 0,
             generated_traffic: false,
