@@ -366,6 +366,7 @@ struct AmbientAircraft {
     wake_category: Option<u8>,
     airport: String,
     runway: String,
+    spawn_node: i64,
     model: Arc<Model>,
     kind: AmbientKind,
     points: Vec<Waypoint>,
@@ -416,6 +417,22 @@ pub struct TrafficManager {
 }
 
 impl TrafficManager {
+    /// The ambient departure already rolling on a runway, if any.
+    #[must_use]
+    pub fn rolling_departure_id(&self, airport: &str, runway: &str) -> Option<u32> {
+        self.aircraft
+            .iter()
+            .find(|aircraft| {
+                aircraft.kind == AmbientKind::Departure
+                    && aircraft.airport == airport
+                    && aircraft.runway == runway
+                    && aircraft.takeoff
+                    && aircraft.distance >= aircraft.runway_start
+                    && aircraft.distance < aircraft.runway_end + 600.0
+            })
+            .map(|aircraft| aircraft.id)
+    }
+
     /// Whether the manager still needs the CSL catalogue before it can spawn.
     #[must_use]
     pub fn needs_models(&self) -> bool {
@@ -1095,7 +1112,20 @@ impl TrafficManager {
         } else {
             u64::from(state.settings.ga_traffic) * 100 / mix_total
         };
-        let mut used_nodes = std::collections::BTreeSet::new();
+        let mut used_nodes: BTreeSet<i64> = self
+            .aircraft
+            .iter()
+            .map(|aircraft| aircraft.spawn_node)
+            .collect();
+        let occupied: Vec<Point> = self
+            .aircraft
+            .iter()
+            .map(|aircraft| {
+                let (latitude, longitude) =
+                    position_at(&aircraft.points, &aircraft.cumulative, aircraft.distance);
+                openatc_core::airport::airport_point(airport, latitude, longitude)
+            })
+            .collect();
         for slot in 0..target {
             self.attempts = self.attempts.saturating_add(1);
             let kind = if slot == target - 1
@@ -1156,8 +1186,14 @@ impl TrafficManager {
             let size = identity.profile.parking_size();
             // Start on the taxiway network. Arrivals start from a stand-side node so the
             // reversed route exits the runway toward the parking area.
-            let Some(node) = spawn_node(airport, size, &used_nodes, kind == AmbientKind::Arrival)
-            else {
+            let Some(node) = spawn_node(
+                airport,
+                size,
+                &used_nodes,
+                &occupied,
+                kind == AmbientKind::Arrival,
+                state.traffic_seed ^ u64::from(self.next_id),
+            ) else {
                 continue;
             };
             let latitude = airport.reference_latitude + node.point.north / 111_320.0;
@@ -1261,7 +1297,7 @@ impl TrafficManager {
                         position_at(&other.points, &other.cumulative, other.distance).1,
                     ],
                 ) * 1852.0
-                    < 120.0
+                    < 80.0
             }) {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = "spawn point too close to another aircraft".to_owned();
@@ -1283,6 +1319,7 @@ impl TrafficManager {
                 wake_category: identity.wake_category,
                 airport: airport.icao.clone(),
                 runway: route_runway.clone(),
+                spawn_node: node.id,
                 model: identity.model,
                 kind,
                 points,
@@ -1405,7 +1442,9 @@ fn spawn_node<'a>(
     airport: &'a Airport,
     size: char,
     used: &std::collections::BTreeSet<i64>,
+    blocked: &[Point],
     arrival: bool,
+    seed: u64,
 ) -> Option<&'a openatc_core::airport::TaxiNode> {
     let stand = arrival
         .then(|| {
@@ -1426,10 +1465,13 @@ fn spawn_node<'a>(
             !used.contains(&node.id)
                 && !openatc_core::airport::within_runway(airport, &node.point)
                 && openatc_core::airport::on_taxiway(airport, &node.point, 8.0)
+                && blocked.iter().all(|point| {
+                    (node.point.east - point.east).hypot(node.point.north - point.north) > 100.0
+                })
         })
         .min_by(|left, right| {
             let key = |node: &openatc_core::airport::TaxiNode| {
-                stand.map_or(node.id as f64, |stand| {
+                stand.map_or(mix(node.id as u64 ^ seed) as f64, |stand| {
                     (node.point.east - stand.east).hypot(node.point.north - stand.north)
                 })
             };
@@ -2240,6 +2282,7 @@ mod phase_tests {
             wake_category: Some(1),
             airport: "TEST".to_owned(),
             runway: "04L".to_owned(),
+            spawn_node: 1,
             model: Arc::new(Model {
                 id: "test".to_owned(),
                 objects: Vec::new(),

@@ -280,6 +280,8 @@ pub struct RequestContext<'a> {
     pub region: &'a Region,
     /// Combined native and simulated traffic, when the engine has it.
     pub traffic: Option<&'a [TrafficTarget]>,
+    /// A departing aircraft is rolling ahead on this runway, so the player may line up.
+    pub line_up_available: bool,
 }
 
 /// Runway occupancy using the combined traffic picture when the caller supplied one.
@@ -792,7 +794,7 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
         }
     }
     if !state.demo {
-        if state.departure_wake_seconds > 0.0 {
+        if state.departure_wake_seconds > 0.0 && !ctx.line_up_available {
             state.taxi_clearance.waiting_for_traffic = true;
             state.taxi_clearance.waiting_seconds = 0.0;
             let runway = state.plan.runway.clone();
@@ -806,7 +808,11 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             return outcome;
         }
         let blocked = ctx.airport.map_or(Some("holding_standby"), |airport| {
-            blocked_for_context(state, ctx, airport, &state.plan.runway)
+            if ctx.line_up_available {
+                None
+            } else {
+                blocked_for_context(state, ctx, airport, &state.plan.runway)
+            }
         });
         if let Some(response) = blocked {
             state.taxi_clearance.waiting_for_traffic = true;
@@ -1519,12 +1525,14 @@ mod tests {
             units: UnitSystem::Imperial,
             region: &region,
             traffic: Some(&targets),
+            line_up_available: false,
         };
         assert!(blocked_for_crossing(&state, &ctx, &airport, "09", 60.0).is_none());
         target.longitude = -1.0 / 60.0;
         let targets = vec![target];
         let ctx = RequestContext {
             traffic: Some(&targets),
+            line_up_available: false,
             ..ctx
         };
         assert_eq!(
@@ -1576,6 +1584,7 @@ mod tests {
                 units: UnitSystem::Imperial,
                 region: &region,
                 traffic: None,
+                line_up_available: false,
             },
         );
         assert!(!outcome.accepted);
@@ -1631,6 +1640,7 @@ mod tests {
                         units: UnitSystem::Imperial,
                         region: &region,
                         traffic: None,
+                        line_up_available: false,
                     },
                 )
             };
@@ -1700,6 +1710,7 @@ mod tests {
                         units: UnitSystem::Imperial,
                         region: &region,
                         traffic: None,
+                        line_up_available: false,
                     },
                 )
             };
@@ -1757,6 +1768,7 @@ mod tests {
                     units: UnitSystem::Imperial,
                     region: &region,
                     traffic: None,
+                    line_up_available: false,
                 },
             );
             (state, outcome)
@@ -1971,6 +1983,7 @@ mod tests {
             units: UnitSystem::Imperial,
             region: &region,
             traffic: None,
+            line_up_available: false,
         };
         let outcome = apply_request(&mut state, &ctx);
         let want = &case["expected"];

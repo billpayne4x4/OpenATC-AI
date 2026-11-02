@@ -1217,7 +1217,8 @@ Aircraft hold short of the runway, contact Tower when the player is tuned to the
 frequency, receive line-up and takeoff clearances, and only then enter the runway.
 The departure queue is first-in, first-out: the lead aircraft gets takeoff clearance
 when the runway is clear, the next lines up as the leader starts its roll, and then
-waits for the runway and wake interval before taking off. Taxi, rotation, climb,
+waits for the runway and wake interval before taking off. The player is offered line
+up and wait when an ambient departure is already rolling ahead on the same runway. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
 does not use jet speeds. Ambient aircraft detect the player's position and yield
 rather than taxiing through. Runway protection is per physical runway, so a landing

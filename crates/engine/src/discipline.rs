@@ -696,6 +696,7 @@ mod tests {
             units: openatc_core::UnitSystem::Imperial,
             region: &region,
             traffic: None,
+            line_up_available: false,
         };
         let outcome = openatc_core::apply::apply_request(&mut s.session, &ctx);
         assert!(!outcome.accepted);

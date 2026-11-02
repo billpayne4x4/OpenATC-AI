@@ -2678,6 +2678,20 @@ pub(crate) async fn atc_request(
         .traffic
         .is_some()
         .then(|| state.traffic_targets());
+    let line_up_available = airport.as_ref().is_some_and(|airport| {
+        let runway = &state.session.plan.runway;
+        let Some(rolling) = state.ambient.rolling_departure_id(&airport.icao, runway) else {
+            return false;
+        };
+        let merged = state.traffic_targets();
+        openatc_core::holding::blocked_for_movement(
+            airport,
+            runway,
+            merged.iter().filter(|target| target.id != rolling),
+            60.0,
+        )
+        .is_none()
+    });
     let ctx = RequestContext {
         squawk: &squawk,
         runway_taxi_authorized: receiving.service == "Tower"
@@ -2691,6 +2705,7 @@ pub(crate) async fn atc_request(
         units,
         region: &region,
         traffic: targets.as_deref(),
+        line_up_available,
     };
     let mut result = apply_request(&mut state.session, &ctx);
     if result.accepted && ["acknowledge", "readback"].contains(&request.intent.as_str()) {

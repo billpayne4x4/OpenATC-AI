@@ -714,6 +714,7 @@ mod tests {
                 units: openatc_core::UnitSystem::Imperial,
                 region: &region,
                 traffic: None,
+                line_up_available: false,
             },
         );
         assert!(result.accepted, "{}", result.message);

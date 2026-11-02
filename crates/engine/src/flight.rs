@@ -1028,16 +1028,24 @@ pub fn takeoff_wording(
     // aircraft keeps the runway, so the player holds short; a departure already on the runway means
     // lining up and waiting rather than a take-off clearance.
     if let Some(airport) = state.airport.clone() {
-        let use_of_runway = airport
-            .runways
-            .iter()
-            .find(|r| r.first_name == plan.runway || r.second_name == plan.runway)
-            .map_or(crate::generated::RunwayUse::Clear, |r| {
-                state.generated.runway_use(&format!(
-                    "RUNWAY/{}/{}/{}",
-                    airport.icao, r.first_name, r.second_name
-                ))
-            });
+        let ambient_departing = state
+            .ambient
+            .rolling_departure_id(&airport.icao, &plan.runway)
+            .is_some();
+        let use_of_runway = if ambient_departing {
+            crate::generated::RunwayUse::Departing
+        } else {
+            airport
+                .runways
+                .iter()
+                .find(|r| r.first_name == plan.runway || r.second_name == plan.runway)
+                .map_or(crate::generated::RunwayUse::Clear, |r| {
+                    state.generated.runway_use(&format!(
+                        "RUNWAY/{}/{}/{}",
+                        airport.icao, r.first_name, r.second_name
+                    ))
+                })
+        };
         match use_of_runway {
             crate::generated::RunwayUse::Landing => {
                 state.flow.takeoff_cleared = false;
