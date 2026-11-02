@@ -1489,7 +1489,8 @@ fn landing_conflict(
     if state.session.arrival_wake_conflict {
         Some("holding_wake")
     } else {
-        openatc_core::traffic::landing_blocked(airport, runway, &state.session.telemetry)
+        let telemetry = state.telemetry_with_traffic();
+        openatc_core::traffic::landing_blocked(airport, runway, &telemetry)
     }
 }
 

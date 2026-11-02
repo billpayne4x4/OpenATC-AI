@@ -43,6 +43,102 @@ descent_fpm = 500
 propeller = true
 rnav = true
 
+[aircraft.C150]
+spacing_speed = { minimum_knots = 70.0, maximum_knots = 100.0 }
+fixed_gear = true
+handling = "piston"
+cwt = "I"
+name = "Cessna 150"
+wingspan = 10.2
+length = 7.3
+wake = "L"
+approach_category = "A"
+runway = 550
+range_nm = 400
+cruise_knots = 105
+ceiling = 14000
+approach_knots = 60
+climb_fpm = 600
+descent_fpm = 500
+propeller = true
+rnav = true
+
+[aircraft.C421]
+spacing_speed = { minimum_knots = 105.0, maximum_knots = 150.0 }
+handling = "piston"
+cwt = "I"
+name = "Cessna 421 Golden Eagle"
+wingspan = 12.5
+length = 11.1
+wake = "L"
+approach_category = "A"
+runway = 900
+range_nm = 1200
+cruise_knots = 220
+ceiling = 25000
+approach_knots = 100
+climb_fpm = 1200
+descent_fpm = 900
+propeller = true
+rnav = true
+
+[aircraft.BE20]
+spacing_speed = { minimum_knots = 110.0, maximum_knots = 155.0 }
+handling = "turboprop"
+cwt = "G"
+name = "Beechcraft Super King Air 200"
+wingspan = 16.6
+length = 13.4
+wake = "M"
+approach_category = "B"
+runway = 1100
+range_nm = 1700
+cruise_knots = 290
+ceiling = 35000
+approach_knots = 105
+climb_fpm = 1600
+descent_fpm = 1300
+propeller = true
+rnav = true
+
+[aircraft.H25B]
+spacing_speed = { minimum_knots = 145.0, maximum_knots = 190.0 }
+handling = "regional_jet"
+cwt = "G"
+name = "Hawker 800"
+wingspan = 16.3
+length = 15.6
+wake = "M"
+approach_category = "C"
+runway = 1600
+range_nm = 3000
+cruise_knots = 430
+ceiling = 41000
+approach_knots = 120
+climb_fpm = 2200
+descent_fpm = 1800
+propeller = false
+rnav = true
+
+[aircraft.LJ45]
+spacing_speed = { minimum_knots = 145.0, maximum_knots = 195.0 }
+handling = "regional_jet"
+cwt = "F"
+name = "Learjet 45"
+wingspan = 14.6
+length = 17.7
+wake = "L"
+approach_category = "C"
+runway = 1500
+range_nm = 2000
+cruise_knots = 440
+ceiling = 51000
+approach_knots = 125
+climb_fpm = 2500
+descent_fpm = 1800
+propeller = false
+rnav = true
+
 [aircraft.PA28]
 spacing_speed = { minimum_knots = 80.0, maximum_knots = 110.0 }
 model_aliases = ["P28A"]

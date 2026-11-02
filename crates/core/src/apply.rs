@@ -8,7 +8,8 @@ use super::intents::Realism;
 use super::ops::{phase_name, request_available};
 use super::regions::Region;
 use super::state::{
-    Clearance, Controller, Controllers, PhaseCode, Request, SpeechTag, State, Transmission,
+    Clearance, Controller, Controllers, PhaseCode, Request, SpeechTag, State, TrafficTarget,
+    Transmission,
 };
 use super::{UnitSystem, altitude_text};
 
@@ -277,6 +278,40 @@ pub struct RequestContext<'a> {
     pub units: UnitSystem,
     /// Local procedure.
     pub region: &'a Region,
+    /// Combined native and simulated traffic, when the engine has it.
+    pub traffic: Option<&'a [TrafficTarget]>,
+}
+
+/// Runway occupancy using the combined traffic picture when the caller supplied one.
+fn blocked_for_context<'a>(
+    state: &State,
+    ctx: &RequestContext<'a>,
+    airport: &Airport,
+    runway: &str,
+) -> Option<&'static str> {
+    if let Some(targets) = ctx.traffic {
+        crate::holding::blocked_targets(airport, runway, targets.iter())
+    } else {
+        crate::holding::blocked(airport, runway, &state.telemetry)
+    }
+}
+
+fn blocked_for_crossing<'a>(
+    state: &State,
+    ctx: &RequestContext<'a>,
+    airport: &Airport,
+    runway: &str,
+    seconds: f64,
+) -> Option<&'static str> {
+    if let Some(targets) = ctx.traffic {
+        return crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds);
+    }
+    match state.telemetry.traffic.as_deref() {
+        Some(targets) => {
+            crate::holding::blocked_for_movement(airport, runway, targets.iter(), seconds)
+        }
+        None => Some("holding_standby"),
+    }
 }
 
 /// Give the hold instruction its pilot readback without adding another transmission.
@@ -690,7 +725,7 @@ fn apply_taxi(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
     {
         if ctx.runway_taxi_authorized {
             if !state.demo
-                && let Some(response) = crate::holding::blocked(airport, &destination, &position)
+                && let Some(response) = blocked_for_context(state, ctx, airport, &destination)
             {
                 return reply(
                     state,
@@ -759,6 +794,7 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
     if !state.demo {
         if state.departure_wake_seconds > 0.0 {
             state.taxi_clearance.waiting_for_traffic = true;
+            state.taxi_clearance.waiting_seconds = 0.0;
             let runway = state.plan.runway.clone();
             let outcome = reply(
                 state,
@@ -770,10 +806,11 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             return outcome;
         }
         let blocked = ctx.airport.map_or(Some("holding_standby"), |airport| {
-            crate::holding::blocked(airport, &state.plan.runway, &state.telemetry)
+            blocked_for_context(state, ctx, airport, &state.plan.runway)
         });
         if let Some(response) = blocked {
             state.taxi_clearance.waiting_for_traffic = true;
+            state.taxi_clearance.waiting_seconds = 0.0;
             let runway = state.plan.runway.clone();
             let outcome = reply(
                 state,
@@ -829,8 +866,20 @@ fn apply_ground(state: &mut State, ctx: &RequestContext<'_>) -> Option<RequestOu
                 crate::dialogue::say("crossing_route_unavailable", &[]),
             ));
         };
-        if let Some(blocked) = crate::holding::blocked(airport, &runway, &state.telemetry) {
+        let result = super::airport::calculate_crossing_route(
+            airport,
+            &state.telemetry,
+            &runway,
+            crate::parking::aircraft_size(state).unwrap_or('F'),
+        );
+        let mut route = match result {
+            Ok(route) => route,
+            Err(error) => return Some(reply(state, ctx, false, error)),
+        };
+        let seconds = super::airport::crossing_seconds(&route);
+        if let Some(blocked) = blocked_for_crossing(state, ctx, airport, &runway, seconds) {
             state.taxi_clearance.waiting_for_traffic = true;
+            state.taxi_clearance.waiting_seconds = seconds;
             return Some(reply(
                 state,
                 ctx,
@@ -838,27 +887,17 @@ fn apply_ground(state: &mut State, ctx: &RequestContext<'_>) -> Option<RequestOu
                 crate::dialogue::say(blocked, &[("runway", runway)]),
             ));
         }
-        let result = super::airport::calculate_crossing_route(
-            airport,
-            &state.telemetry,
-            &runway,
-            crate::parking::aircraft_size(state).unwrap_or('F'),
-        );
-        return Some(match result {
-            Ok(mut route) => {
-                route
-                    .destination
-                    .clone_from(&state.taxi_clearance.destination);
-                route.to_parking = state.taxi_clearance.to_parking;
-                route.destination_point = state.taxi_clearance.destination_point;
-                route.pending_readback = true;
-                route.sequence = state.next_sequence;
-                let text = route.instructions.clone();
-                state.taxi_clearance = route;
-                reply(state, ctx, true, text)
-            }
-            Err(error) => reply(state, ctx, false, error),
-        });
+        route
+            .destination
+            .clone_from(&state.taxi_clearance.destination);
+        route.to_parking = state.taxi_clearance.to_parking;
+        route.destination_point = state.taxi_clearance.destination_point;
+        route.pending_readback = true;
+        route.sequence = state.next_sequence;
+        let text = route.instructions.clone();
+        state.taxi_clearance = route;
+        state.taxi_clearance.waiting_seconds = 0.0;
+        return Some(reply(state, ctx, true, text));
     }
     if intent == "clearance" {
         return Some(apply_clearance(state, ctx));
@@ -1450,6 +1489,64 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn crossing_allows_a_distant_final_and_holds_a_close_one() {
+        let airport = demo_airport();
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request::default();
+        let mut target = TrafficTarget {
+            id: 7,
+            callsign: "TEST7".into(),
+            aircraft: "C172".into(),
+            latitude: 0.0,
+            longitude: -4.0 / 60.0,
+            altitude_feet: 1200.0,
+            track_degrees: 90.0,
+            ground_speed_knots: Some(140.0),
+            ..Default::default()
+        };
+        let targets = vec![target.clone()];
+        let state = State::default();
+        let ctx = RequestContext {
+            squawk: "1234",
+            request: &request,
+            runway_taxi_authorized: true,
+            airport: Some(&airport),
+            atc_tag: &tag,
+            pilot_tag: &tag,
+            realism: &realism,
+            units: UnitSystem::Imperial,
+            region: &region,
+            traffic: Some(&targets),
+        };
+        assert!(blocked_for_crossing(&state, &ctx, &airport, "09", 60.0).is_none());
+        target.longitude = -1.0 / 60.0;
+        let targets = vec![target];
+        let ctx = RequestContext {
+            traffic: Some(&targets),
+            ..ctx
+        };
+        assert_eq!(
+            blocked_for_crossing(&state, &ctx, &airport, "09", 60.0),
+            Some("holding_traffic_final")
+        );
+        let route = crate::state::TaxiClearance {
+            points: vec![
+                Point::default(),
+                Point {
+                    east: 150.0,
+                    ..Default::default()
+                },
+            ],
+            instructions: "Cross runway 09.".into(),
+            ..Default::default()
+        };
+        let seconds = crate::airport::crossing_seconds(&route);
+        assert!((30.0..60.0).contains(&seconds), "{seconds}");
+    }
+
+    #[test]
     fn a_blocked_departure_reads_back_the_hold_instruction() {
         let tag = SpeechTag::default();
         let region = Region::default();
@@ -1478,6 +1575,7 @@ mod tests {
                 realism: &realism,
                 units: UnitSystem::Imperial,
                 region: &region,
+                traffic: None,
             },
         );
         assert!(!outcome.accepted);
@@ -1532,6 +1630,7 @@ mod tests {
                         realism: &realism,
                         units: UnitSystem::Imperial,
                         region: &region,
+                        traffic: None,
                     },
                 )
             };
@@ -1600,6 +1699,7 @@ mod tests {
                         realism: &realism,
                         units: UnitSystem::Imperial,
                         region: &region,
+                        traffic: None,
                     },
                 )
             };
@@ -1656,6 +1756,7 @@ mod tests {
                     realism: &realism,
                     units: UnitSystem::Imperial,
                     region: &region,
+                    traffic: None,
                 },
             );
             (state, outcome)
@@ -1869,6 +1970,7 @@ mod tests {
             realism: &realism,
             units: UnitSystem::Imperial,
             region: &region,
+            traffic: None,
         };
         let outcome = apply_request(&mut state, &ctx);
         let want = &case["expected"];

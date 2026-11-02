@@ -385,7 +385,7 @@ Automatic crossing requests reuse the active airport data and cached controller 
 
 A Ground taxi request made from physical runway pavement identifies the occupied runway and directs the pilot to Tower for exit instructions, rather than suggesting an unrelated departure-runway backtrack. Ordinary gate taxi routing remains subject to the same runway protection.
 
-Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. Generated traffic crosses at the taxi-turn speed (8 kt with the jet envelope) and switches its landing lights on for the crossing.
+Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. The crossing check uses the time needed to taxi across, plus the clearance/readback and radio buffer, so a distant final that cannot reach the threshold in time does not block the runway. Generated traffic crosses at the taxi-turn speed (8 kt with the jet envelope) and switches its landing lights on for the crossing.
 
 After the crossing, the copilot can report vacated at the observed completion point. The next taxi instruction replaces the route and requires its own readback. In manual mode physical completion can advance the crossing workflow; a vacated report is not treated as an altitude readback.
 
@@ -728,9 +728,11 @@ Open **Traffic** from the visible page tabs to see simulator-reported aircraft. 
 
 **Airport radio chatter** plays short background Ground and Tower exchanges when you are airborne above a receivable station and tuned to it. Calls use the installed airport's real runway designators, taxiway names and operator codes; no 3D aircraft, TCAS targets or calculated taxi routes are created. COM1 and COM2 can carry separate sessions. The rate follows the traffic mix and congestion setting: quiet traffic gives longer gaps, busy traffic shorter ones. Chatter yields to your own transmissions and stops when you retune, leave reception, descend below 1,000 ft above the station, or switch the setting off. The setting is `airportChatter` and defaults on.
 
+**Settings → Traffic → Traffic mix** controls the relative airline, regional, freight and general-aviation shares. Set **Regional** to zero to remove regional turboprops and regional jets, or **General aviation** to zero to remove light aircraft and business jets. The ambient layer rolls the general-aviation share per aircraft, so the mix varies rather than switching models at a fixed interval.
+
 **Set X-Plane AI traffic amount** adjusts the native active-aircraft count, up to 19 and limited by available simulator aircraft. It is off by default, leaves flight models enabled, yields to other traffic plugins and restores the previous count when disabled. Native AI flies its own simulator routes and consumes flight-model CPU. Start with a small count and compare X-Plane's performance readings. The SDK exposes aircraft ownership/count and AI control, but no documented interface for handing arbitrary per-aircraft IFR plans to native ATC. See [XPLMPlanes](https://developer.x-plane.com/sdk/XPLMPlanes/).
 
-- OpenATC accepts up to 63 simulator targets and checks up to 126 combined simulator/generated observations; pilot history updates at most once per second.
+- OpenATC accepts up to 63 simulator targets and checks up to 126 combined simulator/generated observations; pilot history updates at most once per second. Wake, landing, crossing, takeoff and traffic-advisory checks use that combined view, so a light GA or regional turboprop ahead of the player gets the correct wake category and spacing.
 - It can hold taxiing aircraft for an observed conflict and resume when clear, protect individual runway crossings, and issue a short-final go-around for runway conflicts.
 - Crossing completion and arrival Ground handoff include aircraft dimensions and the relevant holding line, so a centre point outside the runway does not immediately mean the tail is clear.
 - Unknown aircraft use conservative dimensions.
@@ -1208,10 +1210,11 @@ The renderer applies terrain placement separately from the worker's nominal path
 
 A separate persistent ambient layer supplies the opening airport with ground traffic.
 It starts aircraft on the taxiway graph, builds a graph route to the active departure
-runway, and gives each aircraft a stand-to-runway-to-takeoff profile. Taxi speed is
-25 knots on straight sections and 10 knots through turns. Aircraft hold short of the
-runway, contact Tower when the player is tuned to the frequency, receive line-up and
-takeoff clearances, and only then enter the runway. The hold point is derived from
+runway, and gives each aircraft a stand-to-runway-to-takeoff profile. Aircraft hold
+short of the runway, contact Tower when the player is tuned to the frequency, receive
+line-up and takeoff clearances, and only then enter the runway. Taxi, rotation,
+climb, approach and braking speeds come from each aircraft's handling and profile;
+light GA does not use jet speeds. The hold point is derived from
 the painted hold-line geometry and set back on the approach side, and the aircraft
 stops there rather than at the nearest graph node. The takeoff run starts at the
 runway end nearest that hold, so the aircraft enters at the near threshold and rolls
@@ -1219,10 +1222,13 @@ away from it. Takeoff accelerates at the handling acceleration rate to rotation
 speed, using a firmer rate only when the runway is shorter than the nominal roll,
 then climbs at three degrees. Ambient departures and arrivals use separate same-flow
 runways when the airport has a usable parallel; runway occupancy is tracked per
-physical runway, so traffic on 04R does not block 04L. Ambient arrivals are sequenced
-one at a time, decelerate through final, and brake through rollout at the handling
-braking rate, with a firmer stop only when the exit is close. They use a stand-side
-runway exit. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
+physical runway, so traffic on 04R does not block 04L. Ambient airliners are chosen
+from the airport's operator preferences in `traffic/hubs.toml`, with matching
+callsigns and installed paints. Regional airlines can appear with turboprops or
+regional jets, and a random share of general aviation uses registrations and light
+aircraft, turboprops or business jets. Ambient arrivals are sequenced one at a time,
+decelerate through final, and brake through rollout at the handling braking rate,
+with a firmer stop only when the exit is close. They use a stand-side runway exit. CSL models animate through taxi-out, line-up, takeoff, climb, approach,
 rollout and taxi-in; the phase states and runway-lighting policy are detailed in
 [CSL animation and runway lights](#csl-animation-and-runway-lights) below. Startup,
 cruise and shutdown phases belong to the complete-flight generated layer. Startup
@@ -1311,7 +1317,7 @@ The FAA AIM recommends all exterior lights when taxiing on or across a runway at
 pilot's discretion; European and ICAO rules require night lighting but leave the
 crossing procedure to the operator. There is also no universal numeric crossing speed.
 Generated traffic crosses at `taxi_turn_knots` from the handling catalogue (8 kt with
-the jet envelope); ambient taxi is 25 kt straight and 10 kt in turns.
+the jet envelope); ambient aircraft use the same per-type taxi speeds.
 
 See [validation](docs/VALIDATION.md) for current test results and earlier engineering
 checks, and the [roadmap](docs/ROADMAP.md) for the remaining traffic scope.

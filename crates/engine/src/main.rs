@@ -194,6 +194,28 @@ pub struct EngineState {
 pub type Shared = Arc<RwLock<EngineState>>;
 
 impl EngineState {
+    /// Native simulator traffic plus the frames this engine draws itself.
+    pub(crate) fn traffic_targets(&self) -> Vec<openatc_core::state::TrafficTarget> {
+        let mut targets = self.session.telemetry.traffic.clone().unwrap_or_default();
+        let mut ids: std::collections::BTreeSet<u32> =
+            targets.iter().map(|target| target.id).collect();
+        for frame in &self.session.generated_traffic {
+            if frame.target.id != 0 && ids.insert(frame.target.id) {
+                targets.push(frame.target.clone());
+            }
+        }
+        targets
+    }
+
+    /// Copy of the current sample with the combined traffic picture attached.
+    pub(crate) fn telemetry_with_traffic(&self) -> openatc_core::state::Telemetry {
+        let mut telemetry = self.session.telemetry.clone();
+        if telemetry.traffic.is_some() {
+            telemetry.traffic = Some(self.traffic_targets());
+        }
+        telemetry
+    }
+
     /// Use the configured callsign only while the plan has none of its own.
     pub(crate) fn apply_settings_callsign(&mut self) {
         if self.session.clearance.is_some() || !self.session.plan.callsign.trim().is_empty() {
@@ -821,6 +843,45 @@ fn test_state() -> EngineState {
     };
     state.apply_settings_callsign();
     state
+}
+
+#[cfg(test)]
+mod traffic_target_tests {
+    use super::*;
+
+    fn frame(id: u32, callsign: &str) -> openatc_core::state::GeneratedTraffic {
+        openatc_core::state::GeneratedTraffic {
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            target: openatc_core::state::TrafficTarget {
+                id,
+                callsign: callsign.into(),
+                ..Default::default()
+            },
+            model: std::sync::Arc::new(openatc_core::traffic::csl::Model {
+                id: format!("test-{id}"),
+                objects: Vec::new(),
+                vertical_offset: None,
+                matches: Vec::new(),
+            }),
+            animation: Default::default(),
+        }
+    }
+
+    #[test]
+    fn native_and_simulated_targets_share_one_view_without_duplicates() {
+        let mut state = test_state();
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 1,
+            callsign: "NATIVE1".into(),
+            ..Default::default()
+        }]);
+        state.session.generated_traffic = vec![frame(1, "DUPLICATE"), frame(2, "AMBIENT2")];
+        let targets = state.traffic_targets();
+        assert_eq!(targets.len(), 2);
+        assert!(targets.iter().any(|target| target.callsign == "NATIVE1"));
+        assert!(targets.iter().any(|target| target.callsign == "AMBIENT2"));
+    }
 }
 
 #[cfg(test)]

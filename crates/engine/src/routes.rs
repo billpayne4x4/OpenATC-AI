@@ -2672,6 +2672,12 @@ pub(crate) async fn atc_request(
             .map(|c| c.squawk.clone())
             .unwrap_or_default()
     };
+    let targets = state
+        .session
+        .telemetry
+        .traffic
+        .is_some()
+        .then(|| state.traffic_targets());
     let ctx = RequestContext {
         squawk: &squawk,
         runway_taxi_authorized: receiving.service == "Tower"
@@ -2684,6 +2690,7 @@ pub(crate) async fn atc_request(
         realism: &realism,
         units,
         region: &region,
+        traffic: targets.as_deref(),
     };
     let mut result = apply_request(&mut state.session, &ctx);
     if result.accepted && ["acknowledge", "readback"].contains(&request.intent.as_str()) {

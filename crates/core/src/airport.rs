@@ -943,6 +943,7 @@ pub fn calculate_taxi_route(
         holding_channel: 0,
         holding_marker_point,
         waiting_for_traffic: false,
+        waiting_seconds: 0.0,
         guidance_complete: false,
         hold_short_runway: hold_short,
         sequence: 0,
@@ -2458,6 +2459,19 @@ fn runway_occupied(
             (-fore_aft - 10.0..=length + fore_aft + 10.0).contains(&along)
                 && across <= limit + lateral
         })
+}
+
+/// Time allowance for the crossing instruction, readback and the taxi across the runway.
+#[must_use]
+pub fn crossing_seconds(route: &TaxiClearance) -> f64 {
+    let meters: f64 = route
+        .points
+        .windows(2)
+        .map(|pair| flat_distance(&pair[0], &pair[1]))
+        .sum();
+    let taxi = 10.0 * 0.514_444;
+    let speech = (route.instructions.chars().count() as f64 + 40.0) / 14.0;
+    (meters / taxi + speech + 2.0 + 20.0).clamp(30.0, 240.0)
 }
 
 /// Authorize one transverse published-network crossing, ending clear of that runway.

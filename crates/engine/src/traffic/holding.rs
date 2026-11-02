@@ -266,9 +266,10 @@ pub(crate) fn observe(state: &mut EngineState) {
 }
 
 fn traffic_clear(state: &EngineState, pattern: &Pattern, eta: f64) -> bool {
-    let Some(targets) = state.session.telemetry.traffic.as_ref() else {
+    if state.session.telemetry.traffic.is_none() && state.session.generated_traffic.is_empty() {
         return false;
-    };
+    }
+    let targets = state.traffic_targets();
     if targets.len() > 126 {
         return false;
     }
@@ -468,13 +469,16 @@ pub(crate) fn tick(state: &mut EngineState, station: &Station) -> bool {
             && protected(state, station, &hold.pattern)
             && traffic_clear(state, &hold.pattern, 0.0);
         let runway_clear = state.arrival_airport.as_ref().is_some_and(|airport| {
-            let t = Telemetry {
+            let mut t = Telemetry {
                 latitude: hold.pattern.fix.latitude,
                 longitude: hold.pattern.fix.longitude,
                 heading_degrees: hold.pattern.inbound_degrees,
                 ground_track_degrees: Some(hold.pattern.inbound_degrees),
                 ..state.session.telemetry.clone()
             };
+            if state.session.telemetry.traffic.is_some() {
+                t.traffic = Some(state.traffic_targets());
+            }
             openatc_core::traffic::landing_blocked(airport, &hold.runway, &t).is_none()
         });
         if ready && runway_clear && evaluate(state, Some(&hold.pattern)) == Decision::Clear {
@@ -709,6 +713,7 @@ mod tests {
                 realism: &realism,
                 units: openatc_core::UnitSystem::Imperial,
                 region: &region,
+                traffic: None,
             },
         );
         assert!(result.accepted, "{}", result.message);
