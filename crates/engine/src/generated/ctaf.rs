@@ -1509,6 +1509,7 @@ pub(super) fn announce(state: &mut EngineState) {
         ..Default::default()
     };
     tag.radio = Some(radio);
+    tag.frequency = Some(frequency);
     let spoken_callsign = state.generated.spoken_text(&callsign);
     add_transmission(&mut state.session, &spoken_callsign, &spoken_text, &tag);
     if let Some(entry) = state.session.transcript.last_mut() {
@@ -1544,6 +1545,7 @@ pub(super) fn announce(state: &mut EngineState) {
                 }
             };
             tag.radio = Some(radio);
+            tag.frequency = Some(frequency);
             add_transmission(&mut state.session, "Tower", &spoken, &tag);
             if let Some(entry) = state.session.transcript.last_mut() {
                 entry.background = true;
@@ -1566,6 +1568,7 @@ pub(super) fn announce(state: &mut EngineState) {
                     ..Default::default()
                 };
                 tag.radio = Some(radio);
+                tag.frequency = Some(frequency);
                 add_transmission(&mut state.session, &spoken_callsign, &spoken_readback, &tag);
                 if let Some(entry) = state.session.transcript.last_mut() {
                     entry.background = true;

@@ -315,7 +315,8 @@ fn atc(
     slots: &[(&str, String)],
     pilot_key: &str,
 ) {
-    let voice = crate::flight::tag(state, station);
+    let mut voice = crate::flight::tag(state, station);
+    voice.frequency = Some(station.khz);
     add_transmission(&mut state.session, "ATC", &say(key, slots), &voice);
     if !pilot_key.is_empty()
         && let Some(last) = state.session.transcript.last_mut()

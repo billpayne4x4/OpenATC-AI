@@ -503,9 +503,10 @@ fn header_card(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
 
 fn transcript_on_radio(
     entry: &openatc_core::state::Transmission,
+    state: &State,
     radio: openatc_core::state::Radio,
 ) -> bool {
-    entry.radio.unwrap_or_default() == radio
+    crate::interface::on_tuned_frequency(entry, state, radio)
 }
 
 fn transcript_view(ui: &imgui::Ui, interface: &mut Interface, state: &State, height: f32) {
@@ -528,7 +529,11 @@ fn transcript_view(ui: &imgui::Ui, interface: &mut Interface, state: &State, hei
             ui.text_colored(widgets::accent(ui), "Ready when you are");
             ui.text_wrapped("Set up your flight plan, then request clearance. Available requests follow your flight stage.");
         }
-        for entry in state.transcript.iter().filter(|entry| transcript_on_radio(entry, interface.active_radio)) {
+        for entry in state
+            .transcript
+            .iter()
+            .filter(|entry| transcript_on_radio(entry, state, interface.active_radio))
+        {
             let _identifier = ui.push_id(entry.sequence.to_string());
             let airport = if interface.local_airport.icao.is_empty() { &interface.airport } else { &interface.local_airport };
             let badge = transcript_badge(entry, airport, state.telemetry.com1_khz);
@@ -3363,9 +3368,11 @@ mod tests {
                 serde_json::json!({"radio":value,"speaker":"ATIS","text":"Information Alpha"}),
             )
             .unwrap();
-            assert!(super::transcript_on_radio(&entry, receiver));
+            let state = State::default();
+            assert!(super::transcript_on_radio(&entry, &state, receiver));
             assert!(!super::transcript_on_radio(
                 &entry,
+                &state,
                 if receiver == Radio::Com1 {
                     Radio::Com2
                 } else {
@@ -3373,6 +3380,41 @@ mod tests {
                 }
             ));
         }
+    }
+
+    #[test]
+    fn transcript_hides_traffic_from_an_untuned_station() {
+        use openatc_core::state::{Radio, Transmission};
+        let mut state = State::default();
+        state.telemetry.com1_khz = 120_160;
+        let tower_traffic: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "frequency": 118700,
+            "background": true,
+            "speaker": "Traffic"
+        }))
+        .expect("traffic entry");
+        assert!(!super::transcript_on_radio(
+            &tower_traffic,
+            &state,
+            Radio::Com1
+        ));
+        let own_clearance: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "speaker": "ATC"
+        }))
+        .expect("own clearance");
+        assert!(super::transcript_on_radio(
+            &own_clearance,
+            &state,
+            Radio::Com1
+        ));
+        state.telemetry.com1_khz = 118_700;
+        assert!(super::transcript_on_radio(
+            &tower_traffic,
+            &state,
+            Radio::Com1
+        ));
     }
 
     #[test]
