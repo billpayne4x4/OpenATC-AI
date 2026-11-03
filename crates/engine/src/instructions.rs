@@ -270,6 +270,13 @@ pub fn request(
     state.flow.monitor.last_call = Some(Instant::now());
     Some(reply(state, request, tag, true, &text, Some(pilot)))
 }
+/// A readback normally plays within a few seconds. Stop holding operational
+/// instructions behind it after this long.
+const READBACK_WAIT: Duration = Duration::from_secs(10);
+
+/// How long a missing readback goes before the controller prompts for it.
+const READBACK_REMINDER: Duration = Duration::from_secs(45);
+
 /// One transmission per tick, after handoffs and pending readbacks have cleared.
 /// Keep handoffs and new instructions behind the current readback.
 pub fn awaiting_reply(state: &mut EngineState, station: &Station) -> bool {
@@ -301,10 +308,10 @@ pub fn awaiting_reply(state: &mut EngineState, station: &Station) -> bool {
         monitor.pending_sequence = sequence;
         monitor.pending_since = Some(Instant::now());
     }
-    if monitor
+    let waited = monitor
         .pending_since
-        .is_some_and(|t| t.elapsed() >= Duration::from_secs(45))
-    {
+        .map_or(Duration::ZERO, |t| t.elapsed());
+    if waited >= READBACK_REMINDER {
         let text = say(
             "instruction_readback_reminder",
             &[("callsign", state.session.plan.callsign.clone())],
@@ -322,8 +329,9 @@ pub fn awaiting_reply(state: &mut EngineState, station: &Station) -> bool {
         state.flow.monitor.pending_sequence =
             state.session.transcript.last().map_or(0, |e| e.sequence);
         crate::traffic::holding::reminder(state, sequence, state.flow.monitor.pending_sequence);
+        return false;
     }
-    true
+    waited < READBACK_WAIT
 }
 pub fn tick(state: &mut EngineState, station: &Station) {
     let t = state.session.telemetry.clone();
@@ -2168,7 +2176,7 @@ mod tests {
         );
     }
     #[test]
-    fn pending_readback_blocks_new_instructions_and_keeps_the_reply() {
+    fn a_pending_readback_holds_instructions_briefly_and_keeps_the_reply() {
         let mut state = crate::test_state();
         let station = Station {
             name: "Test".into(),
@@ -2190,8 +2198,16 @@ mod tests {
         assert!(awaiting_reply(&mut state, &station));
         assert_eq!(state.session.transcript.len(), count);
         state.flow.monitor.pending_since =
+            Some(Instant::now().checked_sub(Duration::from_secs(11)).unwrap());
+        assert!(
+            !awaiting_reply(&mut state, &station),
+            "a stuck readback must not hold climb or descent instructions"
+        );
+        assert_eq!(state.session.transcript.len(), count);
+        state.flow.monitor.pending_since =
             Some(Instant::now().checked_sub(Duration::from_secs(46)).unwrap());
-        assert!(awaiting_reply(&mut state, &station));
+        assert!(!awaiting_reply(&mut state, &station));
+        assert_eq!(state.session.transcript.len(), count + 1);
         assert_eq!(
             state.session.transcript.last().unwrap().pilot_reply,
             "8000 feet, TEST"

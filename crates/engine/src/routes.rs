@@ -1280,6 +1280,14 @@ pub struct PreparedReply {
     pub request: Request,
 }
 
+/// A handoff readback is prepared before the radio moves to the next station.
+fn reply_radio_current(state: &crate::EngineState, prepared: &PreparedReply) -> bool {
+    let Some(frequency) = state.session.telemetry.frequency(prepared.request.radio) else {
+        return false;
+    };
+    frequency == prepared.frequency || frequency == state.session.recommended_frequency_khz
+}
+
 fn prepare_reply(state: &mut crate::EngineState, request: Request) {
     state.pending_copilot_reply = Some(PreparedReply {
         generation: state.session_generation,
@@ -1422,8 +1430,7 @@ pub async fn post_copilot_reply(
         match state.pending_copilot_reply.take() {
             Some(prepared)
                 if prepared.generation == state.session_generation
-                    && Some(prepared.frequency)
-                        == state.session.telemetry.frequency(prepared.request.radio)
+                    && reply_radio_current(&state, &prepared)
                     && state.settings.copilot_replies =>
             {
                 let source_sequence = readback_source_sequence(&state, prepared.sequence);
@@ -3236,6 +3243,27 @@ mod chatter_tests {
         );
         reconcile_pending_reply(&mut state);
         assert!(state.pending_copilot_reply.is_none());
+    }
+
+    #[test]
+    fn a_handoff_readback_survives_the_auto_tune() {
+        let mut state = crate::test_state();
+        state.session.telemetry.com1_khz = 120_160;
+        state.session.recommended_frequency_khz = 120_160;
+        let prepared = PreparedReply {
+            generation: state.session_generation,
+            sequence: 1,
+            frequency: 118_700,
+            request: Request {
+                radio: openatc_core::state::Radio::Com1,
+                ..Default::default()
+            },
+        };
+        assert!(reply_radio_current(&state, &prepared));
+        state.session.recommended_frequency_khz = 118_675;
+        assert!(!reply_radio_current(&state, &prepared));
+        state.session.telemetry.com1_khz = 118_700;
+        assert!(reply_radio_current(&state, &prepared));
     }
 
     #[test]
