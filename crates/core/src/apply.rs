@@ -506,10 +506,16 @@ fn accepted_readback(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
             crate::dialogue::say("readback_correct_for_recorded_altitude_and_route", &[]),
         );
     }
-    RequestOutcome {
-        accepted: true,
-        message: String::new(),
+    let phrase = if ctx.request.readback_kind == "taxi" {
+        "taxi_readback_correct_follow_the_approved_route"
+    } else {
+        "readback_correct_for_recorded_altitude_and_route"
+    };
+    let outcome = reply(state, ctx, true, crate::dialogue::say(phrase, &[]));
+    if let Some(entry) = state.transcript.last_mut() {
+        entry.information_only = true;
     }
+    outcome
 }
 
 /// Readback handling, strict or lenient depending on the realism toggles.
@@ -1577,13 +1583,18 @@ pub fn apply_request(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
                 &entry.pilot_reply,
                 &state.plan.callsign,
             )
-            && entry.position == ctx.atc_tag.position
         {
             entry.pilot_reply.clear();
-            return RequestOutcome {
-                accepted: true,
-                message: String::new(),
-            };
+            let outcome = reply(
+                state,
+                ctx,
+                true,
+                crate::dialogue::say("readback_correct", &[]),
+            );
+            if let Some(entry) = state.transcript.last_mut() {
+                entry.information_only = true;
+            }
+            return outcome;
         }
         return reply(
             state,
@@ -2150,7 +2161,7 @@ mod tests {
         }
     }
     #[test]
-    fn routine_readbacks_finish_silently_but_errors_still_need_correction() {
+    fn routine_readbacks_are_acknowledged_and_errors_still_need_correction() {
         let tag = SpeechTag::default();
         let region = Region::default();
         for (phase, on_ground, taxi) in [
@@ -2221,8 +2232,9 @@ mod tests {
             request.waypoint = "ROUTE".into();
             let accepted = outcome(&mut state, &request);
             assert!(accepted.accepted);
-            assert!(accepted.message.is_empty(), "{phase:?}");
-            assert_eq!(state.transcript.len(), before, "{phase:?}");
+            assert!(!accepted.message.is_empty(), "{phase:?}");
+            assert_eq!(state.transcript.len(), before + 1, "{phase:?}");
+            assert!(state.transcript.last().unwrap().information_only);
             assert!(state.transcript[0].pilot_reply.is_empty());
             if taxi {
                 assert!(state.taxi_clearance.approved);
@@ -2231,6 +2243,52 @@ mod tests {
                 assert!(state.clearance.as_ref().unwrap().acknowledged);
             }
         }
+    }
+
+    #[test]
+    fn a_handoff_readback_is_accepted_after_the_radio_moves() {
+        let tag = SpeechTag {
+            position: "NICE APPROACH".into(),
+            ..Default::default()
+        };
+        let region = Region::default();
+        let mut state = State::default();
+        state.plan.callsign = "C-GTLT".into();
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "sequence": 7,
+                "position": "NICE Tower",
+                "text": "C-GTLT, contact NICE APPROACH, 120.160.",
+                "pilotReply": "Contact NICE APPROACH, 120.160, C-GTLT."
+            }))
+            .unwrap(),
+        );
+        let request = Request {
+            intent: "acknowledge".into(),
+            text: "Contact NICE APPROACH, 120.160, C-GTLT.".into(),
+            clearance_sequence: 7,
+            ..Default::default()
+        };
+        let outcome = apply_request(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: false,
+                airport: None,
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &Realism::default(),
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: None,
+                runway_sequence: RunwaySequence::Clear,
+            },
+        );
+        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(state.transcript[0].pilot_reply.is_empty());
+        assert!(state.transcript.last().unwrap().information_only);
     }
 
     #[test]

@@ -99,12 +99,10 @@ pub(super) fn radio(e: &mut Engine, m: &Model) -> Result {
     );
     let ack = e.post("request/auto-reply", json!({}))?;
     accepted(&ack);
+    let ack_message = ack["result"]["message"].as_str().unwrap();
     assert!(
-        !ack["result"]["message"]
-            .as_str()
-            .unwrap()
-            .to_lowercase()
-            .contains("altitude")
+        !ack_message.to_lowercase().contains("altitude"),
+        "{ack_message}"
     );
     assert_eq!(e.call("request/auto-reply", Some(json!({})))?.0, 400);
     e.endpoint(121900, &path, 35., 0.)?;
@@ -370,14 +368,24 @@ pub(super) fn radio(e: &mut Engine, m: &Model) -> Result {
     e.post("request/copilot-prepare", json!({}))?;
     e.post("request/copilot-reply", json!({}))?;
     let state = e.state()?;
-    assert_eq!(
-        state["transcript"].as_array().unwrap().last().unwrap()["speaker"],
-        "COPILOT"
-    );
+    let transcript = state["transcript"].as_array().unwrap();
+    let readback = transcript
+        .iter()
+        .rev()
+        .find(|entry| entry["speaker"] == "COPILOT")
+        .expect("copilot readback");
     assert!(
-        latest(&state)
+        readback["text"]
+            .as_str()
+            .unwrap()
             .to_lowercase()
             .contains("cleared for takeoff")
+    );
+    assert!(
+        transcript
+            .last()
+            .is_some_and(|entry| entry["speaker"] == "ATC" && entry["informationOnly"] == true),
+        "the accepted readback should be acknowledged"
     );
     e.settings(json!({"copilotReplies":false}))?;
     let again = e.req("clearance")?;
@@ -647,7 +655,7 @@ fn crossing(e: &mut Engine) -> Result {
         .count();
     let ack = e.post("request/auto-reply", json!({}))?;
     accepted(&ack);
-    assert_eq!(ack["result"]["message"], "");
+    assert!(!ack["result"]["message"].as_str().unwrap().is_empty());
     assert_eq!(
         ack["state"]["transcript"]
             .as_array()
@@ -655,7 +663,7 @@ fn crossing(e: &mut Engine) -> Result {
             .iter()
             .filter(|t| t["speaker"] == "ATC")
             .count(),
-        n
+        n + 1
     );
     e.tune(124500, json!({"latitude":0}))?;
     assert_eq!(e.state()?["taxiClearance"]["crossingRunway"], "25R");

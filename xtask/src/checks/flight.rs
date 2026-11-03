@@ -55,12 +55,21 @@ fn reply(e: &mut Engine) -> Result {
             || before["clearance"]["acknowledged"] == false)
     {
         require(
-            result["result"]["message"] == "",
-            "Routine readback generated another controller acknowledgement",
+            !result["result"]["message"]
+                .as_str()
+                .unwrap_or_default()
+                .is_empty(),
+            "Routine readback was not acknowledged",
         )?;
         require(
-            recorded.len() == count(&prepared),
-            "Routine readback added a controller transmission",
+            recorded.len() == count(&prepared) + 1,
+            "Routine readback did not add one controller acknowledgement",
+        )?;
+        require(
+            recorded
+                .last()
+                .is_some_and(|entry| entry["speaker"] == "ATC" && entry["informationOnly"] == true),
+            "Readback acknowledgement must be information-only",
         )?;
     }
     e.telemetry["radioBusy"] = json!(false);
@@ -318,8 +327,16 @@ fn run(e: &mut Engine, steps: &mut Vec<Value>, variant: &str) -> Result {
         "No proactive descent clearance before the imported STAR ceiling",
     )?;
     reply(e)?;
+    let readback = e.state()?;
+    let readback = readback["transcript"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|entry| entry["speaker"] == "COPILOT")
+        .expect("descent readback");
     require(
-        latest(&e.state()?).contains("180"),
+        readback["text"].as_str().unwrap().contains("180"),
         "Copilot omitted the speed from its compound descent readback",
     )?;
     ticks(
@@ -356,7 +373,16 @@ fn run(e: &mut Engine, steps: &mut Vec<Value>, variant: &str) -> Result {
     )?;
     ticks(e, 118900, json!({}), 2)?;
     require(
-        latest(&e.state()?).contains("cleared to land"),
+        e.state()?["transcript"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| {
+                entry["speaker"] == "ATC"
+                    && entry["text"]
+                        .as_str()
+                        .is_some_and(|text| text.contains("cleared to land"))
+            }),
         "Tower did not issue landing clearance after check-in",
     )?;
     // Tower may now answer check-in with landing permission, which checkin()

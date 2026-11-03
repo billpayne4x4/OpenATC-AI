@@ -1422,6 +1422,7 @@ pub async fn post_copilot_reply(
                 .as_ref()
                 .is_none_or(|p| expected.as_u64() != Some(u64::from(p.sequence)))
         {
+            eprintln!("Copilot readback rejected: the prepared transmission is no longer pending");
             return bad_request(openatc_core::dialogue::say(
                 "notice_that_copilot_transmission_is_no_longer_pending_66a00d56",
                 &[],
@@ -1437,6 +1438,9 @@ pub async fn post_copilot_reply(
                 (prepared.request, source_sequence)
             }
             _ => {
+                eprintln!(
+                    "Copilot readback rejected: no prepared reply, changed generation or changed radio"
+                );
                 return bad_request(openatc_core::dialogue::say(
                     "notice_no_prepared_copilot_reply_for_this_flight_9605a9ad",
                     &[],
