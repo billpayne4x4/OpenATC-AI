@@ -1426,7 +1426,8 @@ pub async fn post_copilot_reply(
                         == state.session.telemetry.frequency(prepared.request.radio)
                     && state.settings.copilot_replies =>
             {
-                (prepared.request, prepared.sequence)
+                let source_sequence = readback_source_sequence(&state, prepared.sequence);
+                (prepared.request, source_sequence)
             }
             _ => {
                 return bad_request(openatc_core::dialogue::say(
@@ -1448,6 +1449,17 @@ pub async fn post_copilot_reply(
     let response = atc_request(&shared, &settings, request).await;
     clear_readback(&mut *shared.write().await, source_sequence);
     record_response(&shared, id, generation, response).await
+}
+
+/// Find the controller instruction that a prepared copilot transmission answers.
+fn readback_source_sequence(state: &crate::EngineState, prepared: u32) -> u32 {
+    state
+        .session
+        .transcript
+        .iter()
+        .rev()
+        .find(|entry| entry.sequence < prepared && entry.is_controller_instruction())
+        .map_or(0, |entry| entry.sequence)
 }
 
 /// A spoken readback clears the outstanding reply marker. Without this, a
@@ -3243,6 +3255,40 @@ mod chatter_tests {
                 .unwrap()
                 .pilot_reply
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_copilot_readback_clears_the_instruction_it_answers() {
+        let mut state = crate::test_state();
+        let tag = SpeechTag::default();
+        add_transmission(&mut state.session, "ATC", "Contact Tower, 118.700.", &tag);
+        add_transmission(
+            &mut state.session,
+            "COPILOT",
+            "Contact Tower, 118.700.",
+            &tag,
+        );
+        let prepared = state.session.transcript.last().unwrap().sequence;
+        let source = readback_source_sequence(&state, prepared);
+        assert_eq!(
+            state
+                .session
+                .transcript
+                .iter()
+                .find(|entry| entry.sequence == source)
+                .map(|entry| entry.text.as_str()),
+            Some("Contact Tower, 118.700."),
+            "the readback must clear the controller instruction, not the copilot line"
+        );
+        clear_readback(&mut state, source);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .find(|entry| entry.sequence == source)
+                .is_some_and(|entry| entry.pilot_reply.is_empty())
         );
     }
 
