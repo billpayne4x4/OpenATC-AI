@@ -972,18 +972,14 @@ impl TrafficManager {
                         self.aircraft[index].takeoff = true;
                     }
                     TakeoffDecision::LineUpAndWait => {
-                        self.aircraft[index].cleared = true;
+                        // One aircraft owns the runway at a time. A follower waits at
+                        // the hold until the rolling lead is clear.
+                        if rolling_lead.is_none() && !line_up_ahead {
+                            self.aircraft[index].cleared = true;
+                        }
                     }
                     TakeoffDecision::Hold(_) => {}
                 }
-            } else if hold_for_clearance
-                && !is_lead
-                && rolling_lead.is_some()
-                && !line_up_ahead
-                && !behind_player
-                && decision == TakeoffDecision::LineUpAndWait
-            {
-                self.aircraft[index].cleared = true;
             }
             // An aircraft behind the player cannot keep a line-up clearance. It has not
             // entered the runway, so the queue can correct it without a radio call.
@@ -2608,7 +2604,7 @@ fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
         .iter()
         .filter(|aircraft| {
             aircraft.kind == AmbientKind::Departure
-                && !aircraft.cleared
+                && !aircraft.takeoff
                 && aircraft.distance >= aircraft.hold_distance
         })
         .min_by(|left, right| {
@@ -3775,7 +3771,82 @@ mod phase_tests {
         next.distance = 600.0;
         next.cleared = false;
         next.hold_since = Some(later);
-        assert_eq!(queue_leader(&[cleared, next]), Some(3));
+        assert_eq!(
+            queue_leader(&[cleared, next]),
+            Some(9),
+            "a lined-up aircraft remains the queue leader until it starts to roll"
+        );
+        let mut rolling = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        rolling.id = 9;
+        rolling.hold_distance = 600.0;
+        rolling.distance = 600.0;
+        rolling.cleared = true;
+        rolling.takeoff = true;
+        let mut next = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        next.id = 3;
+        next.hold_distance = 600.0;
+        next.distance = 600.0;
+        next.hold_since = Some(later);
+        assert_eq!(queue_leader(&[rolling, next]), Some(3));
+    }
+
+    #[test]
+    fn only_one_ambient_departure_holds_a_runway_clearance() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.02;
+        state.session.telemetry.longitude = 0.02;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            movement_started: true,
+            ..Default::default()
+        };
+        for (id, hold_since) in [
+            (1, Instant::now() - Duration::from_secs(30)),
+            (2, Instant::now() - Duration::from_secs(20)),
+            (3, Instant::now() - Duration::from_secs(10)),
+        ] {
+            let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 2_000.0);
+            departure.id = id;
+            departure.airport = "DEMO".into();
+            departure.runway = "09".into();
+            departure.hold_distance = 600.0;
+            departure.distance = 600.0;
+            departure.runway_start = 1_000.0;
+            departure.runway_end = 2_000.0;
+            departure.hold_since = Some(hold_since);
+            departure.frequency_khz = None;
+            departure.cleared = false;
+            departure.takeoff = false;
+            manager.aircraft.push(departure);
+        }
+        manager.tick(&mut state);
+        assert_eq!(
+            manager
+                .aircraft
+                .iter()
+                .filter(|aircraft| aircraft.cleared)
+                .count(),
+            1,
+            "only the queue leader may hold a runway clearance"
+        );
+        for _ in 0..5 {
+            manager.tick(&mut state);
+            assert!(
+                manager
+                    .aircraft
+                    .iter()
+                    .filter(|aircraft| aircraft.cleared)
+                    .count()
+                    <= 1,
+                "a follower must not line up behind a cleared departure"
+            );
+        }
     }
 
     #[test]

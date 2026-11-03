@@ -1222,9 +1222,10 @@ active departure runway, and give each aircraft a stand-to-runway-to-takeoff pro
 Aircraft hold short of the runway, contact Tower when the player is tuned to the
 frequency, receive line-up and takeoff clearances, and only then enter the runway.
 The departure queue is first-in, first-out: the lead aircraft gets takeoff clearance
-when the runway is clear, the next lines up as the leader starts its roll, and then
-waits for the runway and wake interval before taking off. The player is sequenced the
-same way, with line up and wait followed by takeoff clearance as the runway and wake
+when the runway is clear. A lined-up aircraft remains the queue leader until it starts
+its takeoff roll. The next aircraft waits at the hold until the rolling lead is clear,
+so only one aircraft occupies the runway at a time. The player is sequenced the same
+way, with line up and wait followed by takeoff clearance as the runway and wake
 interval clear. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
 does not use jet speeds. Taxi targets follow a braking curve into each corner and
