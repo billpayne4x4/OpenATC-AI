@@ -11,8 +11,14 @@ pub struct Refs {
     pub aircraft_icao: Option<Box<dyn Fn() -> String>>,
     /// Simulator wake category for the ownship: 0 light, 1 medium, 2 heavy, 3 super.
     pub wake_category: Option<Box<dyn Fn() -> i32>>,
-    /// Simulator wingspan for the ownship, metres.
+    /// Simulator wingspan for the ownship, metres (from TCAS data).
     pub wingspan_meters: Option<Box<dyn Fn() -> f64>>,
+    /// Simulator wingspan for the ownship, metres (from acf_size_x).
+    pub wingspan_meters_acf: Option<Box<dyn Fn() -> f64>>,
+    /// Simulator length for the ownship, metres (from acf_size_z).
+    pub length_meters_acf: Option<Box<dyn Fn() -> f64>>,
+    /// Maximum takeoff weight for the ownship, kg (from acf_m_max).
+    pub max_takeoff_weight_kg: Option<Box<dyn Fn() -> f64>>,
     pub traffic: Option<Box<dyn Fn() -> Vec<openatc_core::state::TrafficTarget>>>,
     /// Latitude degrees.
     pub latitude: Option<Box<dyn Fn() -> f64>>,
@@ -141,6 +147,10 @@ pub fn find_refs(data: &mut xplane::data::DataApi, log: &mut Vec<String>) -> Ref
                     f64::from(value[0])
                 }) as Box<dyn Fn() -> f64>
             }),
+        // ACF file datarefs for aircraft dimensions and weights
+        wingspan_meters_acf: find_number(data, "sim/aircraft/view/acf_size_x"),
+        length_meters_acf: find_number(data, "sim/aircraft/view/acf_size_z"),
+        max_takeoff_weight_kg: find_number(data, "sim/aircraft/weight/acf_m_max"),
         transponder_code: find_integer(data, "sim/cockpit2/radios/actuators/transponder_code"),
         transponder_mode: find_integer(data, "sim/cockpit2/radios/actuators/transponder_mode"),
         indicated_speed: find_number(data, "sim/cockpit2/gauges/indicators/airspeed_kts_pilot"),

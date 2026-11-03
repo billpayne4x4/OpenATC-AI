@@ -999,8 +999,12 @@ pub fn read_acf_specs(path: &std::path::Path) -> Result<AcfSpecs, String> {
             specs.max_zero_fuel_weight_kg = parse_f64(&line["P acf/_max_zero_fuel_weight ".len()..]);
         } else if line.starts_with("P acf/_max_fuel ") {
             specs.max_fuel_kg = parse_f64(&line["P acf/_max_fuel ".len()..]);
+        } else if line.starts_with("P acf/_max_atc_alt_ft ") {
+            specs.ceiling_feet = parse_i32(&line["P acf/_max_atc_alt_ft ".len()..]);
         } else if line.starts_with("P acf/_ceiling ") {
-            specs.ceiling_feet = parse_i32(&line["P acf/_ceiling ".len()..]);
+            if specs.ceiling_feet.is_none() {
+                specs.ceiling_feet = parse_i32(&line["P acf/_ceiling ".len()..]);
+            }
         } else if line.starts_with("P acf/_cruise_speed ") {
             specs.cruise_speed_knots = parse_f64(&line["P acf/_cruise_speed ".len()..]);
         } else if line.starts_with("P acf/_vmo ") {
@@ -1017,8 +1021,12 @@ pub fn read_acf_specs(path: &std::path::Path) -> Result<AcfSpecs, String> {
             specs.max_climb_rate_fpm = parse_f64(&line["P acf/_max_climb_rate ".len()..]);
         } else if line.starts_with("P acf/_max_descent_rate ") {
             specs.max_descent_rate_fpm = parse_f64(&line["P acf/_max_descent_rate ".len()..]);
+        } else if line.starts_with("P _engn/0/_type ") {
+            specs.engine_type = line["P _engn/0/_type ".len()..].trim().to_string();
         } else if line.starts_with("P acf/_engine_type ") {
-            specs.engine_type = line["P acf/_engine_type ".len()..].trim().to_string();
+            if specs.engine_type.is_empty() {
+                specs.engine_type = line["P acf/_engine_type ".len()..].trim().to_string();
+            }
         } else if line.starts_with("P acf/_engine_count ") {
             specs.engine_count = parse_u8(&line["P acf/_engine_count ".len()..]);
         } else if line.starts_with("P acf/_wake_category ") {
@@ -1043,6 +1051,32 @@ pub fn read_acf_specs(path: &std::path::Path) -> Result<AcfSpecs, String> {
     }
 
     Ok(specs)
+}
+
+/// Merge runtime dataref values with ACF specs.
+/// Uses dataref values where ACF specs are missing or zero.
+pub fn merge_acf_specs_with_datarefs(
+    mut specs: AcfSpecs,
+    dataref_wingspan: Option<f64>,
+    dataref_length: Option<f64>,
+    dataref_mtow: Option<f64>,
+) -> AcfSpecs {
+    if let Some(ws) = dataref_wingspan {
+        if ws.is_finite() && ws > 0.0 && (specs.wingspan_meters.is_none() || specs.wingspan_meters.unwrap_or(0.0) <= 0.0) {
+            specs.wingspan_meters = Some(ws);
+        }
+    }
+    if let Some(len) = dataref_length {
+        if len.is_finite() && len > 0.0 && (specs.length_meters.is_none() || specs.length_meters.unwrap_or(0.0) <= 0.0) {
+            specs.length_meters = Some(len);
+        }
+    }
+    if let Some(mtow) = dataref_mtow {
+        if mtow.is_finite() && mtow > 0.0 && (specs.max_takeoff_weight_kg.is_none() || specs.max_takeoff_weight_kg.unwrap_or(0.0) <= 0.0) {
+            specs.max_takeoff_weight_kg = Some(mtow);
+        }
+    }
+    specs
 }
 
 fn parse_f64(s: &str) -> Option<f64> {

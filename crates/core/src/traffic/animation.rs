@@ -124,7 +124,7 @@ pub fn parse(text: &str) -> Result<BTreeMap<Kind, Handling>, String> {
     let file: File = value
         .try_into()
         .map_err(|error: toml::de::Error| error.to_string())?;
-    if file.version != 1 || file.handling.len() != 5 {
+    if file.version != 1 || file.handling.len() != 6 {
         return Err("Handling catalogue requires version 1 and all five envelopes".into());
     }
     let bounded =
