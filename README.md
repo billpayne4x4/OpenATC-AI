@@ -1224,10 +1224,11 @@ frequency, receive line-up and takeoff clearances, and only then enter the runwa
 The departure queue is first-in, first-out: the lead aircraft gets takeoff clearance
 when the runway is clear. Once it is rolling clear of the hold, the next aircraft may
 line up and wait behind it, while a third waits at the hold. A lined-up aircraft
-remains the queue leader until its own takeoff roll starts. When the lead is airborne,
-the lined-up aircraft takes off and the next may line up. The player is sequenced the
-same way, with line up and wait followed by takeoff clearance as the runway and wake
-interval clear. Taxi, rotation, climb,
+remains the queue leader until its own takeoff roll starts. The next takeoff is released
+once the lead is airborne and 1,800 m from the threshold, or at the runway end on a
+shorter runway; the full runway length is not required. The lined-up aircraft then takes
+off and the next may line up. The player is sequenced the same way, with line up and
+wait followed by takeoff clearance as the runway and wake interval clear. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
 does not use jet speeds. Taxi targets follow a braking curve into each corner and
 accelerate out at the aircraft's handling rates. A shared motion controller limits

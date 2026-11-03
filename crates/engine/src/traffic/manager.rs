@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 const TAXI_STRAIGHT_METERS_PER_SECOND: f64 = 25.0 * 0.514_444;
 
 const KNOTS_TO_MPS: f64 = 0.514_444;
+/// Same-runway distance from the threshold before the next departure may roll.
+const SAME_RUNWAY_DEPARTURE_SEPARATION_METERS: f64 = 1_800.0;
 
 /// Minimum distance from a runway-flagged graph edge for spawn, hold and seed points.
 const RUNWAY_EDGE_MARGIN: f64 = 25.0;
@@ -461,7 +463,7 @@ impl TrafficManager {
         &self,
         airport: &str,
         runway: &str,
-        player_remaining: Option<f64>,
+        _player_remaining: Option<f64>,
         player: Option<PlayerRunway>,
         exclude: Option<u32>,
     ) -> RunwayState {
@@ -478,16 +480,13 @@ impl TrafficManager {
             match aircraft.kind {
                 AmbientKind::Departure => {
                     if aircraft.cleared && aircraft.distance >= aircraft.hold_distance {
-                        if player_remaining.is_some_and(|player| {
-                            aircraft.distance < aircraft.runway_start
-                                && (aircraft.runway_start - aircraft.distance) > player + 30.0
-                        }) {
-                            continue;
-                        }
                         if aircraft.takeoff {
-                            if aircraft.distance >= aircraft.runway_start
-                                && aircraft.distance < aircraft.runway_end
-                            {
+                            let separation_end = (aircraft.runway_start
+                                + SAME_RUNWAY_DEPARTURE_SEPARATION_METERS)
+                                .min(aircraft.runway_end);
+                            let clear_of_runway = aircraft.distance >= aircraft.ground_end
+                                && aircraft.distance >= separation_end;
+                            if aircraft.distance >= aircraft.runway_start && !clear_of_runway {
                                 rolling = true;
                             } else if aircraft.distance < aircraft.runway_start {
                                 line_up = true;
@@ -3180,7 +3179,7 @@ mod phase_tests {
     }
 
     #[test]
-    fn an_aircraft_behind_the_player_is_not_the_runway_leader() {
+    fn a_lined_up_aircraft_blocks_the_player_regardless_of_threshold_distance() {
         let mut manager = TrafficManager::default();
         let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 2_000.0);
         departure.airport = "LFMN".into();
@@ -3194,13 +3193,40 @@ mod phase_tests {
         manager.aircraft.push(departure);
         assert_eq!(
             manager.runway_state_for("LFMN", "04R", Some(100.0), None, None),
-            RunwayState::Clear,
-            "the player is closer to the threshold than the lined-up ambient"
+            RunwayState::LineUp,
+            "a lined-up aircraft owns the runway until it rolls"
         );
         assert_eq!(
             manager.runway_state_for("LFMN", "04R", Some(500.0), None, None),
             RunwayState::LineUp,
             "an ambient ahead of the player still owns the runway"
+        );
+    }
+
+    #[test]
+    fn the_next_departure_clears_after_the_same_runway_separation() {
+        let mut manager = TrafficManager::default();
+        let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 4_000.0);
+        departure.airport = "LFMN".into();
+        departure.runway = "04R".into();
+        departure.hold_distance = 600.0;
+        departure.distance = 2_700.0;
+        departure.runway_start = 1_000.0;
+        departure.ground_end = 1_500.0;
+        departure.runway_end = 4_000.0;
+        departure.cleared = true;
+        departure.takeoff = true;
+        manager.aircraft.push(departure);
+        assert_eq!(
+            manager.runway_state("LFMN", "04R"),
+            RunwayState::Rolling,
+            "the next departure must wait for the separation point"
+        );
+        manager.aircraft[0].distance = 2_800.0;
+        assert_eq!(
+            manager.runway_state("LFMN", "04R"),
+            RunwayState::Clear,
+            "the next departure may roll before the far runway end"
         );
     }
 
