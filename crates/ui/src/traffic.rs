@@ -19,17 +19,27 @@ fn frequency_text(khz: Option<i32>) -> String {
 
 /// Draw generated poses alongside fresh simulator telemetry, preferring the engine pose by ID.
 pub(crate) fn targets(state: &State) -> impl Iterator<Item = &openatc_core::state::TrafficTarget> {
+    let ids: std::collections::BTreeSet<u32> = state
+        .generated_traffic
+        .iter()
+        .map(|frame| frame.target.id)
+        .collect();
+    let callsigns: std::collections::BTreeSet<String> = state
+        .generated_traffic
+        .iter()
+        .map(|frame| openatc_core::ops::callsign_key(&frame.target.callsign))
+        .filter(|callsign| !callsign.is_empty())
+        .collect();
     state
         .telemetry
         .traffic
         .iter()
         .flatten()
-        .filter(|target| {
-            !state.generated_traffic.iter().any(|frame| {
-                frame.target.id == target.id
-                    || (!frame.target.callsign.is_empty()
-                        && frame.target.callsign == target.callsign)
-            })
+        .filter(move |target| {
+            !ids.contains(&target.id) && {
+                let callsign = openatc_core::ops::callsign_key(&target.callsign);
+                callsign.is_empty() || !callsigns.contains(&callsign)
+            }
         })
         .chain(state.generated_traffic.iter().map(|frame| &frame.target))
 }
@@ -768,6 +778,35 @@ mod map_tests {
         assert_eq!(frequency_text(Some(118_700)), "118.700");
         assert_eq!(frequency_text(None), "—");
         assert_eq!(frequency_text(Some(0)), "—");
+    }
+
+    #[test]
+    fn punctuation_does_not_duplicate_a_generated_target() {
+        let mut state = State::default();
+        state.telemetry.traffic = Some(vec![TrafficTarget {
+            id: 7,
+            callsign: "FOMBT".into(),
+            ..Default::default()
+        }]);
+        state.generated_traffic.push(GeneratedTraffic {
+            target: TrafficTarget {
+                id: 14_680_064,
+                callsign: "F-OMBT".into(),
+                ..Default::default()
+            },
+            model: std::sync::Arc::new(openatc_core::traffic::csl::Model {
+                id: "TEST".into(),
+                objects: vec![],
+                vertical_offset: None,
+                matches: vec![],
+            }),
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            animation: Default::default(),
+        });
+        let shown: Vec<_> = targets(&state).collect();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].id, 14_680_064);
     }
 
     #[test]

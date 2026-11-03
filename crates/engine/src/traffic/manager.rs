@@ -399,6 +399,8 @@ pub struct TrafficManager {
     models: Option<Arc<Catalogue>>,
     last_spawn: Option<Instant>,
     next_id: u32,
+    /// Ambient frames currently present in the published traffic set.
+    published: BTreeSet<u32>,
     attempts: u32,
     rejected_route: u32,
     rejected_pavement: u32,
@@ -522,6 +524,11 @@ impl TrafficManager {
 
     /// Advance ambient traffic and publish frames. Called once per telemetry update.
     pub fn tick(&mut self, state: &mut crate::EngineState) {
+        self.advance(state);
+        self.publish(state);
+    }
+
+    fn advance(&mut self, state: &mut crate::EngineState) {
         state
             .session
             .generated_animation_channels
@@ -1281,7 +1288,10 @@ impl TrafficManager {
                 last.background = true;
             }
         }
+    }
 
+    /// Republish the ambient frames even when traffic advancement stopped early.
+    fn publish(&mut self, state: &mut crate::EngineState) {
         let frames: Vec<GeneratedTraffic> =
             self.aircraft.iter().filter_map(ambient_frame).collect();
         let debug: Vec<TrafficDebug> = self
@@ -1305,8 +1315,12 @@ impl TrafficManager {
             })
             .collect();
         // Replace the ambient portion only; keep frames produced by other layers.
-        let ambient_ids: std::collections::BTreeSet<u32> =
-            self.aircraft.iter().map(|aircraft| aircraft.id).collect();
+        let ambient_ids: BTreeSet<u32> = self
+            .published
+            .iter()
+            .copied()
+            .chain(self.aircraft.iter().map(|aircraft| aircraft.id))
+            .collect();
         state
             .session
             .generated_traffic
@@ -1324,6 +1338,7 @@ impl TrafficManager {
             .session
             .generated_traffic
             .sort_by_key(|frame| frame.target.id);
+        self.published = self.aircraft.iter().map(|aircraft| aircraft.id).collect();
     }
 
     /// Read-only route diagnostics for the ambient layer.
@@ -2950,6 +2965,34 @@ mod phase_tests {
         manager.aircraft.push(arrival);
         assert_eq!(manager.runway_state("LFMN", "04L"), RunwayState::Landing);
         assert_eq!(manager.runway_state("LFMN", "04R"), RunwayState::Clear);
+    }
+
+    #[test]
+    fn ambient_frames_are_published_when_advancement_cannot_run() {
+        let mut state = crate::test_state();
+        let mut manager = TrafficManager {
+            aircraft: vec![ambient(AmbientKind::Departure, 100.0, 0.0, 1_000.0)],
+            ..Default::default()
+        };
+        manager.tick(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .any(|frame| frame.target.id == 1),
+            "a missing model catalogue must not hide ambient traffic"
+        );
+        manager.aircraft.clear();
+        manager.tick(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .all(|frame| frame.target.id != 1),
+            "retired ambient traffic must leave the published set"
+        );
     }
 
     #[test]

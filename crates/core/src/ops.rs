@@ -4,6 +4,18 @@ use crate::aircraft::AircraftBehaviour;
 use super::airport::{Airport, airport_point};
 use super::state::{FlightPlan, PhaseCode, State, Telemetry};
 
+/// Stable callsign identity for matching simulator echoes and drawn traffic.
+///
+/// Hyphens and other punctuation are dropped, so `F-OMBT` and `FOMBT` compare equal.
+#[must_use]
+pub fn callsign_key(callsign: &str) -> String {
+    callsign
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_uppercase())
+        .collect()
+}
+
 /// Display name for a stage. `Arrival` and `TaxiIn` display as
 /// Descent and Taxi to parking.
 #[must_use]

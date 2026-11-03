@@ -201,14 +201,16 @@ impl EngineState {
         // Some simulator builds report an injected model back as native traffic with a
         // different id. The drawn frame is authoritative; drop the native echo so the
         // aircraft does not appear twice or block itself.
-        let drawn: std::collections::BTreeSet<&str> = self
+        let drawn: std::collections::BTreeSet<String> = self
             .session
             .generated_traffic
             .iter()
-            .map(|frame| frame.target.callsign.as_str())
+            .map(|frame| openatc_core::ops::callsign_key(&frame.target.callsign))
             .filter(|callsign| !callsign.is_empty())
             .collect();
-        targets.retain(|target| target.id == 0 || !drawn.contains(target.callsign.as_str()));
+        targets.retain(|target| {
+            target.id == 0 || !drawn.contains(&openatc_core::ops::callsign_key(&target.callsign))
+        });
         let mut ids: std::collections::BTreeSet<u32> =
             targets.iter().map(|target| target.id).collect();
         for frame in &self.session.generated_traffic {
@@ -911,6 +913,20 @@ mod traffic_target_tests {
             ..Default::default()
         }]);
         state.session.generated_traffic = vec![frame(14_680_064, "AMBIENT2")];
+        let targets = state.traffic_targets();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].id, 14_680_064);
+    }
+
+    #[test]
+    fn punctuation_does_not_leave_a_native_echo_of_a_drawn_aircraft() {
+        let mut state = test_state();
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 7,
+            callsign: "FOMBT".into(),
+            ..Default::default()
+        }]);
+        state.session.generated_traffic = vec![frame(14_680_064, "F-OMBT")];
         let targets = state.traffic_targets();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].id, 14_680_064);
