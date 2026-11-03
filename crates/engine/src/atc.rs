@@ -20,7 +20,7 @@ pub(crate) fn sync_ownship(state: &mut EngineState) {
         state.session.telemetry.radio_power,
         state.session.telemetry.com1_khz,
         state.session.telemetry.com2_khz,
-        &state.stations,
+        &openatc_core::stations::nearby(&state.stations, &state.session.telemetry),
     );
 }
 
@@ -93,6 +93,26 @@ fn sync_aircraft(
     atc.leave_all_except(PILOT_ID, &keep);
 }
 
+/// Pick the station at the aircraft's position, not the first station on the frequency.
+fn station_for_target(
+    stations: &[Station],
+    target: &TrafficTarget,
+    frequency: i32,
+) -> Option<Station> {
+    let telemetry = openatc_core::state::Telemetry {
+        position_valid: true,
+        latitude: target.latitude,
+        longitude: target.longitude,
+        altitude_feet: target.altitude_feet,
+        on_ground: target.on_ground,
+        com1_khz: frequency,
+        ..Default::default()
+    };
+    openatc_core::stations::nearby(stations, &telemetry)
+        .into_iter()
+        .find(|station| station.khz == frequency)
+}
+
 fn sync_traffic_aircraft(
     aircraft_manager: &mut AircraftManager,
     atc: &mut AtcManager,
@@ -132,11 +152,7 @@ fn sync_traffic_aircraft(
                 keep.push(frequency);
                 continue;
             }
-            let Some(station) = stations
-                .iter()
-                .find(|station| station.khz == frequency)
-                .cloned()
-            else {
+            let Some(station) = station_for_target(stations, target, frequency) else {
                 continue;
             };
             keep.push(frequency);
@@ -359,6 +375,25 @@ mod tests {
 
         assert!(aircraft.is_empty());
         assert!(atc.is_empty());
+    }
+
+    #[test]
+    fn traffic_station_lookup_prefers_its_own_airport() {
+        let mut nice = station(120_160, "Nice Tower");
+        nice.airport = "LFMN".into();
+        nice.latitude = 43.66;
+        nice.longitude = 7.21;
+        let mut other = station(120_160, "Kastrup Tower");
+        other.airport = "EKCH".into();
+        other.latitude = 55.62;
+        other.longitude = 12.65;
+        let mut traffic = target(7, "TEST7", 120_160);
+        traffic.latitude = 43.66;
+        traffic.longitude = 7.21;
+        traffic.altitude_feet = 2_000.0;
+        let found = station_for_target(&[other, nice], &traffic, 120_160)
+            .expect("station at the traffic position");
+        assert_eq!(found.airport, "LFMN");
     }
 
     #[test]

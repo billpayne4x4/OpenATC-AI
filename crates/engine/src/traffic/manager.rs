@@ -633,7 +633,7 @@ impl TrafficManager {
                 .traffic_taxi_max
                 .max(state.settings.traffic_taxi_min),
         )
-        .clamp(2, 6);
+        .clamp(2, 16);
         let now = Instant::now();
         let missing = target.saturating_sub(self.aircraft.len());
         if missing > 0

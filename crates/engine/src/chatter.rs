@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+const CHATTER_HEIGHT_FEET: f64 = 1_000.0;
 const FIRST_DELAY_SECS: f64 = 4.0;
 const GAP_MS: u32 = 700;
 
@@ -169,7 +170,11 @@ impl ChatterManager {
     pub fn tick(&mut self, state: &mut EngineState) {
         let now = Instant::now();
         let telemetry = state.session.telemetry.clone();
-        if !state.settings.airport_chatter || telemetry.paused || !telemetry.position_valid {
+        if !state.settings.airport_chatter
+            || telemetry.on_ground
+            || telemetry.paused
+            || !telemetry.position_valid
+        {
             self.clear(state);
             return;
         }
@@ -341,6 +346,7 @@ fn station_for(state: &EngineState, frequency: i32, telemetry: &Telemetry) -> Op
         .iter()
         .filter(|station| station.khz == frequency)
         .filter(|station| role(station, "Ground") || role(station, "Tower"))
+        .filter(|station| telemetry.altitude_feet >= station.elevation_feet + CHATTER_HEIGHT_FEET)
         .filter_map(|station| {
             reception_distance(station, telemetry).map(|distance| (distance, station))
         })
@@ -851,14 +857,26 @@ mod tests {
     }
 
     #[test]
-    fn chatter_runs_on_the_ground_and_two_radios_hold_two_sessions() {
+    fn chatter_stops_when_the_aircraft_is_on_the_ground() {
+        let mut manager = ChatterManager::default();
+        let mut state = fixture(121_900, 5_000.0);
+        state.session.telemetry.on_ground = true;
+        manager
+            .airports
+            .insert("YSSY".to_owned(), Arc::new(airport()));
+        manager.tick(&mut state);
+        assert!(manager.sessions.is_empty());
+    }
+
+    #[test]
+    fn chatter_needs_height_and_two_radios_hold_two_sessions() {
         let mut manager = ChatterManager::default();
         let mut state = fixture(121_900, 400.0);
         manager
             .airports
             .insert("YSSY".to_owned(), Arc::new(airport()));
         manager.tick(&mut state);
-        assert_eq!(manager.sessions.len(), 1);
+        assert!(manager.sessions.is_empty());
 
         let mut state = fixture(121_900, 5_000.0);
         state.session.telemetry.com2_khz = Some(118_000);
