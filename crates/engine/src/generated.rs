@@ -5852,9 +5852,17 @@ pub fn step(state: &mut EngineState) {
         .generated_traffic
         .sort_by_key(|frame| frame.target.id);
     state.session.generated_traffic_clock = state
-        .generated
-        .previous_time
-        .map(|time| (state.session_generation, time));
+        .session
+        .telemetry
+        .simulation_seconds
+        .filter(|time| time.is_finite())
+        .map(|time| (state.session_generation, time))
+        .or_else(|| {
+            state
+                .generated
+                .previous_time
+                .map(|time| (state.session_generation, time))
+        });
     state
         .session
         .generated_animation_channels

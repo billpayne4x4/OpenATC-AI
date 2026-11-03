@@ -12,6 +12,7 @@ mod conversation;
 mod conversation_tests;
 pub(crate) mod holding;
 pub mod manager;
+pub(crate) mod motion;
 pub mod phase;
 pub mod phases;
 mod policy;
