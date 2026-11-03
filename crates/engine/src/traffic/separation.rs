@@ -2,10 +2,28 @@
 
 use openatc_core::state::TrafficTarget;
 
+/// Room kept beyond the physical gap so a follower can shed speed before reaching it.
+const FOLLOW_BUFFER: f64 = 10.0;
+
+/// Extra room kept around the player's aircraft on the surface.
+const PLAYER_BUFFER: f64 = 10.0;
+
 /// Required centre-to-centre gap for two aircraft nose-to-tail.
 #[must_use]
 pub(crate) fn required_gap(own_length: f64, other_length: f64) -> f64 {
     ((own_length + other_length) / 2.0 + 15.0).clamp(45.0, 80.0)
+}
+
+/// Gap a follower holds behind the aircraft ahead of it.
+#[must_use]
+pub(crate) fn holding_gap(own_length: f64, other_length: f64) -> f64 {
+    required_gap(own_length, other_length) + FOLLOW_BUFFER
+}
+
+/// Gap kept from the player, wider than the gap used between ambient aircraft.
+#[must_use]
+pub(crate) fn player_gap(own_length: f64, other_length: f64) -> f64 {
+    holding_gap(own_length, other_length) + PLAYER_BUFFER
 }
 
 /// Closest aircraft physically ahead on the taxiway.
@@ -15,7 +33,7 @@ pub(crate) struct Ahead {
     pub(crate) id: u32,
     /// Centre-to-centre gap in metres.
     pub(crate) gap: f64,
-    /// Gap needed at taxi speed.
+    /// Gap to hold behind this leader.
     pub(crate) required: f64,
     /// Leader ground speed in metres per second.
     pub(crate) speed: f64,
@@ -52,7 +70,11 @@ pub(crate) fn closest_ahead(
         };
         let other_length = openatc_core::traffic::profiles::aircraft(&other.aircraft)
             .map_or(40.0, |profile| profile.length);
-        let required = required_gap(own_length, other_length);
+        let required = if other.id == 0 {
+            player_gap(own_length, other_length)
+        } else {
+            holding_gap(own_length, other_length)
+        };
         let gap = openatc_core::arrival::distance_nm(
             [latitude, longitude],
             [other.latitude, other.longitude],
@@ -114,20 +136,17 @@ pub(crate) fn right_conflict(
 }
 
 /// Speed a follower may use behind the leader without closing the gap too quickly.
+///
+/// The closing speed is limited to what the braking rate can remove before the
+/// holding gap, so a follower never has to brake into the aircraft ahead.
 #[must_use]
-pub(crate) fn follow_speed(leader: Ahead, taxi_speed: f64) -> f64 {
-    let stop = leader.required * 0.55;
-    if leader.gap <= stop {
-        0.0
-    } else if leader.speed < 0.1 {
-        if leader.gap < leader.required {
-            0.0
-        } else {
-            f64::INFINITY
-        }
-    } else {
-        (leader.speed + (leader.gap - stop) * 0.4).min(taxi_speed)
+pub(crate) fn follow_speed(leader: Ahead, taxi_speed: f64, braking: f64) -> f64 {
+    if leader.gap <= leader.required {
+        return 0.0;
     }
+    let excess = leader.gap - leader.required;
+    let closing = (2.0 * braking.max(0.2) * excess).sqrt();
+    (leader.speed + closing).min(taxi_speed.max(0.0))
 }
 
 /// True when another ground target is physically ahead inside the protected gap.
@@ -233,6 +252,18 @@ mod tests {
     }
 
     #[test]
+    fn the_player_is_a_wider_leader_than_an_ambient_aircraft() {
+        let ambient = target(2, 0.0006, 90.0);
+        let player = target(0, 0.0006, 90.0);
+        let ambient = closest_ahead(0.0, 0.0, 90.0, 37.0, 1, &[ambient], |_| Some(150.0))
+            .expect("ambient leader");
+        let player = closest_ahead(0.0, 0.0, 90.0, 37.0, 1, &[player], |_| Some(150.0))
+            .expect("player leader");
+        assert!(ambient.required > required_gap(37.0, 37.0));
+        assert!(player.required > ambient.required);
+    }
+
+    #[test]
     fn a_route_leader_is_not_a_right_of_way_conflict() {
         assert!(!right_conflict(
             0.0,
@@ -258,26 +289,62 @@ mod tests {
 
     #[test]
     fn followers_keep_moving_behind_a_moving_taxi_leader() {
-        let required = required_gap(37.0, 37.0);
+        let required = holding_gap(37.0, 37.0);
         let leader = Ahead {
             id: 2,
-            gap: required + 10.0,
+            gap: required + 30.0,
             required,
             speed: 5.0,
         };
-        assert!(follow_speed(leader, 8.0) > 5.0);
+        assert!(follow_speed(leader, 8.0, 1.5) > 5.0);
         let close = Ahead {
-            gap: required * 0.7,
-            ..leader
-        };
-        let speed = follow_speed(close, 8.0);
-        assert!(speed > 0.0 && speed <= 8.0);
-        let stopped = Ahead {
-            speed: 0.0,
             gap: required - 1.0,
             ..leader
         };
-        assert_eq!(follow_speed(stopped, 8.0), 0.0);
+        assert_eq!(
+            follow_speed(close, 8.0, 1.5),
+            0.0,
+            "a follower inside the protected gap must stop"
+        );
+        let stopped = Ahead {
+            speed: 0.0,
+            gap: required,
+            ..leader
+        };
+        assert_eq!(follow_speed(stopped, 8.0, 1.5), 0.0);
+    }
+
+    #[test]
+    fn a_follower_brakes_into_a_stopped_leader_instead_of_charging_it() {
+        let required = holding_gap(37.0, 37.0);
+        let stopped = Ahead {
+            id: 2,
+            gap: required,
+            required,
+            speed: 0.0,
+        };
+        // Far enough to stop from taxi speed: no restriction.
+        let far = Ahead {
+            gap: required + 60.0,
+            ..stopped
+        };
+        assert_eq!(follow_speed(far, 11.0, 1.5), 11.0);
+        // Inside the stopping distance: the target falls with the remaining gap.
+        let near = Ahead {
+            gap: required + 10.0,
+            ..stopped
+        };
+        let speed = follow_speed(near, 11.0, 1.5);
+        assert!(speed > 0.0 && speed < 6.0, "{speed}");
+        assert!(follow_speed(near, 11.0, 3.0) > speed);
+    }
+
+    #[test]
+    fn the_player_keeps_a_wider_gap_than_ambient_traffic() {
+        let ambient = holding_gap(37.0, 37.0);
+        let player = player_gap(37.0, 37.0);
+        assert!(player > ambient);
+        assert!(required_gap(37.0, 37.0) < ambient);
     }
 
     #[test]

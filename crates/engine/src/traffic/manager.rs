@@ -29,10 +29,6 @@ const RUNWAY_EDGE_MARGIN: f64 = 25.0;
 const SEED_SPACING: f64 = 150.0;
 /// Space kept between the last queued departure and the runway hold.
 const HOLD_QUEUE_MARGIN: f64 = 60.0;
-/// Hard floor for two ground aircraft. Directional separation should keep them much
-/// farther apart; this catches a merge where neither aircraft sees the other ahead.
-const MIN_GROUND_SEPARATION: f64 = 25.0;
-
 /// Deterministic mixture used for the random GA share and weighted operator draw.
 fn mix(mut value: u64) -> u64 {
     value = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
@@ -756,30 +752,40 @@ impl TrafficManager {
                 };
                 (on_ground, aircraft.distance)
             };
-            // Simple physical follow: do not drive into an aircraft ahead on the ground.
-            let player_blocked =
-                traffic
-                    .iter()
-                    .find(|target| target.id == 0)
-                    .is_some_and(|player| {
-                        phases::ground::player_ahead_on_route(
-                            &self.aircraft[index].points,
-                            &self.aircraft[index].cumulative,
-                            self.aircraft[index].distance,
-                            &airport,
-                            player,
-                        )
-                    });
-            let (latitude, longitude, heading) = position_heading_at(
-                &self.aircraft[index].points,
-                &self.aircraft[index].cumulative,
-                distance,
-            );
             // A departure on its takeoff roll is separated by runway occupancy and wake
             // spacing, never by taxi car-following.
             let rolling = self.aircraft[index].takeoff
                 || (self.aircraft[index].kind == AmbientKind::Departure
                     && distance >= self.aircraft[index].runway_start - 2.0);
+            // Follow the player like any other aircraft ahead, including around a corner
+            // where the straight-line check cannot see it.
+            let own_length = self.aircraft[index].profile.length;
+            let player_leader = (on_ground && !rolling)
+                .then(|| traffic.iter().find(|target| target.id == 0))
+                .flatten()
+                .and_then(|player| {
+                    let gap = phases::ground::player_gap_ahead(
+                        &self.aircraft[index].points,
+                        &self.aircraft[index].cumulative,
+                        self.aircraft[index].distance,
+                        &airport,
+                        player,
+                        own_length,
+                    )?;
+                    let player_length = openatc_core::traffic::profiles::aircraft(&player.aircraft)
+                        .map_or(40.0, |profile| profile.length);
+                    Some(separation::Ahead {
+                        id: 0,
+                        gap,
+                        required: separation::player_gap(own_length, player_length),
+                        speed: player.ground_speed_knots.unwrap_or(0.0) * KNOTS_TO_MPS,
+                    })
+                });
+            let (latitude, longitude, heading) = position_heading_at(
+                &self.aircraft[index].points,
+                &self.aircraft[index].cumulative,
+                distance,
+            );
             // A merge can put two aircraft on the same point without either seeing the
             // other ahead. The lower-priority aircraft stops, and the winner ignores it
             // so the pair cannot deadlock.
@@ -805,7 +811,11 @@ impl TrafficManager {
                             [latitude, longitude],
                             [other_latitude, other_longitude],
                         ) * 1852.0;
-                        (gap < MIN_GROUND_SEPARATION).then_some((gap, other.id, other))
+                        let required = separation::required_gap(
+                            self.aircraft[index].profile.length,
+                            other.profile.length,
+                        );
+                        (gap < required).then_some((gap, other.id, other))
                     })
                     .min_by(|left, right| left.0.total_cmp(&right.0));
                 match closest {
@@ -848,7 +858,7 @@ impl TrafficManager {
                                     } else if own_route.is_empty() || other.route == own_route {
                                         Some(150.0)
                                     } else {
-                                        Some(60.0)
+                                        Some(90.0)
                                     }
                                 },
                             )
@@ -857,8 +867,15 @@ impl TrafficManager {
                 })
                 .flatten()
                 .filter(|leader| Some(leader.id) != overlap_ignore);
+            let ahead = player_leader
+                .filter(|player| ahead.is_none_or(|leader| player.gap < leader.gap))
+                .or(ahead);
             let follow_speed = ahead.map_or(f64::INFINITY, |leader| {
-                separation::follow_speed(leader, self.aircraft[index].taxi_knots)
+                separation::follow_speed(
+                    leader,
+                    self.aircraft[index].taxi_knots,
+                    self.aircraft[index].handling.braking_knots_sec.max(0.1) * KNOTS_TO_MPS,
+                )
             });
             let physical_blocked = follow_speed <= 0.01;
             let own_runway = self.aircraft[index].runway.clone();
@@ -1086,8 +1103,6 @@ impl TrafficManager {
                 Some(id)
             } else if physical_blocked {
                 ahead.map(|leader| leader.id)
-            } else if player_blocked {
-                Some(0)
             } else if let Some(id) = right_blocker {
                 Some(id)
             } else if runway_blocked {
@@ -1099,7 +1114,6 @@ impl TrafficManager {
             let flight_leader = climb_leader(&self.aircraft, index);
             let blocked = runway_blocked
                 || right_blocked
-                || player_blocked
                 || physical_blocked
                 || overlap_stop.is_some()
                 || hold_for_clearance;
@@ -4082,7 +4096,6 @@ mod phase_tests {
 
     #[test]
     fn ambient_stops_for_another_aircraft_in_the_same_hold_box() {
-        let airport = openatc_core::airport::demo_airport();
         let aircraft = ambient(AmbientKind::Departure, 0.0, 0.0, 900.0);
         let ahead = TrafficTarget {
             id: 2,
@@ -4128,24 +4141,30 @@ mod phase_tests {
             on_ground: true,
             ..Default::default()
         };
-        assert!(phases::ground::player_ahead_on_route(
+        let gap = phases::ground::player_gap_ahead(
             &aircraft.points,
             &aircraft.cumulative,
             aircraft.distance,
             &airport,
-            &ahead
-        ));
+            &ahead,
+            aircraft.profile.length,
+        );
+        assert!(gap.is_some_and(|gap| gap > 0.0));
         let behind = TrafficTarget {
             longitude: -0.0005,
             ..ahead
         };
-        assert!(!phases::ground::player_ahead_on_route(
-            &aircraft.points,
-            &aircraft.cumulative,
-            aircraft.distance,
-            &airport,
-            &behind
-        ));
+        assert!(
+            phases::ground::player_gap_ahead(
+                &aircraft.points,
+                &aircraft.cumulative,
+                aircraft.distance,
+                &airport,
+                &behind,
+                aircraft.profile.length,
+            )
+            .is_none()
+        );
     }
 
     #[test]

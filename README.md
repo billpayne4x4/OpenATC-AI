@@ -821,6 +821,7 @@ Copilot playback and acceptance are separate steps. Repeated preparation request
 - Gate departures are transient. They request IFR clearance from Delivery, then start and push back on Ground, then request taxi. They are not kept parked.
 - Ground hands a taxiing departure to Tower before it reaches the hold, so the hold itself is not the start of a handoff, ready call and clearance chain.
 - A taxi follower resumes when the aircraft ahead releases the shared taxiway cell. It still needs its own approved taxi scope and cannot bypass a readback or hold.
+- Ambient taxiing aircraft hold a length-aware gap that includes the distance needed to brake, and keep a wider gap from your aircraft than from each other.
 - A stopped aircraft whose current clearance is a runway crossing has that current crossing clearance reissued when the runway is clear. This prevents a lost crossing grant from holding the runway indefinitely.
 - Generated poses without a frame, flight plan or station assignment are removed on the next movement tick and release their resources.
 - The runway is fixed to the ATIS flow. Reciprocal runway ends are not selected for generated traffic just to improve the mix.

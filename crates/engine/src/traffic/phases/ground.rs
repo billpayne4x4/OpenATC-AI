@@ -59,17 +59,28 @@ fn corner_turn(points: &[Waypoint], index: usize) -> f64 {
     openatc_core::navigation::turn(first, second).abs()
 }
 
-/// Whether the player is ahead on a taxi route, or close in front of the aircraft.
-pub(crate) fn player_ahead_on_route(
+/// Distance along the taxi route to the player when the player is ahead on it.
+///
+/// The route projection catches a player around a corner that the straight-line
+/// follower check cannot see.
+pub(crate) fn player_gap_ahead(
     points: &[Waypoint],
     cumulative: &[f64],
     distance: f64,
     airport: &Airport,
     player: &TrafficTarget,
-) -> bool {
-    if !player.on_ground || !player.latitude.is_finite() || !player.longitude.is_finite() {
-        return false;
+    own_length: f64,
+) -> Option<f64> {
+    if !player.on_ground
+        || player.runway_occupancy == Some(true)
+        || !player.latitude.is_finite()
+        || !player.longitude.is_finite()
+    {
+        return None;
     }
+    let player_length = openatc_core::traffic::profiles::aircraft(&player.aircraft)
+        .map_or(40.0, |profile| profile.length);
+    let required = crate::traffic::separation::player_gap(own_length, player_length);
     let goal = openatc_core::airport::airport_point(airport, player.latitude, player.longitude);
     for (index, pair) in points.windows(2).enumerate() {
         let end = cumulative.get(index + 1).copied().unwrap_or(0.0);
@@ -89,46 +100,11 @@ pub(crate) fn player_ahead_on_route(
         }
         let across = ((goal.east - a.east) * dn - (goal.north - a.north) * dx).abs() / length;
         let range = cumulative[index] + along;
-        if range > distance + 2.0 && range - distance < 80.0 && across < 35.0 {
-            return true;
+        if range > distance + 2.0 && range - distance < required + 30.0 && across < 35.0 {
+            return Some(range - distance);
         }
     }
-    let (own_lat, own_lon, heading) = position_heading(points, cumulative, distance);
-    let own = openatc_core::airport::airport_point(airport, own_lat, own_lon);
-    let (east, north) = (goal.east - own.east, goal.north - own.north);
-    let gap = east.hypot(north);
-    let ahead = east * heading.to_radians().sin() + north * heading.to_radians().cos();
-    gap < 45.0 && ahead > -5.0
-}
-
-/// Position and heading at one distance along a taxi route.
-fn position_heading(points: &[Waypoint], cumulative: &[f64], distance: f64) -> (f64, f64, f64) {
-    let index = cumulative
-        .iter()
-        .position(|value| *value >= distance)
-        .unwrap_or(points.len().saturating_sub(1))
-        .max(1);
-    let Some(start) = points.get(index.saturating_sub(1)) else {
-        return (0.0, 0.0, 0.0);
-    };
-    let Some(end) = points.get(index) else {
-        return (start.latitude, start.longitude, 0.0);
-    };
-    let span = cumulative[index] - cumulative[index.saturating_sub(1)];
-    let fraction = if span > 0.0 {
-        ((distance - cumulative[index.saturating_sub(1)]) / span).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let heading = openatc_core::arrival::bearing(
-        [start.latitude, start.longitude],
-        [end.latitude, end.longitude],
-    );
-    (
-        start.latitude + (end.latitude - start.latitude) * fraction,
-        start.longitude + (end.longitude - start.longitude) * fraction,
-        heading,
-    )
+    None
 }
 
 #[cfg(test)]
