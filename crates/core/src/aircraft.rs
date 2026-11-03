@@ -18,7 +18,18 @@ pub enum ControlMode {
 }
 
 /// Coarse aircraft phase shared by pilot and traffic.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 #[serde(rename_all = "camelCase")]
 pub enum AircraftPhase {
     #[default]
@@ -227,7 +238,10 @@ mod tests {
             },
         };
         assert!(dummy.can_proceed_instantly());
-        assert_eq!(dummy.on_event(AircraftEvent::StartupComplete), AircraftOutcome::None);
+        assert_eq!(
+            dummy.on_event(AircraftEvent::StartupComplete),
+            AircraftOutcome::None
+        );
     }
 
     #[test]
