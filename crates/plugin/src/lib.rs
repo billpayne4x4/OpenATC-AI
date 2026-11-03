@@ -25,7 +25,7 @@ mod weather;
 mod window;
 
 use openatc_ui::interface::Interface;
-use openatc_core::ops::read_acf_specs;
+use openatc_core::ops::{merge_acf_specs_with_datarefs, read_acf_specs};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use xplane::{
@@ -181,6 +181,17 @@ fn update_panel(
         .as_ref()
         .map(|p| p.name.clone())
         .unwrap_or_else(|| "Standard simulator controls".to_owned());
+
+    // Extract dataref values before taking mutable borrow of interface
+    let (dataref_wingspan, dataref_length, dataref_mtow) = if let Some(refs) = &locked.refs {
+        let wingspan = refs.wingspan_meters_acf.as_ref().map(|f| f());
+        let length = refs.length_meters_acf.as_ref().map(|f| f());
+        let mtow = refs.max_takeoff_weight_kg.as_ref().map(|f| f());
+        (wingspan, length, mtow)
+    } else {
+        (None, None, None)
+    };
+
     let Some(interface) = locked.interface.as_mut() else {
         return;
     };
@@ -190,7 +201,9 @@ fn update_panel(
 
     // Read detailed ACF specs and update interface
     if let Ok(specs) = read_acf_specs(std::path::Path::new(acf_path)) {
-        interface.loaded_aircraft_specs = Some(specs);
+        // Merge with runtime dataref values if available
+        let merged_specs = openatc_core::ops::merge_acf_specs_with_datarefs(specs, dataref_wingspan, dataref_length, dataref_mtow);
+        interface.loaded_aircraft_specs = Some(merged_specs);
     }
     if spoken != locked.logged_role {
         locked.logged_role.clone_from(&spoken);

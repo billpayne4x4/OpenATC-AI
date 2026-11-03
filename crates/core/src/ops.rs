@@ -1053,6 +1053,32 @@ pub fn read_acf_specs(path: &std::path::Path) -> Result<AcfSpecs, String> {
     Ok(specs)
 }
 
+/// Merge runtime dataref values with ACF specs.
+/// Uses dataref values where ACF specs are missing or zero.
+pub fn merge_acf_specs_with_datarefs(
+    mut specs: AcfSpecs,
+    dataref_wingspan: Option<f64>,
+    dataref_length: Option<f64>,
+    dataref_mtow: Option<f64>,
+) -> AcfSpecs {
+    if let Some(ws) = dataref_wingspan {
+        if ws.is_finite() && ws > 0.0 && (specs.wingspan_meters.is_none() || specs.wingspan_meters.unwrap_or(0.0) <= 0.0) {
+            specs.wingspan_meters = Some(ws);
+        }
+    }
+    if let Some(len) = dataref_length {
+        if len.is_finite() && len > 0.0 && (specs.length_meters.is_none() || specs.length_meters.unwrap_or(0.0) <= 0.0) {
+            specs.length_meters = Some(len);
+        }
+    }
+    if let Some(mtow) = dataref_mtow {
+        if mtow.is_finite() && mtow > 0.0 && (specs.max_takeoff_weight_kg.is_none() || specs.max_takeoff_weight_kg.unwrap_or(0.0) <= 0.0) {
+            specs.max_takeoff_weight_kg = Some(mtow);
+        }
+    }
+    specs
+}
+
 fn parse_f64(s: &str) -> Option<f64> {
     s.trim().parse::<f64>().ok().filter(|v: &f64| v.is_finite() && *v > 0.0)
 }
