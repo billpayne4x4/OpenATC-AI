@@ -1222,15 +1222,17 @@ active departure runway, and give each aircraft a stand-to-runway-to-takeoff pro
 Aircraft hold short of the runway, contact Tower when the player is tuned to the
 frequency, receive line-up and takeoff clearances, and only then enter the runway.
 The departure queue is first-in, first-out: the lead aircraft gets takeoff clearance
-when the runway is clear, the next lines up as the leader starts its roll, and then
-waits for the runway and wake interval before taking off. The player is sequenced the
-same way, with line up and wait followed by takeoff clearance as the runway and wake
+when the runway is clear. A lined-up aircraft remains the queue leader until it starts
+its takeoff roll. The next aircraft waits at the hold until the rolling lead is clear,
+so only one aircraft occupies the runway at a time. The player is sequenced the same
+way, with line up and wait followed by takeoff clearance as the runway and wake
 interval clear. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
-does not use jet speeds. Straight taxi legs use the full taxi speed and slow only
-near a turn, so a long leg ending in a corner is not crawled at turn speed for its
-whole length; the line-up from the hold likewise keeps taxi speed until the final
-turn onto the runway. Ambient aircraft detect the player's position and yield
+does not use jet speeds. Taxi targets follow a braking curve into each corner and
+accelerate out at the aircraft's handling rates. A shared motion controller limits
+every speed change, so seeds, corner exit and phase changes do not snap the model.
+The line-up from the hold keeps taxi speed until the final turn onto the runway.
+Ambient aircraft detect the player's position and yield
 rather than taxiing through. Followers on the same taxi route keep a speed-controlled
 gap to the aircraft ahead instead of stopping and starting in a queue. Surface
 conflict warnings are limited to traffic crossing ahead: traffic behind, traffic
@@ -1248,12 +1250,14 @@ the player is still about 30 NM away. The hold point is derived from
 the painted hold-line geometry and set back on the approach side, and the aircraft
 stops there rather than at the nearest graph node. The takeoff run starts at the
 runway end nearest that hold, so the aircraft enters at the near threshold and rolls
-away from it. Takeoff accelerates at the handling acceleration rate to rotation
-speed, using a firmer rate only when the runway is shorter than the nominal roll,
-then climbs at the gradient implied by its published climb rate and climb speed.
-Climb speed is a nominal 55% of cruise speed, with approach and rotation speeds as
-the lower bound, so a jet does not climb at approach speed. A jet therefore climbs
-at a much higher vertical speed than a light aircraft while both use a comparable
+away from it. Takeoff accelerates smoothly at the handling acceleration rate to the
+aircraft's rotation speed, using a firmer rate only when the runway is shorter than
+the nominal roll. The rotation point follows the class takeoff roll, so a heavy
+aircraft uses more runway than a regional or light GA type. Vertical speed ramps to
+the type's published climb rate, and the path uses the gradient implied by that rate
+and climb speed. Climb speed is a nominal 55% of cruise speed, with approach and
+rotation speeds as the lower bound, so a jet does not climb at approach speed. A
+jet therefore climbs at a much higher vertical speed than a light aircraft while both use a comparable
 flight-path angle, instead of every type following a fixed three-degree line.
 A faster departure is not released immediately behind a much slower one. It waits
 at the hold or lines up and waits until the performance gap is safe, then climbs at

@@ -4,49 +4,38 @@ use openatc_core::airport::Airport;
 use openatc_core::state::TrafficTarget;
 use openatc_core::traffic::motion::Waypoint;
 
-/// Distance before a corner where the turn speed begins.
-const TURN_LOOKAHEAD_METERS: f64 = 40.0;
-/// Distance after a corner before accelerating back to taxi speed.
-const TURN_LOOKBEHIND_METERS: f64 = 15.0;
-
 /// Taxi speed near the current position.
 ///
-/// A long leg ending in a turn must not be driven at turn speed for its whole
-/// length. The aircraft keeps taxi speed until it is close to the corner, slows
-/// through the corner itself, and accelerates once clear of it.
+/// The target follows a braking curve into each corner and accelerates out of it.
+/// The motion controller applies the actual speed change, so the target itself does
+/// not need a fixed look-ahead distance.
 pub(crate) fn taxi_speed(
     points: &[Waypoint],
     cumulative: &[f64],
     distance: f64,
     straight: f64,
     turn: f64,
+    braking: f64,
 ) -> f64 {
     if points.len() < 2 || cumulative.len() != points.len() {
         return straight;
     }
-    let index = cumulative
-        .iter()
-        .position(|value| *value >= distance)
-        .unwrap_or(points.len().saturating_sub(1))
-        .max(1);
-    if index >= 2
-        && distance - cumulative[index - 1] <= TURN_LOOKBEHIND_METERS
-        && corner_turn(points, index - 1) > 15.0
-    {
-        return turn;
-    }
-    for corner in index..points.len().saturating_sub(1) {
-        let Some(ahead) = cumulative.get(corner) else {
-            break;
+    let straight = straight.max(0.0);
+    let turn = turn.clamp(0.0, straight);
+    let braking = braking.max(0.02);
+    let mut target = straight;
+    for corner in 1..points.len().saturating_sub(1) {
+        if corner_turn(points, corner) <= 15.0 {
+            continue;
+        }
+        let Some(at) = cumulative.get(corner) else {
+            continue;
         };
-        if ahead - distance > TURN_LOOKAHEAD_METERS {
-            break;
-        }
-        if corner_turn(points, corner) > 15.0 {
-            return turn;
-        }
+        let distance_to_corner = (at - distance).abs();
+        let allowed = (turn * turn + 2.0 * braking * distance_to_corner).sqrt();
+        target = target.min(allowed.max(turn));
     }
-    straight
+    target
 }
 
 fn corner_turn(points: &[Waypoint], index: usize) -> f64 {
@@ -181,20 +170,34 @@ mod tests {
         let straight = 11.3;
         let turn = 6.2;
         let corner = cumulative[1];
+        let braking = 1.5;
         assert_eq!(
-            taxi_speed(&points, &cumulative, corner - 200.0, straight, turn),
+            taxi_speed(
+                &points,
+                &cumulative,
+                corner - 200.0,
+                straight,
+                turn,
+                braking
+            ),
             straight
         );
-        assert_eq!(
-            taxi_speed(&points, &cumulative, corner - 20.0, straight, turn),
-            turn
+        let approaching = taxi_speed(&points, &cumulative, corner - 20.0, straight, turn, braking);
+        assert!(approaching > turn && approaching < straight);
+        assert!(
+            (taxi_speed(&points, &cumulative, corner, straight, turn, braking) - turn).abs() < 0.01
         );
+        let leaving = taxi_speed(&points, &cumulative, corner + 20.0, straight, turn, braking);
+        assert!(leaving > turn && leaving <= straight);
         assert_eq!(
-            taxi_speed(&points, &cumulative, corner + 5.0, straight, turn),
-            turn
-        );
-        assert_eq!(
-            taxi_speed(&points, &cumulative, corner + 30.0, straight, turn),
+            taxi_speed(
+                &points,
+                &cumulative,
+                corner + 200.0,
+                straight,
+                turn,
+                braking
+            ),
             straight
         );
     }

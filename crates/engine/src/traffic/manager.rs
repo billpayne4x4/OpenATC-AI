@@ -19,6 +19,8 @@ use std::time::{Duration, Instant};
 #[cfg(test)]
 const TAXI_STRAIGHT_METERS_PER_SECOND: f64 = 25.0 * 0.514_444;
 
+const KNOTS_TO_MPS: f64 = 0.514_444;
+
 /// Minimum distance from a runway-flagged graph edge for spawn, hold and seed points.
 const RUNWAY_EDGE_MARGIN: f64 = 25.0;
 /// Preferred spacing between seeded departures along the surface route.
@@ -381,6 +383,7 @@ struct AmbientAircraft {
     hold_since: Option<Instant>,
     requested: bool,
     speed: f64,
+    motion: crate::traffic::motion::MotionController,
     blocked: bool,
     /// Aircraft or player currently causing the block, when one exists.
     blocker: Option<u32>,
@@ -969,18 +972,14 @@ impl TrafficManager {
                         self.aircraft[index].takeoff = true;
                     }
                     TakeoffDecision::LineUpAndWait => {
-                        self.aircraft[index].cleared = true;
+                        // One aircraft owns the runway at a time. A follower waits at
+                        // the hold until the rolling lead is clear.
+                        if rolling_lead.is_none() && !line_up_ahead {
+                            self.aircraft[index].cleared = true;
+                        }
                     }
                     TakeoffDecision::Hold(_) => {}
                 }
-            } else if hold_for_clearance
-                && !is_lead
-                && rolling_lead.is_some()
-                && !line_up_ahead
-                && !behind_player
-                && decision == TakeoffDecision::LineUpAndWait
-            {
-                self.aircraft[index].cleared = true;
             }
             // An aircraft behind the player cannot keep a line-up clearance. It has not
             // entered the runway, so the queue can correct it without a radio call.
@@ -1052,77 +1051,97 @@ impl TrafficManager {
             aircraft.blocked = blocked;
             aircraft.blocker = blocker;
             aircraft.awaiting_clearance = hold_for_clearance;
+            let braking = aircraft.handling.braking_knots_sec.max(0.1) * KNOTS_TO_MPS;
+            let acceleration = aircraft.handling.acceleration_knots_sec.max(0.1) * KNOTS_TO_MPS;
             let taxi = phases::ground::taxi_speed(
                 &aircraft.points,
                 &aircraft.cumulative,
                 aircraft.distance,
                 aircraft.taxi_knots,
                 aircraft.taxi_turn_knots,
+                braking,
             );
-            aircraft.speed = if blocked {
-                0.0
+            let (mut target_speed, target_acceleration) = if blocked {
+                (0.0, braking)
             } else if aircraft.kind == AmbientKind::Departure
                 && aircraft.distance >= aircraft.runway_start
                 && aircraft.distance < aircraft.ground_end
             {
                 if aircraft.takeoff {
-                    phases::takeoff::roll_speed(
-                        &aircraft.handling,
-                        aircraft.distance,
-                        aircraft.runway_start,
-                        aircraft.ground_end,
-                        taxi,
+                    let rotation = aircraft.handling.rotation_knots * KNOTS_TO_MPS;
+                    let roll = (aircraft.ground_end - aircraft.runway_start).max(1.0);
+                    let required = ((rotation * rotation - taxi * taxi).max(0.0) / (2.0 * roll))
+                        .max(acceleration);
+                    (
+                        phases::takeoff::roll_speed(
+                            &aircraft.handling,
+                            aircraft.distance,
+                            aircraft.runway_start,
+                            aircraft.ground_end,
+                            taxi,
+                        ),
+                        required,
                     )
                 } else {
-                    0.0
+                    (0.0, braking)
                 }
             } else if aircraft.kind == AmbientKind::Departure
                 && aircraft.distance < aircraft.runway_start
             {
-                if aircraft.cleared || aircraft.distance < aircraft.hold_distance {
-                    taxi
+                if aircraft.cleared {
+                    (taxi, acceleration)
                 } else {
-                    0.0
+                    let remaining = (aircraft.hold_distance - aircraft.distance).max(0.0);
+                    ((2.0 * braking * remaining).sqrt().min(taxi), acceleration)
                 }
             } else if aircraft.kind == AmbientKind::Departure {
-                aircraft.climb_speed
+                (aircraft.climb_speed, acceleration)
             } else if aircraft.kind == AmbientKind::Arrival
                 && aircraft.distance < aircraft.ground_start
             {
                 // Final reduction from approach speed to touchdown speed.
                 let remaining = (aircraft.ground_start - aircraft.distance).max(0.0);
                 let span = aircraft.ground_start.max(1.0);
-                aircraft.approach_speed
-                    - (aircraft.approach_speed - aircraft.touchdown_speed)
-                        * (1.0 - remaining / span)
+                (
+                    aircraft.approach_speed
+                        - (aircraft.approach_speed - aircraft.touchdown_speed)
+                            * (1.0 - remaining / span),
+                    braking,
+                )
             } else if aircraft.kind == AmbientKind::Arrival
                 && aircraft.distance < aircraft.runway_end
             {
-                phases::landing::rollout_speed(
-                    &aircraft.handling,
-                    aircraft.distance,
-                    aircraft.ground_start,
-                    aircraft.runway_end,
-                    taxi,
-                    aircraft.touchdown_speed,
+                (
+                    phases::landing::rollout_speed(
+                        &aircraft.handling,
+                        aircraft.distance,
+                        aircraft.ground_start,
+                        aircraft.runway_end,
+                        taxi,
+                        aircraft.touchdown_speed,
+                    ),
+                    braking,
                 )
             } else {
-                taxi
+                (taxi, acceleration)
             };
             if let Some((leader_progress, leader_speed)) = flight_leader {
                 let gap = leader_progress - own_progress;
                 if gap < 3.0 * 1_852.0 {
-                    aircraft.speed = aircraft.speed.min(leader_speed);
+                    target_speed = target_speed.min(leader_speed);
                     if gap < 1.5 * 1_852.0 {
-                        aircraft.speed *= (gap / (1.5 * 1_852.0)).clamp(0.35, 1.0);
+                        target_speed *= (gap / (1.5 * 1_852.0)).clamp(0.35, 1.0);
                     }
                     // Never command an airborne aircraft below its safe climb speed.
-                    aircraft.speed = aircraft.speed.max(aircraft.minimum_climb_speed);
+                    target_speed = target_speed.max(aircraft.minimum_climb_speed);
                 }
             }
-            if aircraft.speed > follow_speed {
-                aircraft.speed = follow_speed;
+            if target_speed > follow_speed {
+                target_speed = follow_speed;
             }
+            aircraft.speed = aircraft
+                .motion
+                .update(dt, target_speed, target_acceleration, braking);
             let heading_before =
                 position_heading_at(&aircraft.points, &aircraft.cumulative, aircraft.distance).2;
             aircraft.distance += aircraft.speed * dt;
@@ -1134,16 +1153,20 @@ impl TrafficManager {
                 0.0
             };
             let stage = aircraft.stage();
+            let target_vertical = match stage {
+                Stage::Climb => aircraft.climb_fpm,
+                Stage::Approach => -aircraft.descent_fpm,
+                _ => 0.0,
+            };
+            let vertical_fpm = aircraft
+                .motion
+                .update_vertical(dt, target_vertical, 1_200.0);
             aircraft.animation.advance(
                 animation::Input {
                     stage,
                     knots: aircraft.speed * 1.943_844,
                     turn_degrees_sec: turn_rate,
-                    vertical_fpm: match stage {
-                        Stage::Climb => aircraft.climb_fpm,
-                        Stage::Approach => -aircraft.descent_fpm,
-                        _ => 0.0,
-                    },
+                    vertical_fpm,
                     engines_running: true,
                     fixed_gear: aircraft.profile.fixed_gear,
                     landing_lights: stage.landing_lights(),
@@ -1326,6 +1349,14 @@ impl TrafficManager {
             .generated_traffic
             .retain(|frame| !ambient_ids.contains(&frame.target.id));
         state.session.generated_traffic.extend(frames);
+        if let Some(time) = state
+            .session
+            .telemetry
+            .simulation_seconds
+            .filter(|time| time.is_finite())
+        {
+            state.session.generated_traffic_clock = Some((state.session_generation, time));
+        }
         state
             .session
             .generated_traffic_debug
@@ -1769,6 +1800,18 @@ impl TrafficManager {
             let approach_speed = phases::approach::speed(&identity.profile);
             let touchdown_speed = phases::landing::touchdown_speed(&identity.profile);
             let descent_fpm = identity.profile.descent_fpm;
+            let initial_speed = if kind == AmbientKind::Arrival {
+                approach_speed
+            } else {
+                phases::ground::taxi_speed(
+                    &points,
+                    &cumulative,
+                    distance,
+                    taxi_knots,
+                    taxi_turn_knots,
+                    handling.braking_knots_sec.max(0.1) * KNOTS_TO_MPS,
+                )
+            };
             let callsign = identity.callsign.clone();
             self.aircraft.push(AmbientAircraft {
                 id: 0x00e0_0000 + self.next_id,
@@ -1809,11 +1852,12 @@ impl TrafficManager {
                 approach_speed,
                 touchdown_speed,
                 distance,
+                motion: crate::traffic::motion::MotionController::new(initial_speed, 0.0),
                 cleared: false,
                 takeoff: false,
                 hold_since: None,
                 requested: false,
-                speed: taxi_knots,
+                speed: initial_speed,
                 blocked: false,
                 blocker: None,
                 awaiting_clearance: false,
@@ -2560,7 +2604,7 @@ fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
         .iter()
         .filter(|aircraft| {
             aircraft.kind == AmbientKind::Departure
-                && !aircraft.cleared
+                && !aircraft.takeoff
                 && aircraft.distance >= aircraft.hold_distance
         })
         .min_by(|left, right| {
@@ -2883,6 +2927,10 @@ mod phase_tests {
             approach_speed: 75.0,
             touchdown_speed: 70.0,
             distance,
+            motion: crate::traffic::motion::MotionController::new(
+                TAXI_STRAIGHT_METERS_PER_SECOND,
+                0.0,
+            ),
             cleared: true,
             takeoff: false,
             hold_since: None,
@@ -2970,11 +3018,16 @@ mod phase_tests {
     #[test]
     fn ambient_frames_are_published_when_advancement_cannot_run() {
         let mut state = crate::test_state();
+        state.session.telemetry.simulation_seconds = Some(12.0);
         let mut manager = TrafficManager {
             aircraft: vec![ambient(AmbientKind::Departure, 100.0, 0.0, 1_000.0)],
             ..Default::default()
         };
         manager.tick(&mut state);
+        assert_eq!(
+            state.session.generated_traffic_clock,
+            Some((state.session_generation, 12.0))
+        );
         assert!(
             state
                 .session
@@ -3718,7 +3771,82 @@ mod phase_tests {
         next.distance = 600.0;
         next.cleared = false;
         next.hold_since = Some(later);
-        assert_eq!(queue_leader(&[cleared, next]), Some(3));
+        assert_eq!(
+            queue_leader(&[cleared, next]),
+            Some(9),
+            "a lined-up aircraft remains the queue leader until it starts to roll"
+        );
+        let mut rolling = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        rolling.id = 9;
+        rolling.hold_distance = 600.0;
+        rolling.distance = 600.0;
+        rolling.cleared = true;
+        rolling.takeoff = true;
+        let mut next = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        next.id = 3;
+        next.hold_distance = 600.0;
+        next.distance = 600.0;
+        next.hold_since = Some(later);
+        assert_eq!(queue_leader(&[rolling, next]), Some(3));
+    }
+
+    #[test]
+    fn only_one_ambient_departure_holds_a_runway_clearance() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.02;
+        state.session.telemetry.longitude = 0.02;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            movement_started: true,
+            ..Default::default()
+        };
+        for (id, hold_since) in [
+            (1, Instant::now() - Duration::from_secs(30)),
+            (2, Instant::now() - Duration::from_secs(20)),
+            (3, Instant::now() - Duration::from_secs(10)),
+        ] {
+            let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 2_000.0);
+            departure.id = id;
+            departure.airport = "DEMO".into();
+            departure.runway = "09".into();
+            departure.hold_distance = 600.0;
+            departure.distance = 600.0;
+            departure.runway_start = 1_000.0;
+            departure.runway_end = 2_000.0;
+            departure.hold_since = Some(hold_since);
+            departure.frequency_khz = None;
+            departure.cleared = false;
+            departure.takeoff = false;
+            manager.aircraft.push(departure);
+        }
+        manager.tick(&mut state);
+        assert_eq!(
+            manager
+                .aircraft
+                .iter()
+                .filter(|aircraft| aircraft.cleared)
+                .count(),
+            1,
+            "only the queue leader may hold a runway clearance"
+        );
+        for _ in 0..5 {
+            manager.tick(&mut state);
+            assert!(
+                manager
+                    .aircraft
+                    .iter()
+                    .filter(|aircraft| aircraft.cleared)
+                    .count()
+                    <= 1,
+                "a follower must not line up behind a cleared departure"
+            );
+        }
     }
 
     #[test]
