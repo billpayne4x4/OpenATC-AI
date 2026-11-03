@@ -355,10 +355,28 @@ pub(crate) fn pilot_voice_for_callsign(state: &mut EngineState, callsign: &str) 
     voice
 }
 
-pub(crate) fn ready(state: &EngineState) -> bool {
+/// Operational readiness for a departure clearance. Radio chatter and
+/// information-only calls do not hold the takeoff sequence; an outstanding
+/// readback does.
+pub(crate) fn departure_ready(state: &EngineState) -> bool {
+    radio_ready(state)
+        && state
+            .session
+            .transcript
+            .iter()
+            .rev()
+            .find(|entry| entry.is_controller_instruction())
+            .is_none_or(|entry| entry.pilot_reply.is_empty())
+}
+
+fn radio_ready(state: &EngineState) -> bool {
     !state.session.telemetry.paused
         && state.session.telemetry.radio_power
         && !state.session.telemetry.radio_busy
+}
+
+pub(crate) fn ready(state: &EngineState) -> bool {
+    radio_ready(state)
         && !state
             .session
             .telemetry
@@ -1002,6 +1020,46 @@ mod tests {
         assert_ne!(first, third);
         assert_eq!(pilot_voice_for_callsign(&mut state, "ONE"), first);
         assert_eq!(pilot_voice_for_callsign(&mut state, "FOUR"), first);
+    }
+
+    #[test]
+    fn departure_readiness_ignores_chat_and_information_only_calls() {
+        let mut state = crate::test_state();
+        state.session.telemetry.radio_power = true;
+        state.session.telemetry.radio_busy = false;
+        let tag = openatc_core::state::SpeechTag::default();
+        openatc_core::apply::add_transmission(
+            &mut state.session,
+            "ATC",
+            "Runway 04R, line up and wait.",
+            &tag,
+        );
+        openatc_core::apply::add_transmission(
+            &mut state.session,
+            "ATC",
+            "Caution wake turbulence.",
+            &tag,
+        );
+        if let Some(entry) = state.session.transcript.last_mut() {
+            entry.information_only = true;
+            entry.pilot_reply = "Caution wake turbulence.".into();
+        }
+        openatc_core::apply::add_transmission(
+            &mut state.session,
+            "COPILOT",
+            "We are all set for departure.",
+            &tag,
+        );
+        assert!(departure_ready(&state));
+        if let Some(entry) = state
+            .session
+            .transcript
+            .iter_mut()
+            .find(|entry| entry.speaker == "ATC" && !entry.information_only)
+        {
+            entry.pilot_reply = "Line up and wait.".into();
+        }
+        assert!(!departure_ready(&state));
     }
 
     fn airport() -> Airport {
