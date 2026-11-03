@@ -169,11 +169,9 @@ pub fn landing_blocked(
         return Some("holding_standby");
     };
     if wake::supported(&airport.icao) && own.0 < 0.0 {
-        for target in targets
-            .iter()
-            .take(126)
-            .filter(|t| !t.on_ground && !crate::holding::on_other_parallel_runway(airport, runway, t))
-        {
+        for target in targets.iter().take(126).filter(|t| {
+            !t.on_ground && !crate::holding::on_other_parallel_runway(airport, runway, t)
+        }) {
             let Some(lead_runway) = wake::approach_runway(airport, runway, target) else {
                 continue;
             };
@@ -311,7 +309,8 @@ pub fn taxi_conflict<'a>(airport: &Airport, telemetry: &'a Telemetry) -> Option<
                 .ground_track_degrees
                 .unwrap_or(telemetry.heading_degrees);
             let across = e * heading.cos() - n * heading.sin();
-            let same_direction = ((target.track_degrees - own_track + 180.0).rem_euclid(360.0) - 180.0).abs() < 45.0;
+            let same_direction =
+                ((target.track_degrees - own_track + 180.0).rem_euclid(360.0) - 180.0).abs() < 45.0;
             // Traffic ahead on the same route is a follow, not a collision: do not issue
             // a hold for it. Use track alignment when available, and fall back to a narrow
             // corridor ahead so noisy track data cannot make a follower stop.
@@ -361,7 +360,13 @@ pub fn ahead_on_same_taxi_route(
             let clamped = along.clamp(0.0, length);
             let score = (along - clamped).abs() + across;
             if best.is_none_or(|(_, _, _, _, best_score)| score < best_score) {
-                best = Some((index, clamped, across, ux.atan2(un).to_degrees().rem_euclid(360.0), score));
+                best = Some((
+                    index,
+                    clamped,
+                    across,
+                    ux.atan2(un).to_degrees().rem_euclid(360.0),
+                    score,
+                ));
             }
         }
         best.map(|(index, along, across, heading, _)| (index, along, across, heading))
@@ -382,9 +387,8 @@ pub fn ahead_on_same_taxi_route(
     if gap > 150.0 {
         return false;
     }
-    let same_direction = ((target.track_degrees - route_heading + 180.0).rem_euclid(360.0) - 180.0)
-        .abs()
-        < 45.0;
+    let same_direction =
+        ((target.track_degrees - route_heading + 180.0).rem_euclid(360.0) - 180.0).abs() < 45.0;
     same_direction
 }
 

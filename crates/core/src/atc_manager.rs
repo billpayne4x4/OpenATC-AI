@@ -13,7 +13,9 @@ use std::sync::Arc;
 pub const PILOT_ID: u32 = 0;
 
 /// Distinguishes the player's aircraft from simulated traffic without downcasting.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AircraftKind {
     /// The player's own aircraft.
