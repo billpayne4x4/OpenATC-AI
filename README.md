@@ -815,7 +815,7 @@ Copilot playback and acceptance are separate steps. Repeated preparation request
 ### Traffic lifecycle
 
 - **Traffic lifecycle** in Traffic settings controls how many aircraft are moving on the ground and how long an airport stays active after you leave.
-- **Taxiing aircraft** sets a minimum and maximum, 4 and 6 by default. When traffic is full the engine rolls one target in that range for the session. Pushback and taxi-out count; the runway queue does not.
+- **Taxiing aircraft** sets a minimum and maximum, 4 and 6 by default. When traffic is full the engine rolls one target in that range and keeps it for the airport and settings. Seeding tries valid taxiway nodes until the target is met; a node with no surface route is skipped rather than reducing the density. Pushback and taxi-out count; the runway queue does not. Cargo weight participates in the ambient mix alongside airline, regional and GA traffic.
 - **Airliner, turboprop and light-aircraft circuit radii** default to 30, 20 and 10 NM. Inside the radius, ground, approach and departing traffic stays alive. Beyond it, those slots are recycled into airborne traffic around you.
 - Landed arrivals taxi to their stand, pause briefly, then despawn and recycle the slot to another arrival on final. Generated traffic does not leave parked rows; static scenery provides those.
 - Gate departures are transient. They request IFR clearance from Delivery, then start and push back on Ground, then request taxi. They are not kept parked.

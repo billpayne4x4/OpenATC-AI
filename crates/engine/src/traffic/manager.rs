@@ -154,6 +154,7 @@ fn airline_candidates(
     use_hub: bool,
     airline_weight: u64,
     regional_weight: u64,
+    cargo_weight: u64,
 ) -> Vec<(u64, AmbientCandidate)> {
     let hub = use_hub.then(|| profiles.hubs.get(airport)).flatten();
     let mut candidates = Vec::new();
@@ -161,6 +162,7 @@ fn airline_candidates(
         let category_weight = match airline.category {
             Category::Airline => airline_weight,
             Category::Regional => regional_weight,
+            Category::Cargo => cargo_weight,
             _ => continue,
         };
         if category_weight == 0 {
@@ -280,6 +282,7 @@ fn ambient_identity(
     player: &str,
     airline_weight: u64,
     regional_weight: u64,
+    cargo_weight: u64,
 ) -> Option<AmbientCandidate> {
     let mut candidates = if ga {
         ga_candidates(profiles, models, airport, runway_meters, seed, used, player)
@@ -298,6 +301,7 @@ fn ambient_identity(
             true,
             airline_weight,
             regional_weight,
+            cargo_weight,
         );
     }
     if candidates.is_empty() && profiles.hubs.get(airport).is_none() {
@@ -312,6 +316,7 @@ fn ambient_identity(
             false,
             airline_weight,
             regional_weight,
+            cargo_weight,
         );
     }
     pick_weighted(&candidates, seed)
@@ -395,6 +400,18 @@ struct AmbientAircraft {
     frequency_khz: Option<i32>,
 }
 
+/// Pick a stable density target for one airport and traffic-settings key.
+fn density_target(seed: u64, key: &str, minimum: usize, maximum: usize) -> usize {
+    let span = maximum.saturating_sub(minimum) + 1;
+    let mut mixed = seed;
+    for byte in key.bytes() {
+        mixed = mixed
+            .wrapping_mul(1_099_511_628_211)
+            .wrapping_add(u64::from(byte));
+    }
+    minimum + (mix(mixed) % span as u64) as usize
+}
+
 /// Owns the ambient airport traffic. Not part of `generated::Runtime`.
 #[derive(Default)]
 pub struct TrafficManager {
@@ -404,6 +421,12 @@ pub struct TrafficManager {
     next_id: u32,
     /// Ambient frames currently present in the published traffic set.
     published: BTreeSet<u32>,
+    /// Settings and runway that selected the current density target.
+    density_key: String,
+    /// Stable ambient ground target for the current airport and traffic settings.
+    density_target: usize,
+    /// Nodes with no usable surface route for a given aircraft size.
+    rejected_spawn_nodes: BTreeSet<(char, i64)>,
     attempts: u32,
     rejected_route: u32,
     rejected_pavement: u32,
@@ -543,6 +566,9 @@ impl TrafficManager {
             self.movement_started = false;
             self.last_spawn = None;
             self.active_airport.clear();
+            self.density_key.clear();
+            self.density_target = 0;
+            self.rejected_spawn_nodes.clear();
         }
         let Some(models) = self.models.clone() else {
             return;
@@ -578,6 +604,9 @@ impl TrafficManager {
             self.movement_started = false;
             self.last_spawn = None;
             self.active_airport.clone_from(&airport.icao);
+            self.density_key.clear();
+            self.density_target = 0;
+            self.rejected_spawn_nodes.clear();
         }
         if telemetry.on_ground && telemetry.ground_speed_knots > 1.0 {
             self.movement_started = true;
@@ -630,13 +659,29 @@ impl TrafficManager {
                 ..Default::default()
             });
         }
-        let target = usize::from(
-            state
-                .settings
-                .traffic_taxi_max
-                .max(state.settings.traffic_taxi_min),
-        )
-        .clamp(2, 16);
+        let minimum = usize::from(state.settings.traffic_taxi_min).min(16);
+        let maximum = usize::from(state.settings.traffic_taxi_max)
+            .min(16)
+            .max(minimum);
+        let density_key = format!(
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            airport.icao,
+            state.session.plan.runway,
+            state.session.plan.arrival_runway,
+            minimum,
+            maximum,
+            state.settings.airline_traffic,
+            state.settings.regional_traffic,
+            state.settings.cargo_traffic,
+            state.settings.ga_traffic
+        );
+        if self.density_key != density_key {
+            self.density_key.clone_from(&density_key);
+            self.density_target =
+                density_target(state.traffic_seed, &density_key, minimum, maximum);
+            self.rejected_spawn_nodes.clear();
+        }
+        let target = self.density_target;
         let now = Instant::now();
         let missing = target.saturating_sub(self.aircraft.len());
         if missing > 0
@@ -1509,6 +1554,7 @@ impl TrafficManager {
         );
         let mix_total = u64::from(state.settings.airline_traffic)
             + u64::from(state.settings.regional_traffic)
+            + u64::from(state.settings.cargo_traffic)
             + u64::from(state.settings.ga_traffic);
         let ga_percent = if mix_total == 0 {
             0
@@ -1614,6 +1660,7 @@ impl TrafficManager {
                     &player,
                     u64::from(state.settings.airline_traffic),
                     u64::from(state.settings.regional_traffic),
+                    u64::from(state.settings.cargo_traffic),
                 )
             });
             let Some(identity) = identity else {
@@ -1628,11 +1675,12 @@ impl TrafficManager {
                 airport,
                 size,
                 &used_nodes,
+                &self.rejected_spawn_nodes,
                 &occupied,
                 kind == AmbientKind::Arrival,
                 state.traffic_seed ^ u64::from(self.next_id),
             ) else {
-                continue;
+                break;
             };
             let handling_kind = identity.profile.handling.unwrap_or(Kind::Jet);
             let Some(handling) = state
@@ -1658,6 +1706,7 @@ impl TrafficManager {
             ) else {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("no taxi graph route from node {}", node.id);
+                self.rejected_spawn_nodes.insert((size, node.id));
                 continue;
             };
             let stand_waypoint = Waypoint {
@@ -1691,6 +1740,7 @@ impl TrafficManager {
             else {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("path build failed for node {}", node.id);
+                self.rejected_spawn_nodes.insert((size, node.id));
                 continue;
             };
             let cumulative = cumulative_distances(&points);
@@ -1975,6 +2025,7 @@ fn spawn_node<'a>(
     airport: &'a Airport,
     size: char,
     used: &std::collections::BTreeSet<i64>,
+    rejected: &BTreeSet<(char, i64)>,
     blocked: &[Point],
     arrival: bool,
     seed: u64,
@@ -1996,6 +2047,7 @@ fn spawn_node<'a>(
         .iter()
         .filter(|node| {
             !used.contains(&node.id)
+                && !rejected.contains(&(size, node.id))
                 && !openatc_core::airport::within_runway(airport, &node.point)
                 && openatc_core::airport::on_non_runway_taxiway(airport, &node.point, 8.0)
                 && openatc_core::airport::runway_edge_distance(airport, &node.point)
@@ -2743,7 +2795,7 @@ mod phase_tests {
         let chosen: Vec<_> = (0..24)
             .filter_map(|seed| {
                 ambient_identity(
-                    &profiles, &models, "LFMN", 2500.0, false, seed, &used, "C-GTLT", 8, 4,
+                    &profiles, &models, "LFMN", 2500.0, false, seed, &used, "C-GTLT", 8, 4, 0,
                 )
             })
             .collect();
@@ -2772,9 +2824,38 @@ mod phase_tests {
                 "C-GTLT",
                 8,
                 4,
+                0,
             )
             .is_none(),
             "an unrelated paint must not be used as a fallback"
+        );
+    }
+
+    #[test]
+    fn cargo_density_reaches_the_ambient_mix() {
+        let profiles = Profiles::builtin().expect("bundled profiles");
+        let models = Catalogue {
+            models: vec![fake_model("fdx-b752", "B752", "FDX")],
+            warnings: Vec::new(),
+        };
+        let candidates = airline_candidates(
+            &profiles,
+            &models,
+            "KJFK",
+            3_000.0,
+            1,
+            &BTreeSet::new(),
+            "TEST",
+            false,
+            0,
+            0,
+            100,
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|(_, candidate)| candidate.callsign.starts_with("FDX")),
+            "cargo should contribute ambient aircraft when its weight is set"
         );
     }
 
@@ -2792,7 +2873,7 @@ mod phase_tests {
         let chosen: Vec<_> = (0..24)
             .filter_map(|seed| {
                 ambient_identity(
-                    &profiles, &models, "LFMN", 2500.0, true, seed, &used, "C-GTLT", 8, 4,
+                    &profiles, &models, "LFMN", 2500.0, true, seed, &used, "C-GTLT", 8, 4, 0,
                 )
             })
             .collect();
@@ -2841,6 +2922,7 @@ mod phase_tests {
             "C-GTLT",
             8,
             4,
+            0,
         )
         .expect("regional turboprop");
         assert_eq!(chosen.aircraft, "AT72");
@@ -2857,6 +2939,7 @@ mod phase_tests {
                 &BTreeSet::new(),
                 "C-GTLT",
                 8,
+                0,
                 0,
             )
             .is_none(),
@@ -3409,8 +3492,16 @@ mod phase_tests {
             ],
             ..Default::default()
         };
-        let node = spawn_node(&airport, 'C', &BTreeSet::new(), &[], false, 7)
-            .expect("a non-runway taxi node");
+        let node = spawn_node(
+            &airport,
+            'C',
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &[],
+            false,
+            7,
+        )
+        .expect("a non-runway taxi node");
         assert_ne!(node.id, 1, "a node on the runway edge must be rejected");
         assert!(openatc_core::airport::on_non_runway_taxiway(
             &airport,
@@ -3788,6 +3879,53 @@ mod phase_tests {
         next.distance = 600.0;
         next.hold_since = Some(later);
         assert_eq!(queue_leader(&[rolling, next]), Some(3));
+    }
+
+    #[test]
+    fn spawn_node_skips_nodes_without_a_surface_route() {
+        let airport = openatc_core::airport::demo_airport();
+        let first = spawn_node(
+            &airport,
+            'C',
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+            &[],
+            false,
+            7,
+        )
+        .expect("initial taxi node");
+        let rejected = BTreeSet::from([('C', first.id)]);
+        let next = spawn_node(&airport, 'C', &BTreeSet::new(), &rejected, &[], false, 7);
+        assert_ne!(next.map(|node| node.id), Some(first.id));
+    }
+
+    #[test]
+    fn density_target_follows_the_traffic_settings() {
+        let mut state = crate::test_state();
+        state.airport = Some(openatc_core::airport::demo_airport());
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.02;
+        state.session.telemetry.longitude = 0.02;
+        state.settings.traffic_taxi_min = 7;
+        state.settings.traffic_taxi_max = 9;
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            ..Default::default()
+        };
+        manager.tick(&mut state);
+        assert!((7..=9).contains(&manager.density_target));
+        let first = manager.density_target;
+        manager.tick(&mut state);
+        assert_eq!(
+            manager.density_target, first,
+            "the density target is stable"
+        );
+
+        state.settings.traffic_taxi_min = 11;
+        state.settings.traffic_taxi_max = 12;
+        manager.tick(&mut state);
+        assert!((11..=12).contains(&manager.density_target));
     }
 
     #[test]
