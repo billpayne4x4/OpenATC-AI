@@ -2547,7 +2547,7 @@ impl Interface {
         let descriptions = [
             "Talk with your crew and air traffic control.",
             "Plan your route, procedures and fuel.",
-            "Follow your approved route on the airport surface.",
+            "Plan and follow your taxi route on the airport surface.",
             "See your descent against the destination runway and terrain.",
             "Explore airport layouts, approaches and services.",
             "Configure your crew, audio and flight preferences.",

@@ -1398,6 +1398,26 @@ fn controlled_text(plan: &Plan, leg: &str) -> String {
     )
 }
 
+fn tower_station(
+    state: &EngineState,
+    airport: &str,
+    frequency: i32,
+) -> Option<openatc_core::stations::Station> {
+    state
+        .stations
+        .iter()
+        .find(|station| {
+            station.airport == airport
+                && station.khz == frequency
+                && (station.service.eq_ignore_ascii_case("Tower")
+                    || station
+                        .services
+                        .iter()
+                        .any(|service| service.eq_ignore_ascii_case("Tower")))
+        })
+        .cloned()
+}
+
 /// Speak the advisories made by the aircraft that are established on a leg.
 pub(super) fn announce(state: &mut EngineState) {
     if state.generated.advisories.is_empty() || state.generated.simulation_job.is_some() {
@@ -1419,12 +1439,14 @@ pub(super) fn announce(state: &mut EngineState) {
             } else {
                 advisory.text.clone()
             };
+            let field = plan.field_for(pose.segment);
             pending.push((
                 *id,
                 None,
                 plan.callsign.clone(),
                 text,
-                plan.field_for(pose.segment).frequency_khz,
+                field.frequency_khz,
+                field.airport.clone(),
                 None,
             ));
             continue;
@@ -1449,16 +1471,19 @@ pub(super) fn announce(state: &mut EngineState) {
         } else {
             None
         };
+        let field = plan.field_for(pose.segment);
         pending.push((
             *id,
             Some(pose.segment),
             plan.callsign.clone(),
             text,
-            plan.field_for(pose.segment).frequency_khz,
+            field.frequency_khz,
+            field.airport.clone(),
             clearance,
         ));
     }
-    let Some((id, segment, callsign, text, frequency, clearance)) = pending.into_iter().next()
+    let Some((id, segment, callsign, text, frequency, airport, clearance)) =
+        pending.into_iter().next()
     else {
         return;
     };
@@ -1524,18 +1549,7 @@ pub(super) fn announce(state: &mut EngineState) {
         );
         if !text.is_empty() {
             let spoken = state.generated.spoken_text(&text);
-            let station = state
-                .stations
-                .iter()
-                .find(|station| {
-                    station.khz == frequency
-                        && (station.service.eq_ignore_ascii_case("Tower")
-                            || station
-                                .services
-                                .iter()
-                                .any(|service| service.eq_ignore_ascii_case("Tower")))
-                })
-                .cloned();
+            let station = tower_station(state, &airport, frequency);
             let mut tag = if let Some(station) = station {
                 crate::flight::tag(state, &station)
             } else {
@@ -1599,6 +1613,17 @@ mod tests {
             longitude: -90.0,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn tower_station_is_scoped_to_the_airport() {
+        let mut state = crate::test_state();
+        state.stations = vec![
+            station("LFMN", "Tower", 120_160, 43.66),
+            station("EKCH", "Tower", 120_160, 55.62),
+        ];
+        let station = tower_station(&state, "LFMN", 120_160).expect("Nice Tower");
+        assert_eq!(station.airport, "LFMN");
     }
 
     fn preparation(stations: Vec<openatc_core::stations::Station>) -> Preparation {

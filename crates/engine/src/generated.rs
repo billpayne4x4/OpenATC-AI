@@ -3832,13 +3832,18 @@ fn prepare_direction_with_terrain(
 }
 
 fn scene_key(state: &EngineState) -> String {
+    // The airport is resolved after the first telemetry sample. Starting from the planned
+    // departure keeps that resolution from invalidating the first survey.
+    let airport = state
+        .airport
+        .as_ref()
+        .map(|airport| airport.icao.as_str())
+        .filter(|icao| !icao.is_empty())
+        .unwrap_or(state.session.plan.departure.as_str());
     format!(
         "{}|{}|{}|{}|{}|{}|{:?}|{}|{}",
         state.settings.simulator_root,
-        state
-            .airport
-            .as_ref()
-            .map_or("", |airport| airport.icao.as_str()),
+        airport,
         state.session.plan.departure,
         state.session.plan.destination,
         state.session.plan.runway,
@@ -6021,6 +6026,19 @@ mod tests {
             ..Default::default()
         });
         assert_ne!(departure, scene_key(&state));
+    }
+
+    #[test]
+    fn scene_key_is_stable_when_the_departure_airport_resolves() {
+        let mut state = crate::test_state();
+        state.session.plan.departure = "LFMN".into();
+        state.airport = None;
+        let before = scene_key(&state);
+        state.airport = Some(Airport {
+            icao: "LFMN".into(),
+            ..Default::default()
+        });
+        assert_eq!(before, scene_key(&state));
     }
 
     #[test]

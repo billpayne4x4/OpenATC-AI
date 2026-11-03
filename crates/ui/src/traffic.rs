@@ -172,14 +172,14 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
         let mut taxi_max = i32::from(interface.settings.traffic_taxi_max);
         ui.text_disabled("Moving ground aircraft when traffic is full");
         ui.set_next_item_width(-1.0);
-        if ui.slider("##taxi-min", 0, 12, &mut taxi_min) {
-            interface.settings.traffic_taxi_min = taxi_min.clamp(0, 12) as u8;
+        if ui.slider("##taxi-min", 0, 16, &mut taxi_min) {
+            interface.settings.traffic_taxi_min = taxi_min.clamp(0, 16) as u8;
             changed = true;
         }
         ui.text_wrapped("Minimum taxiing aircraft");
         ui.set_next_item_width(-1.0);
-        if ui.slider("##taxi-max", 0, 12, &mut taxi_max) {
-            interface.settings.traffic_taxi_max = taxi_max.clamp(0, 12) as u8;
+        if ui.slider("##taxi-max", 0, 16, &mut taxi_max) {
+            interface.settings.traffic_taxi_max = taxi_max.clamp(0, 16) as u8;
             changed = true;
         }
         ui.text_wrapped("Maximum taxiing aircraft. The actual target is rolled once per session inside this range.");
@@ -272,7 +272,7 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
     ) {
         interface.save_settings();
     }
-    ui.text_wrapped("When tuned to a receivable Ground or Tower station, on the ground or airborne, you may hear other aircraft taxi and depart. The calls use the installed airport's runways and taxiways. Chatter stops when you retune or leave reception.");
+    ui.text_wrapped("When airborne above a receivable Ground or Tower station, you may hear other aircraft taxi and depart. The calls use the installed airport's runways and taxiways. Chatter stops when you retune, leave reception or descend below 1,000 ft above the station.");
     ui.checkbox(
         "Hear simulated traffic pilot reports",
         &mut interface.settings.hear_traffic_radio,
