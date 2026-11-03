@@ -68,6 +68,8 @@ pub(crate) fn traffic_seed() -> u64 {
 pub struct EngineState {
     /// Generated scene preparation and future movement state.
     pub generated: generated::Runtime,
+    /// Plan key already auto-enabled for generated traffic.
+    pub auto_generated_plan: String,
     /// Shared CPU budget for work that must not occupy the HTTP executor.
     pub workers: Arc<workers::Workers>,
     /// Model downloads run separately from flight and radio work.
@@ -664,6 +666,7 @@ async fn main() {
         station_bus: Default::default(),
         traffic_profiles,
         generated: Default::default(),
+        auto_generated_plan: String::new(),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,
@@ -831,6 +834,7 @@ fn test_state() -> EngineState {
         station_bus: Default::default(),
         traffic_profiles: Default::default(),
         generated: Default::default(),
+        auto_generated_plan: String::new(),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,

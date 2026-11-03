@@ -5636,6 +5636,20 @@ pub fn animation_handling(
 
 /// Publish the most recent complete worker sample without waiting for simulation.
 pub fn step(state: &mut EngineState) {
+    let plan_key = format!(
+        "{}/{}/{}",
+        state.session_generation, state.session.plan.departure, state.session.plan.destination
+    );
+    if state.settings.auto_generated_traffic
+        && state.session.ifr
+        && !state.session.demo
+        && !state.session.plan.departure.is_empty()
+        && !state.session.plan.destination.is_empty()
+        && state.auto_generated_plan != plan_key
+    {
+        state.auto_generated_plan = plan_key;
+        state.settings.generated_traffic = true;
+    }
     state.generated.log = state.settings.traffic_log;
     set_traffic_log(state.settings.traffic_log);
     if !state.settings.generated_traffic {
@@ -5911,6 +5925,26 @@ pub(crate) async fn prepare_turnaround(shared: Shared) {
 mod tests {
     use super::*;
     use openatc_core::traffic::motion::{Route, Segment, Stage, Waypoint};
+
+    #[test]
+    fn generated_traffic_auto_enables_once_per_plan() {
+        let mut state = crate::test_state();
+        state.settings.generated_traffic = false;
+        state.settings.auto_generated_traffic = true;
+        state.session.demo = false;
+        state.session.ifr = true;
+        state.session.plan.departure = "TEST".into();
+        state.session.plan.destination = "DEST".into();
+        step(&mut state);
+        assert!(state.settings.generated_traffic);
+        state.settings.generated_traffic = false;
+        step(&mut state);
+        assert!(
+            !state.settings.generated_traffic,
+            "a manual off must survive the same plan"
+        );
+    }
+
     #[test]
     fn fleet_selection_uses_the_selected_runway_and_published_airport_code() {
         use openatc_core::traffic::csl::{Match, Model};

@@ -1008,7 +1008,7 @@ fn process_delivery(state: &mut EngineState, rate: f64, gap: f64) {
         } else {
             SpeechTag {
                 position: "Traffic".into(),
-                voice: crate::traffic::pilot_voice(state, exchange.id),
+                voice: crate::traffic::pilot_voice_for_callsign(state, &exchange.callsign),
                 ..Default::default()
             }
         };
@@ -1505,7 +1505,7 @@ fn advance_exchange(state: &mut EngineState, mut exchange: Exchange) -> Option<E
         } else {
             SpeechTag {
                 position: "Traffic".into(),
-                voice: crate::traffic::pilot_voice(state, exchange.id),
+                voice: crate::traffic::pilot_voice_for_callsign(state, &exchange.callsign),
                 ..Default::default()
             }
         };

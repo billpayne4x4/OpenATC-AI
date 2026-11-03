@@ -37,6 +37,8 @@ pub struct FlightFlow {
     pub(crate) takeoff_cleared: bool,
     pub(crate) missed_approach: bool,
     pub(crate) vacate_reported: bool,
+    pub(crate) vacate_ground_khz: Option<i32>,
+    pub(crate) wake_warned: bool,
     warning: openatc_core::compliance::WarningCount,
     clearance_sequence: u32,
     last_correction: Option<std::time::Instant>,
@@ -437,6 +439,35 @@ pub fn tick(state: &mut EngineState) {
     if !state.session.telemetry.on_ground {
         state.flow.vacate_reported = false;
     }
+    if !state.session.telemetry.on_ground {
+        state.flow.vacate_ground_khz = None;
+    }
+    if let Some(ground_khz) = state.flow.vacate_ground_khz {
+        let clear = state
+            .arrival_airport
+            .as_ref()
+            .or(state.airport.as_ref())
+            .is_some_and(|airport| {
+                let point = openatc_core::airport::airport_point(
+                    airport,
+                    state.session.telemetry.latitude,
+                    state.session.telemetry.longitude,
+                );
+                !openatc_core::airport::within_runway(airport, &point)
+            });
+        if clear {
+            state.session.recommended_frequency_khz = ground_khz;
+            state.session.frequency_sequence = state.session.next_sequence;
+            if let Some(station) =
+                openatc_core::stations::nearby(&state.stations, &state.session.telemetry)
+                    .into_iter()
+                    .find(|station| station.khz == ground_khz)
+            {
+                state.flow.pending_station = station_key(&station);
+            }
+            state.flow.vacate_ground_khz = None;
+        }
+    }
     let t = &state.session.telemetry;
     if state.session.demo
         || t.paused
@@ -509,6 +540,7 @@ pub fn tick(state: &mut EngineState) {
                 format!("{:.3}", f64::from(station.khz) / 1000.0),
             )
         });
+        let runway_for_readback = runway.clone();
         let text = match (&exit, contact) {
             (Some((side, taxiway)), Some((station, frequency))) => say(
                 "arrival_vacate_contact_ground",
@@ -548,12 +580,21 @@ pub fn tick(state: &mut EngineState) {
             ),
         };
         if let Some(ground) = ground {
-            state.session.recommended_frequency_khz = ground.khz;
-            state.session.frequency_sequence = state.session.next_sequence;
-            state.flow.pending_station = station_key(&ground);
+            // The exit instruction names Ground, but the automatic handoff waits
+            // until the aircraft is clear of the runway.
+            state.flow.vacate_ground_khz = Some(ground.khz);
         }
         let voice = tag(state, &owner);
         add_transmission(&mut state.session, "ATC", &text, &voice);
+        if let Some(entry) = state.session.transcript.last_mut() {
+            entry.pilot_reply = say(
+                "pilot_exit_runway",
+                &[
+                    ("callsign", state.session.plan.callsign.clone()),
+                    ("runway", runway_for_readback),
+                ],
+            );
+        }
         return;
     }
     let Some(next) = next_station(state, &stations, &current) else {
@@ -1102,6 +1143,9 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
     }
     let sequence = crate::routes::runway_sequence(state, &airport, &runway);
     let targets = state.traffic_targets();
+    if state.session.departure_wake_seconds <= 0.0 {
+        state.flow.wake_warned = false;
+    }
     let decision = openatc_core::apply::takeoff_decision(
         &airport,
         &runway,
@@ -1114,10 +1158,26 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
         TakeoffDecision::LineUpAndWait => {
             if state.session.taxi_clearance.takeoff_state == TakeoffState::Held {
                 line_up_departure(state, &station, &runway);
+                if state.session.departure_wake_seconds > 0.0 {
+                    state.flow.wake_warned = true;
+                }
+            } else if state.session.departure_wake_seconds > 0.0 && !state.flow.wake_warned {
+                state.flow.wake_warned = true;
+                let slots = [
+                    ("callsign", state.session.plan.callsign.clone()),
+                    ("runway", runway.clone()),
+                ];
+                let text = say("flight_wake_caution", &slots);
+                let voice = tag(state, &station);
+                add_transmission(&mut state.session, "ATC", &text, &voice);
+                if let Some(entry) = state.session.transcript.last_mut() {
+                    entry.information_only = true;
+                    entry.pilot_reply = say("pilot_wake_caution_readback", &slots);
+                }
             }
             return;
         }
-        TakeoffDecision::Cleared => {}
+        TakeoffDecision::Cleared => state.flow.wake_warned = false,
     }
     clear_takeoff(state, &station, &runway);
 }
@@ -1127,7 +1187,14 @@ fn line_up_departure(state: &mut EngineState, station: &Station, runway: &str) {
         ("callsign", state.session.plan.callsign.clone()),
         ("runway", runway.to_owned()),
     ];
-    let text = say("flight_line_up_and_wait", &slots);
+    let text = say(
+        if state.session.departure_wake_seconds > 0.0 {
+            "flight_line_up_and_wait_wake"
+        } else {
+            "flight_line_up_and_wait"
+        },
+        &slots,
+    );
     let voice = tag(state, station);
     add_transmission(&mut state.session, "ATC", &text, &voice);
     if let Some(entry) = state.session.transcript.last_mut() {
@@ -3245,7 +3312,10 @@ mod ownership_tests {
             if separate_ground {
                 assert!(vacate.contains("arrival ground"), "{vacate}");
                 assert!(vacate.contains("121.900"), "{vacate}");
-                assert_eq!(state.session.recommended_frequency_khz, 121_900);
+                assert_eq!(
+                    state.session.recommended_frequency_khz, 0,
+                    "Ground handoff must wait until the runway is clear"
+                );
             } else {
                 assert!(!vacate.contains("arrival ground"), "{vacate}");
             }
@@ -3267,6 +3337,12 @@ mod ownership_tests {
                 1,
                 "No second Ground handoff after vacating"
             );
+            if separate_ground {
+                assert_eq!(
+                    state.session.recommended_frequency_khz, 121_900,
+                    "Ground handoff after the runway is clear"
+                );
+            }
         }
     }
 
@@ -3425,6 +3501,13 @@ mod ownership_tests {
                 .to_lowercase()
                 .contains("vacate runway 36")
         );
+        state
+            .session
+            .transcript
+            .last_mut()
+            .unwrap()
+            .pilot_reply
+            .clear();
         state.session.telemetry.heading_degrees = 180.0;
         assert_eq!(landed_runway(&state).as_deref(), Some("18"));
         // Becoming airborne clears the report so a later landing reports on its own runway.
@@ -3538,6 +3621,50 @@ mod sequencing_tests {
     }
 
     #[test]
+    fn a_lined_up_aircraft_gets_one_wake_caution() {
+        let mut state = departure_state();
+        state.session.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+        state.session.departure_wake_seconds = 22.0;
+        takeoff_tick(&mut state);
+        let text = state
+            .session
+            .transcript
+            .last()
+            .expect("wake caution")
+            .text
+            .to_lowercase();
+        assert!(text.contains("caution wake turbulence"), "{text}");
+        let count = state.session.transcript.len();
+        takeoff_tick(&mut state);
+        assert_eq!(
+            state.session.transcript.len(),
+            count,
+            "the wake caution must not repeat every tick"
+        );
+    }
+
+    #[test]
+    fn a_wake_line_up_names_the_wake_turbulence() {
+        let mut state = departure_state();
+        state.session.taxi_clearance.takeoff_state = TakeoffState::Held;
+        state.session.departure_wake_seconds = 22.0;
+        takeoff_tick(&mut state);
+        assert_eq!(
+            state.session.taxi_clearance.takeoff_state,
+            TakeoffState::LineUpAndWait
+        );
+        let text = state
+            .session
+            .transcript
+            .last()
+            .expect("line up call")
+            .text
+            .to_lowercase();
+        assert!(text.contains("line up and wait"), "{text}");
+        assert!(text.contains("wake turbulence"), "{text}");
+    }
+
+    #[test]
     fn a_stale_copilot_reply_does_not_stop_the_takeoff_sequencer() {
         let mut state = departure_state();
         state.pending_copilot_reply = Some(crate::routes::PreparedReply {
@@ -3608,6 +3735,7 @@ mod sequencing_tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
+                chatter: false,
                 speaker: "ATC".into(),
                 text: String::new(),
                 sequence: 0,

@@ -59,6 +59,8 @@ pub struct Traffic {
     last_advisory: Option<Instant>,
     last_urgent: Option<Instant>,
     pilots: BTreeMap<u32, Pilot>,
+    pilot_voices: BTreeMap<String, String>,
+    pilot_recent: std::collections::VecDeque<String>,
     observed: Option<Instant>,
     report: Option<(u32, String)>,
     last_radio: Option<Instant>,
@@ -113,7 +115,7 @@ pub fn observe(state: &mut EngineState) {
         .traffic
         .pilots
         .retain(|_, p| p.seen.elapsed() < Duration::from_secs(120));
-    let Some(targets) = &state.session.telemetry.traffic else {
+    let Some(targets) = state.session.telemetry.traffic.clone() else {
         state.generated.observed_climbs(BTreeMap::new());
         return;
     };
@@ -124,6 +126,15 @@ pub fn observe(state: &mut EngineState) {
     {
         if !openatc_core::traffic::advisory::valid(target) {
             continue;
+        }
+        if !state.traffic.pilot_voices.contains_key(&target.callsign)
+            && !state
+                .traffic
+                .pilots
+                .get(&target.id)
+                .is_some_and(|pilot| pilot.target.callsign == target.callsign)
+        {
+            pilot_voice_for_callsign(state, &target.callsign);
         }
         let climb_fpm = state.traffic.pilots.get(&target.id).and_then(|old| {
             let elapsed = old.seen.elapsed().as_secs_f64();
@@ -183,42 +194,9 @@ pub fn observe(state: &mut EngineState) {
             .pilots
             .get(&target.id)
             .filter(|p| p.target.callsign == target.callsign)
-            .map_or_else(
-                || {
-                    let available: Vec<_> = state
-                        .voices
-                        .iter()
-                        .filter(|v| !state.settings.english_voices_only || v.english)
-                        .collect();
-                    available
-                        .iter()
-                        .min_by_key(|v| {
-                            let reserved = state
-                                .controllers
-                                .assignments
-                                .values()
-                                .any(|c| c.voice == v.id)
-                                || [
-                                    &state.settings.pilot_voice,
-                                    &state.settings.copilot_voice,
-                                    &state.settings.attendant_voice,
-                                    &state.settings.ground_voice,
-                                ]
-                                .contains(&&v.id);
-                            (
-                                reserved,
-                                state
-                                    .traffic
-                                    .pilots
-                                    .values()
-                                    .filter(|p| p.voice == v.id)
-                                    .count(),
-                            )
-                        })
-                        .map_or_else(|| state.settings.pilot_voice.clone(), |v| v.id.clone())
-                },
-                |p| p.voice.clone(),
-            );
+            .map(|p| p.voice.clone())
+            .or_else(|| state.traffic.pilot_voices.get(&target.callsign).cloned())
+            .unwrap_or_else(|| state.settings.pilot_voice.clone());
         let old = state
             .traffic
             .pilots
@@ -281,11 +259,99 @@ pub fn observe(state: &mut EngineState) {
     );
 }
 
-pub(crate) fn pilot_voice(state: &EngineState, id: u32) -> String {
-    state.traffic.pilots.get(&id).map_or_else(
-        || state.settings.pilot_voice.clone(),
-        |pilot| pilot.voice.clone(),
-    )
+fn pilot_voice_pool(state: &EngineState) -> Vec<String> {
+    let mut pool = openatc_core::ops::parse_voice_pool(&state.settings.voice_pool);
+    let roster = (state.voices_source == state.settings.tts_url && !state.voices.is_empty())
+        .then_some(state.voices.as_slice());
+    if let Some(roster) = roster {
+        pool.retain(|id| roster.iter().any(|voice| voice.id == *id));
+        if pool.is_empty() {
+            pool = roster.iter().map(|voice| voice.id.clone()).collect();
+        }
+    } else if pool.is_empty() {
+        pool = state.voices.iter().map(|voice| voice.id.clone()).collect();
+    }
+    if state.settings.english_voices_only {
+        pool.retain(|id| {
+            state
+                .voices
+                .iter()
+                .find(|voice| state.voices_source == state.settings.tts_url && voice.id == *id)
+                .map_or_else(
+                    || openatc_core::ops::english_voice(id),
+                    |voice| voice.english,
+                )
+        });
+    }
+    let mut identities = std::collections::BTreeSet::new();
+    let mut pool: Vec<String> = pool
+        .into_iter()
+        .filter(|voice| identities.insert(openatc_core::ops::voice_identity(voice).to_owned()))
+        .collect();
+    let reserved: std::collections::BTreeSet<&str> = state
+        .controllers
+        .assignments
+        .values()
+        .map(|controller| controller.voice.as_str())
+        .chain([
+            state.settings.voice.as_str(),
+            state.settings.copilot_voice.as_str(),
+            state.settings.attendant_voice.as_str(),
+            state.settings.ground_voice.as_str(),
+        ])
+        .collect();
+    let free: Vec<String> = pool
+        .iter()
+        .filter(|voice| !reserved.contains(voice.as_str()))
+        .cloned()
+        .collect();
+    if !free.is_empty() {
+        pool = free;
+    }
+    if pool.is_empty() {
+        pool.push(if state.settings.pilot_voice.is_empty() {
+            "alloy".to_owned()
+        } else {
+            state.settings.pilot_voice.clone()
+        });
+    }
+    pool
+}
+
+/// Voice for a named pilot, remembered per callsign and rotated least-recently-used.
+pub(crate) fn pilot_voice_for_callsign(state: &mut EngineState, callsign: &str) -> String {
+    let pool = pilot_voice_pool(state);
+    if let Some(voice) = state.traffic.pilot_voices.get(callsign) {
+        return voice.clone();
+    }
+    let voice = pool
+        .iter()
+        .find(|voice| !state.traffic.pilot_recent.contains(*voice))
+        .cloned()
+        .or_else(|| {
+            state
+                .traffic
+                .pilot_recent
+                .iter()
+                .find(|voice| pool.contains(voice))
+                .cloned()
+        })
+        .unwrap_or_else(|| pool[0].clone());
+    state.traffic.pilot_recent.retain(|used| used != &voice);
+    state.traffic.pilot_recent.push_back(voice.clone());
+    while state.traffic.pilot_recent.len() > pool.len().max(8) {
+        state.traffic.pilot_recent.pop_front();
+    }
+    state
+        .traffic
+        .pilot_voices
+        .insert(callsign.to_owned(), voice.clone());
+    while state.traffic.pilot_voices.len() > 512 {
+        if let Some(first) = state.traffic.pilot_voices.keys().next().cloned() {
+            state.traffic.pilot_voices.remove(&first);
+        }
+    }
+    voice
 }
 
 pub(crate) fn ready(state: &EngineState) -> bool {
@@ -414,32 +480,48 @@ fn surface(state: &mut EngineState, station: &Station) -> bool {
     {
         return false;
     }
-    let conflict =
-        openatc_core::traffic::taxi_conflict(airport, &state.session.telemetry).filter(|target| {
-            !openatc_core::traffic::ahead_on_same_taxi_route(
-                airport,
-                route,
-                &state.session.telemetry,
-                target,
-            )
-        });
-    if let Some(target) = conflict {
+    let telemetry = state.telemetry_with_traffic();
+    let route_end = route.points.last().copied();
+    let at_route_end = route_end.is_some_and(|end| {
+        let own =
+            openatc_core::airport::airport_point(airport, telemetry.latitude, telemetry.longitude);
+        (own.east - end.east).hypot(own.north - end.north) <= 300.0
+    });
+    let conflict = openatc_core::traffic::taxi_conflict(airport, &telemetry)
+        .filter(|target| {
+            !openatc_core::traffic::ahead_on_same_taxi_route(airport, route, &telemetry, target)
+        })
+        .filter(|target| {
+            // Traffic already at the hold or runway queue is sequenced by Tower and
+            // must not stop an aircraft taxiing to the hold.
+            if !at_route_end {
+                return true;
+            }
+            let Some(end) = route_end else {
+                return true;
+            };
+            let p =
+                openatc_core::airport::airport_point(airport, target.latitude, target.longitude);
+            (p.east - end.east).hypot(p.north - end.north) > 200.0
+        })
+        .map(|target| (target.id, target.callsign.clone()));
+    if let Some((target_id, callsign)) = conflict {
         state.traffic.clear_since = None;
         if route.traffic_hold {
             return true;
         }
-        if state.traffic.hold_target == Some(target.id) {
+        if state.traffic.hold_target == Some(target_id) {
             // Already holding for this traffic; do not repeat the instruction.
             state.session.taxi_clearance.traffic_hold = true;
             return true;
         }
-        let traffic = if target.callsign.is_empty() {
+        let traffic = if callsign.is_empty() {
             say("traffic_unidentified", &[])
         } else {
-            target.callsign.clone()
+            callsign
         };
         state.session.taxi_clearance.traffic_hold = true;
-        state.traffic.hold_target = Some(target.id);
+        state.traffic.hold_target = Some(target_id);
         atc(
             state,
             station,
@@ -453,11 +535,13 @@ fn surface(state: &mut EngineState, station: &Station) -> bool {
         return true;
     }
     if route.traffic_hold {
-        if state.session.telemetry.traffic.is_none() {
+        if telemetry.traffic.is_none() {
             return true;
         }
         let since = state.traffic.clear_since.get_or_insert_with(Instant::now);
-        if since.elapsed().as_secs() < 3 {
+        // Confirm the conflict is gone before resuming. A short window makes a
+        // moving queue aircraft clear and re-enter, producing hold/resume/hold churn.
+        if since.elapsed().as_secs() < 8 {
             return true;
         }
         let instructions = route.instructions.clone();
@@ -880,6 +964,45 @@ mod tests {
         airport::{Airport, Runway},
         state::{Point, TaxiClearance, Telemetry},
     };
+    #[test]
+    fn atc_voices_rotate_through_the_pool_before_repeating() {
+        let mut roster = openatc_core::state::Controllers::default();
+        let pool = ["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        let mut rng = openatc_core::apply::SimpleRng::new(1);
+        let mut assigned = Vec::new();
+        for key in ["one", "two", "three", "four"] {
+            let controller = openatc_core::apply::assign_controller(
+                &mut roster,
+                &openatc_core::apply::AssignOrder {
+                    key,
+                    pool: &pool,
+                    fallback_voice: "z",
+                    delivery: "standard",
+                    speed_min: 0.9,
+                    speed_max: 1.1,
+                },
+                &mut rng,
+            );
+            assigned.push(controller.voice);
+        }
+        assert_eq!(assigned, ["a", "b", "c", "a"]);
+    }
+
+    #[test]
+    fn pilot_voices_rotate_and_stay_with_the_callsign() {
+        let mut state = crate::test_state();
+        state.settings.voice_pool = "alloy,echo,fable,onyx".into();
+        state.settings.english_voices_only = true;
+        let first = pilot_voice_for_callsign(&mut state, "ONE");
+        let second = pilot_voice_for_callsign(&mut state, "TWO");
+        let third = pilot_voice_for_callsign(&mut state, "THREE");
+        assert_ne!(first, second);
+        assert_ne!(second, third);
+        assert_ne!(first, third);
+        assert_eq!(pilot_voice_for_callsign(&mut state, "ONE"), first);
+        assert_eq!(pilot_voice_for_callsign(&mut state, "FOUR"), first);
+    }
+
     fn airport() -> Airport {
         Airport {
             icao: "TEST".into(),
@@ -952,7 +1075,7 @@ mod tests {
         s.session.telemetry.traffic = Some(vec![]);
         assert!(surface(&mut s, &station));
         assert!(s.session.taxi_clearance.traffic_hold);
-        s.traffic.clear_since = Some(Instant::now().checked_sub(Duration::from_secs(4)).unwrap());
+        s.traffic.clear_since = Some(Instant::now().checked_sub(Duration::from_secs(9)).unwrap());
         assert!(surface(&mut s, &station));
         assert!(!s.session.taxi_clearance.traffic_hold);
         assert_eq!(s.session.taxi_clearance.hold_short_runway, "36");

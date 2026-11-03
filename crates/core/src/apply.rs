@@ -31,6 +31,7 @@ pub fn add_transmission(state: &mut State, speaker: &str, text: &str, tag: &Spee
         information_only: false,
         pilot_reply: String::new(),
         background: false,
+        chatter: tag.chatter,
         speaker: speaker.to_owned(),
         text: text.to_owned(),
         sequence: state.next_sequence,
@@ -118,31 +119,29 @@ pub fn assign_controller(
     } else {
         order.pool.to_vec()
     };
-    let exclude = if candidates.len() > 1 {
-        8.min(candidates.len() - 1)
-    } else {
-        0
-    };
-    let excluded: std::collections::BTreeSet<&String> =
-        roster.recent.iter().rev().take(exclude).collect();
-    let mut fresh: Vec<String> = candidates
+    let voice = candidates
         .iter()
-        .filter(|voice| !excluded.contains(voice))
+        .find(|voice| !roster.recent.contains(voice))
         .cloned()
-        .collect();
-    if fresh.is_empty() {
-        fresh = candidates;
-    }
+        .or_else(|| {
+            roster
+                .recent
+                .iter()
+                .find(|voice| candidates.contains(voice))
+                .cloned()
+        })
+        .unwrap_or_else(|| candidates[0].clone());
     let controller = Controller {
-        voice: fresh[rng.below(fresh.len())].clone(),
+        voice: voice.clone(),
         delivery: order.delivery.to_owned(),
         speed: rng.pace(order.speed_min, order.speed_max),
     };
     roster
         .assignments
         .insert(order.key.to_owned(), controller.clone());
-    roster.recent.push(controller.voice.clone());
-    while roster.recent.len() > 8 {
+    roster.recent.retain(|used| used != &voice);
+    roster.recent.push(voice);
+    while roster.recent.len() > candidates.len().max(8) {
         roster.recent.remove(0);
     }
     controller
@@ -296,10 +295,10 @@ pub fn takeoff_decision<'a>(
     sequence: RunwaySequence,
     wake_seconds: f64,
 ) -> TakeoffDecision {
-    // Never authorize runway entry into short-final traffic on the same runway.
-    // Runway occupancy from a rolling departure is not short final, so that case
-    // still receives line up and wait.
-    if crate::holding::blocked_for_movement(airport, runway, targets.clone(), 60.0)
+    // Never authorize runway entry into final-approach traffic on the same runway.
+    // The look-ahead covers a lined-up departure that is still on the runway when
+    // a slow arrival reaches short final.
+    if crate::holding::blocked_for_movement(airport, runway, targets.clone(), 180.0)
         .is_some_and(|reason| reason != "holding_runway_occupied")
     {
         return TakeoffDecision::Hold("flight_hold_short_landing");
@@ -872,6 +871,7 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
         let Some(targets) = ctx.traffic else {
             return hold_for_takeoff(state, ctx, "holding_standby", false, &runway);
         };
+        let lined_up = state.taxi_clearance.takeoff_state == TakeoffState::LineUpAndWait;
         match takeoff_decision(
             airport,
             &runway,
@@ -879,9 +879,49 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             ctx.runway_sequence,
             state.departure_wake_seconds,
         ) {
+            TakeoffDecision::Hold(_) if lined_up => {
+                // Already on the runway: never revoke runway entry with a hold-short
+                // or stop instruction. Keep the line-up and let the sequencer clear
+                // takeoff when the runway is available.
+                state.taxi_clearance.waiting_for_traffic = true;
+                state.taxi_clearance.waiting_seconds = 0.0;
+                let slots = [
+                    ("callsign", state.plan.callsign.clone()),
+                    ("runway", runway.clone()),
+                ];
+                let outcome = reply(
+                    state,
+                    ctx,
+                    false,
+                    crate::dialogue::say("flight_continue_holding", &slots),
+                );
+                if let Some(entry) = state.transcript.last_mut() {
+                    entry.pilot_reply =
+                        crate::dialogue::say("pilot_continue_holding_readback", &slots);
+                }
+                return outcome;
+            }
             TakeoffDecision::Hold(response) => {
                 let with_callsign = response.starts_with("flight_");
                 return hold_for_takeoff(state, ctx, response, with_callsign, &runway);
+            }
+            TakeoffDecision::LineUpAndWait if lined_up => {
+                state.taxi_clearance.waiting_for_traffic = false;
+                let slots = [
+                    ("callsign", state.plan.callsign.clone()),
+                    ("runway", runway.clone()),
+                ];
+                let outcome = reply(
+                    state,
+                    ctx,
+                    false,
+                    crate::dialogue::say("flight_continue_holding", &slots),
+                );
+                if let Some(entry) = state.transcript.last_mut() {
+                    entry.pilot_reply =
+                        crate::dialogue::say("pilot_continue_holding_readback", &slots);
+                }
+                return outcome;
             }
             TakeoffDecision::LineUpAndWait => return line_up_and_wait(state, ctx, &runway),
             TakeoffDecision::Cleared => {}
@@ -1756,6 +1796,21 @@ mod tests {
             ),
             TakeoffDecision::Hold("flight_hold_short_landing")
         );
+        let far_final = TrafficTarget {
+            longitude: -0.09,
+            ..final_target.clone()
+        };
+        assert_eq!(
+            takeoff_decision(
+                &airport,
+                "09",
+                std::iter::once(&far_final),
+                RunwaySequence::Clear,
+                0.0,
+            ),
+            TakeoffDecision::Hold("flight_hold_short_landing"),
+            "line-up must protect the longer final-approach window"
+        );
     }
 
     #[test]
@@ -1871,6 +1926,66 @@ mod tests {
         assert!(outcome.accepted, "{}", outcome.message);
         assert_eq!(state.taxi_clearance.takeoff_state, TakeoffState::Cleared);
         assert!(!state.taxi_clearance.approved);
+    }
+
+    #[test]
+    fn a_ready_call_while_lined_up_never_revokes_runway_entry() {
+        let airport = demo_airport();
+        let tag = SpeechTag::default();
+        let region = Region::default();
+        let realism = Realism::default();
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.plan.callsign = "VH-ABC".into();
+        state.plan.runway = "09".into();
+        state.telemetry.position_valid = true;
+        state.telemetry.on_ground = true;
+        state.telemetry.latitude = 0.0;
+        state.telemetry.longitude = 0.0;
+        state.taxi_clearance.approved = true;
+        state.taxi_clearance.guidance_complete = true;
+        state.taxi_clearance.points.push(Point::default());
+        state.taxi_clearance.takeoff_state = TakeoffState::LineUpAndWait;
+        let targets: Vec<TrafficTarget> = Vec::new();
+        let outcome = apply_ready(
+            &mut state,
+            &RequestContext {
+                squawk: "1234",
+                request: &request,
+                runway_taxi_authorized: true,
+                airport: Some(&airport),
+                atc_tag: &tag,
+                pilot_tag: &tag,
+                realism: &realism,
+                units: UnitSystem::Imperial,
+                region: &region,
+                traffic: Some(&targets),
+                runway_sequence: RunwaySequence::LineUp,
+            },
+        );
+        assert!(!outcome.accepted);
+        assert_eq!(
+            state.taxi_clearance.takeoff_state,
+            TakeoffState::LineUpAndWait,
+            "a ready call must not turn a lined-up aircraft back into a hold-short"
+        );
+        assert!(
+            !outcome.message.to_lowercase().contains("hold short"),
+            "{}",
+            outcome.message
+        );
+        assert!(
+            outcome.message.to_lowercase().contains("hold position")
+                || outcome.message.to_lowercase().contains("continue holding"),
+            "{}",
+            outcome.message
+        );
     }
 
     #[test]

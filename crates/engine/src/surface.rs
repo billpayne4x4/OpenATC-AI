@@ -42,6 +42,26 @@ impl Drop for CrossingNotice {
     }
 }
 
+/// After landing, the player is at the destination. Do not keep the departure
+/// airport's taxi route as the active surface state.
+fn sync_arrival_airport(state: &mut crate::EngineState) {
+    if state.session.phase != openatc_core::state::PhaseCode::Landed {
+        return;
+    }
+    let Some(arrival) = state.arrival_airport.as_ref() else {
+        return;
+    };
+    if state
+        .airport
+        .as_ref()
+        .is_some_and(|airport| airport.icao == arrival.icao)
+    {
+        return;
+    }
+    state.airport = state.arrival_airport.clone();
+    state.session.taxi_clearance = Default::default();
+}
+
 pub async fn post_telemetry(
     AxumState(state): AxumState<Shared>,
     Json(telemetry): Json<Telemetry>,
@@ -98,6 +118,7 @@ pub async fn post_telemetry(
         if let Err(error) = update_flight_phase(&mut state.session, &telemetry) {
             return bad_request(&error);
         }
+        sync_arrival_airport(&mut state);
         crate::atc::sync_ownship(&mut state);
         crate::radio::observe_atis_tuning(&mut state, previous_receivers, was_powered);
         // Re-plan once when the player becomes airborne, so the traffic is seeded on the
@@ -407,10 +428,22 @@ pub async fn post_telemetry(
             "standard",
         );
         tag.position = station_name;
-        state.session.taxi_clearance.holding_channel = channel;
         if tower && !needs_further && !retry {
+            if state.session.taxi_clearance.holding_channel != channel {
+                let slots = [
+                    ("callsign", state.session.plan.callsign.clone()),
+                    ("runway", state.session.plan.runway.clone()),
+                ];
+                let text = openatc_core::dialogue::say("flight_report_ready", &slots);
+                add_transmission(&mut state.session, "ATC", &text, &tag);
+                if let Some(entry) = state.session.transcript.last_mut() {
+                    entry.information_only = true;
+                }
+                state.session.taxi_clearance.holding_channel = channel;
+            }
             return Json(json!({"accepted":true})).into_response();
         }
+        state.session.taxi_clearance.holding_channel = channel;
         if backtrack && tower {
             let text = openatc_core::dialogue::say(
                 "holding_report_ready",
@@ -724,11 +757,84 @@ mod tests {
             }),
         )
         .await;
+        {
+            let state = shared.read().await;
+            assert_eq!(
+                state.session.transcript.len(),
+                2,
+                "Tower should prompt for ready, not clear departure"
+            );
+            assert!(
+                state
+                    .session
+                    .transcript
+                    .last()
+                    .unwrap()
+                    .text
+                    .to_lowercase()
+                    .contains("report ready")
+            );
+            assert_eq!(
+                state.session.taxi_clearance.takeoff_state,
+                TakeoffState::Idle
+            );
+        }
+    }
+
+    #[test]
+    fn landing_switches_surface_state_to_the_arrival_airport() {
+        let mut state = fixture();
+        state.session.phase = openatc_core::state::PhaseCode::Landed;
+        state.arrival_airport = Some(Airport {
+            icao: "LIMC".into(),
+            ..Default::default()
+        });
+        state.session.taxi_clearance.airport = "TEST".into();
+        state.session.taxi_clearance.approved = true;
+        sync_arrival_airport(&mut state);
         assert_eq!(
-            shared.read().await.session.transcript.len(),
-            1,
-            "Tower must wait for the pilot's ready call"
+            state.airport.as_ref().map(|a| a.icao.as_str()),
+            Some("LIMC")
         );
+        assert!(!state.session.taxi_clearance.approved);
+        assert!(state.session.taxi_clearance.airport.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_hold_prompts_report_ready_without_clearing() {
+        for auto_respond in [true, false] {
+            let mut state = fixture();
+            state.settings.copilot_auto_respond = auto_respond;
+            state.settings.simulator_root = "test".into();
+            state.station_root = "test".into();
+            state.session.taxi_clearance.guidance_complete = true;
+            state.session.taxi_clearance.takeoff_state = TakeoffState::Idle;
+            let shared = std::sync::Arc::new(tokio::sync::RwLock::new(state));
+            post_telemetry(
+                AxumState(shared.clone()),
+                Json(Telemetry {
+                    com1_khz: 118_700,
+                    traffic: Some(Vec::new()),
+                    ..telemetry()
+                }),
+            )
+            .await;
+            let state = shared.read().await;
+            assert_eq!(
+                state.session.taxi_clearance.takeoff_state,
+                TakeoffState::Idle,
+                "reaching the hold must not start the takeoff sequence"
+            );
+            assert_eq!(state.session.taxi_clearance.holding_channel, 118_700);
+            assert!(
+                state
+                    .session
+                    .transcript
+                    .iter()
+                    .any(|entry| entry.text.to_lowercase().contains("report ready")),
+                "the hold should prompt report ready"
+            );
+        }
     }
 
     #[tokio::test]

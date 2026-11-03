@@ -202,6 +202,9 @@ pub struct Settings {
     pub airport_chatter: bool,
     /// Enable `OpenATC`'s lightweight generated model instances.
     pub generated_traffic: bool,
+    /// Enable generated traffic automatically when a flight plan is loaded.
+    #[serde(default = "yes")]
+    pub auto_generated_traffic: bool,
     /// How often the generated traffic is drawn. A higher rate moves the traffic more smoothly
     /// and costs more of the simulator's frame time.
     pub traffic_rate: TrafficRate,
@@ -493,6 +496,7 @@ impl Default for Settings {
             native_traffic_count: 0,
             airport_chatter: true,
             generated_traffic: false,
+            auto_generated_traffic: true,
             traffic_rate: TrafficRate::EveryFrame,
             traffic_log: TrafficLog::Summary,
             local_pattern_traffic: false,

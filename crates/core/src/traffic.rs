@@ -249,6 +249,10 @@ pub fn landing_blocked(
     )
 }
 
+/// Runway queue traffic is ignored by the taxi conflict check. The margin covers
+/// aircraft holding short, lining up and just leaving the runway edge.
+const RUNWAY_QUEUE_MARGIN_METERS: f64 = 60.0;
+
 /// Predict a taxi collision over the next twenty seconds. Parallel traffic moving away is ignored.
 #[must_use]
 #[allow(clippy::many_single_char_names)]
@@ -274,11 +278,21 @@ pub fn taxi_conflict<'a>(airport: &Airport, telemetry: &'a Telemetry) -> Option<
         .find(|target| {
             let p = airport_point(airport, target.latitude, target.longitude);
             // Runway traffic is handled by the crossing and takeoff clearance checks.
-            if crate::airport::within_runway(airport, &p) {
+            // The margin also covers aircraft holding short or lining up at the edge.
+            if crate::airport::within_runway(airport, &p)
+                || crate::airport::runway_edge_distance(airport, &p)
+                    .is_some_and(|distance| distance <= RUNWAY_QUEUE_MARGIN_METERS)
+            {
                 return false;
             }
             let (e, n) = (p.east - own.east, p.north - own.north);
             if e.hypot(n) > 120.0 {
+                return false;
+            }
+            let ahead = e * heading.sin() + n * heading.cos();
+            // Traffic behind is the follower's responsibility, not a reason to stop
+            // the aircraft in front. Stopping here also produces false holds in a queue.
+            if ahead <= 0.0 {
                 return false;
             }
             let width = f64::midpoint(
@@ -293,18 +307,19 @@ pub fn taxi_conflict<'a>(airport: &Airport, telemetry: &'a Telemetry) -> Option<
             );
             let norm = ve * ve + vn * vn;
             let closing = e * ve + n * vn;
-            let own_track = telemetry.ground_track_degrees.unwrap_or(telemetry.heading_degrees);
-            let ahead = e * heading.sin() + n * heading.cos();
+            let own_track = telemetry
+                .ground_track_degrees
+                .unwrap_or(telemetry.heading_degrees);
             let across = e * heading.cos() - n * heading.sin();
             let same_direction = ((target.track_degrees - own_track + 180.0).rem_euclid(360.0) - 180.0).abs() < 45.0;
             // Traffic ahead on the same route is a follow, not a collision: do not issue
             // a hold for it. Use track alignment when available, and fall back to a narrow
             // corridor ahead so noisy track data cannot make a follower stop.
-            if ahead > 0.0 && (same_direction || (e.hypot(n) < 300.0 && across.abs() < 50.0)) {
+            if same_direction || (e.hypot(n) < 300.0 && across.abs() < 50.0) {
                 return false;
             }
             if norm < 0.01 {
-                return ahead >= -10.0 && e.hypot(n) < width;
+                return e.hypot(n) < width;
             }
             let time = (-closing / norm).clamp(0.0, 20.0);
             closing < 0.0 && (e + ve * time).hypot(n + vn * time) < width
@@ -539,6 +554,65 @@ mod tests {
         };
         assert_eq!(taxi_conflict(&a, &t).unwrap().id, 4);
         t.traffic.as_mut().unwrap()[0].track_degrees = 90.0;
+        assert!(taxi_conflict(&a, &t).is_none());
+    }
+
+    #[test]
+    fn taxi_conflict_ignores_traffic_behind_the_aircraft() {
+        let a = Airport::default();
+        let t = Telemetry {
+            on_ground: true,
+            ground_speed_knots: 10.0,
+            heading_degrees: 0.0,
+            traffic: Some(vec![TrafficTarget {
+                id: 4,
+                latitude: -0.0005,
+                longitude: 0.0002,
+                on_ground: true,
+                track_degrees: 0.0,
+                ground_speed_knots: Some(10.0),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        assert!(taxi_conflict(&a, &t).is_none());
+    }
+
+    #[test]
+    fn taxi_conflict_ignores_runway_queue_traffic() {
+        use crate::airport::Runway;
+        use crate::state::Point;
+        let a = Airport {
+            runways: vec![Runway {
+                first_name: "09".into(),
+                second_name: "27".into(),
+                first: Point::default(),
+                second: Point {
+                    east: 2_000.0,
+                    ..Default::default()
+                },
+                width: 45.0,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let t = Telemetry {
+            on_ground: true,
+            ground_speed_knots: 10.0,
+            heading_degrees: 0.0,
+            latitude: -0.0008,
+            longitude: 0.001,
+            traffic: Some(vec![TrafficTarget {
+                id: 4,
+                latitude: 0.0,
+                longitude: 0.001,
+                on_ground: true,
+                track_degrees: 90.0,
+                ground_speed_knots: Some(10.0),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
         assert!(taxi_conflict(&a, &t).is_none());
     }
 }

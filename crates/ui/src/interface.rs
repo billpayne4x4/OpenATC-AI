@@ -264,6 +264,8 @@ pub struct Interface {
     pub last_com1_khz: i32,
     /// Last tuned COM2 frequency in kHz, for stopping speech on change.
     pub last_com2_khz: Option<i32>,
+    /// Plan already auto-enabled for generated traffic.
+    auto_generated_plan: String,
     /// Open request modal intent.
     pub modal_intent: String,
     /// Open request modal title.
@@ -525,6 +527,7 @@ impl Interface {
             last_interaction: 0.0,
             last_com1_khz: 0,
             last_com2_khz: None,
+            auto_generated_plan: String::new(),
             modal_intent: String::new(),
             modal_title: String::new(),
             requested_altitude: 32000,
@@ -1316,7 +1319,7 @@ impl Interface {
                     self.last_speech_sequence = entry.sequence;
                     continue;
                 }
-                if entry.background
+                if entry.chatter
                     && entry
                         .frequency
                         .is_some_and(|frequency| !state.chatter_frequencies.contains(&frequency))
@@ -1331,9 +1334,9 @@ impl Interface {
                     || matches!(entry.speaker.as_str(), "CABIN" | "ATTENDANT")
                     || entry.speaker == "GROUND"
                 {
-                    if !entry.background {
+                    if !entry.background || !entry.chatter {
                         if let Some(radio) = entry.radio {
-                            self.stop_chatter(radio);
+                            self.stop_airport_chatter(radio);
                         }
                     }
                     self.speech_queue.push_back(entry.clone());
@@ -1361,11 +1364,14 @@ impl Interface {
             let position = self
                 .speech_queue
                 .iter()
-                .position(|entry| entry.radio.unwrap_or_default() == radio && !entry.background)
+                .position(|entry| {
+                    entry.radio.unwrap_or_default() == radio
+                        && (!entry.background || !entry.chatter)
+                })
                 .or_else(|| {
                     self.speech_queue.iter().position(|entry| {
                         entry.radio.unwrap_or_default() == radio
-                            && entry.background
+                            && entry.chatter
                             && now >= self.chatter_gate_until[slot]
                     })
                 });
@@ -1375,7 +1381,7 @@ impl Interface {
                 // Only airport chatter carries a live frequency. Ambient traffic
                 // background calls have no frequency and must not be killed by the
                 // station-death filter.
-                if entry.background
+                if entry.chatter
                     && let Some(frequency) = entry.frequency
                 {
                     self.chatter_playing = Some((radio, frequency, entry.gap_ms));
@@ -1404,11 +1410,30 @@ impl Interface {
             }
         }
         self.speech_queue.retain(|entry| {
-            !entry.background
+            !entry.chatter
                 || entry
                     .frequency
                     .is_none_or(|frequency| state.chatter_frequencies.contains(&frequency))
         });
+    }
+
+    /// Stop synthetic airport chatter while leaving live background traffic queued.
+    fn stop_airport_chatter(&mut self, radio: openatc_core::state::Radio) {
+        self.speech_queue
+            .retain(|entry| entry.radio != Some(radio) || !entry.chatter);
+        if self
+            .chatter_playing
+            .is_some_and(|(playing, _, _)| playing == radio)
+        {
+            if radio == openatc_core::state::Radio::Com2 {
+                self.speech_com2.stop_speech();
+            } else {
+                self.speech.stop_speech();
+            }
+            self.chatter_playing = None;
+            self.chatter_gate_until[usize::from(radio == openatc_core::state::Radio::Com2)] =
+                now_seconds();
+        }
     }
 
     fn stop_chatter(&mut self, radio: openatc_core::state::Radio) {
@@ -1533,6 +1558,21 @@ impl Interface {
         }
         if self.settings_loaded && self.settings.simulator_root.is_empty() {
             self.settings.simulator_root = self.engine.settings().simulator_root;
+        }
+        if self.settings_loaded
+            && self.engine.connected()
+            && self.settings.auto_generated_traffic
+            && !self.settings.generated_traffic
+            && state.ifr
+            && !state.plan.departure.is_empty()
+            && !state.plan.destination.is_empty()
+        {
+            let key = format!("{}/{}", state.plan.departure, state.plan.destination);
+            if self.auto_generated_plan != key {
+                self.auto_generated_plan = key;
+                self.settings.generated_traffic = true;
+                self.save_settings();
+            }
         }
         if self.engine.connected() && !self.plan_loaded {
             self.draft = state.plan.clone();
@@ -1802,6 +1842,7 @@ impl Interface {
                         information_only: false,
                         pilot_reply: String::new(),
                         background: false,
+                        chatter: false,
                         speaker: "ATC".to_owned(),
                         text: text.to_owned(),
                         delivery: if self.settings.atis_electronic {
@@ -2071,6 +2112,7 @@ impl Interface {
         self.pending_clearance = None;
         self.requested_debug_jump = None;
         self.debug_jump_busy = false;
+        self.auto_generated_plan.clear();
         self.requested_frequency_khz = None;
         self.flight_reset_generation = self.flight_reset_generation.wrapping_add(1);
         self.reset_pending = true;
@@ -2763,6 +2805,7 @@ mod radio_busy_tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
+                chatter: false,
                 text: String::new(),
                 sequence: 1,
                 position: String::new(),
@@ -2781,6 +2824,35 @@ mod radio_busy_tests {
     }
 
     #[test]
+    fn stopping_airport_chatter_keeps_live_traffic_queued() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        let entry = |chatter: bool, sequence: u32| openatc_core::state::Transmission {
+            radio: Some(openatc_core::state::Radio::Com2),
+            frequency: Some(118_700),
+            gap_ms: 700,
+            speaker: "ATC".into(),
+            information_only: false,
+            pilot_reply: String::new(),
+            background: true,
+            chatter,
+            text: String::new(),
+            sequence,
+            position: "Tower".into(),
+            voice: String::new(),
+            delivery: "standard".into(),
+            speed: 1.0,
+            urgent: false,
+        };
+        interface.speech_queue.push_back(entry(true, 1));
+        interface.speech_queue.push_back(entry(false, 2));
+        interface.chatter_playing = Some((openatc_core::state::Radio::Com2, 118_700, 700));
+        interface.stop_airport_chatter(openatc_core::state::Radio::Com2);
+        assert_eq!(interface.speech_queue.len(), 1);
+        assert!(!interface.speech_queue[0].chatter);
+        assert!(interface.chatter_playing.is_none());
+    }
+
+    #[test]
     fn background_chatter_does_not_block_the_receiver() {
         let mut interface = Interface::new("http://127.0.0.1:1");
         interface
@@ -2793,6 +2865,7 @@ mod radio_busy_tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: true,
+                chatter: true,
                 text: "ready to taxi".into(),
                 sequence: 1,
                 position: "Traffic".into(),

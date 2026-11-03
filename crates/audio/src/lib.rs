@@ -1195,6 +1195,7 @@ mod tests {
 
     #[test]
     fn playback_preserves_stereo_channels_and_duration() {
+        LIVE_MASTER.store(1.0_f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
         let playback = Arc::new(Mutex::new(Playback {
             frames: vec![0.2, -0.4, 0.6, -0.8],
             position: 0,
