@@ -270,10 +270,6 @@ pub fn request(
     state.flow.monitor.last_call = Some(Instant::now());
     Some(reply(state, request, tag, true, &text, Some(pilot)))
 }
-/// A readback normally plays within a few seconds. Stop holding operational
-/// instructions behind it after this long.
-const READBACK_WAIT: Duration = Duration::from_secs(10);
-
 /// How long a missing readback goes before the controller prompts for it.
 const READBACK_REMINDER: Duration = Duration::from_secs(45);
 
@@ -291,6 +287,9 @@ pub fn awaiting_reply(state: &mut EngineState, station: &Station) -> bool {
             .iter()
             .rev()
             .find(|e| e.is_controller_instruction())
+            // A frequency change is complete when the pilot changes radio; it never
+            // withholds the next instruction while a readback is pending.
+            .filter(|e| e.sequence != state.session.frequency_sequence)
             .is_some_and(|e| !e.pilot_reply.is_empty());
     if !pending {
         state.flow.monitor.pending_since = None;
@@ -308,10 +307,10 @@ pub fn awaiting_reply(state: &mut EngineState, station: &Station) -> bool {
         monitor.pending_sequence = sequence;
         monitor.pending_since = Some(Instant::now());
     }
-    let waited = monitor
+    if monitor
         .pending_since
-        .map_or(Duration::ZERO, |t| t.elapsed());
-    if waited >= READBACK_REMINDER {
+        .is_some_and(|t| t.elapsed() >= READBACK_REMINDER)
+    {
         let text = say(
             "instruction_readback_reminder",
             &[("callsign", state.session.plan.callsign.clone())],
@@ -329,9 +328,8 @@ pub fn awaiting_reply(state: &mut EngineState, station: &Station) -> bool {
         state.flow.monitor.pending_sequence =
             state.session.transcript.last().map_or(0, |e| e.sequence);
         crate::traffic::holding::reminder(state, sequence, state.flow.monitor.pending_sequence);
-        return false;
     }
-    waited < READBACK_WAIT
+    true
 }
 pub fn tick(state: &mut EngineState, station: &Station) {
     let t = state.session.telemetry.clone();
@@ -2176,7 +2174,7 @@ mod tests {
         );
     }
     #[test]
-    fn a_pending_readback_holds_instructions_briefly_and_keeps_the_reply() {
+    fn pending_clearance_readback_blocks_new_instructions_and_keeps_the_reply() {
         let mut state = crate::test_state();
         let station = Station {
             name: "Test".into(),
@@ -2198,15 +2196,8 @@ mod tests {
         assert!(awaiting_reply(&mut state, &station));
         assert_eq!(state.session.transcript.len(), count);
         state.flow.monitor.pending_since =
-            Some(Instant::now().checked_sub(Duration::from_secs(11)).unwrap());
-        assert!(
-            !awaiting_reply(&mut state, &station),
-            "a stuck readback must not hold climb or descent instructions"
-        );
-        assert_eq!(state.session.transcript.len(), count);
-        state.flow.monitor.pending_since =
             Some(Instant::now().checked_sub(Duration::from_secs(46)).unwrap());
-        assert!(!awaiting_reply(&mut state, &station));
+        assert!(awaiting_reply(&mut state, &station));
         assert_eq!(state.session.transcript.len(), count + 1);
         assert_eq!(
             state.session.transcript.last().unwrap().pilot_reply,
@@ -2222,6 +2213,25 @@ mod tests {
             .clear();
         assert!(!awaiting_reply(&mut state, &station));
     }
+    #[test]
+    fn a_handoff_readback_does_not_block_the_next_instruction() {
+        let mut state = crate::test_state();
+        let station = Station {
+            name: "Test".into(),
+            service: "Center".into(),
+            ..Default::default()
+        };
+        state.session.clearance = None;
+        transmit(
+            &mut state,
+            &station,
+            "Contact Tower, 118.700.",
+            Some("Contact Tower, 118.700, TEST".into()),
+        );
+        state.session.frequency_sequence = state.session.transcript.last().unwrap().sequence;
+        assert!(!awaiting_reply(&mut state, &station));
+    }
+
     #[test]
     fn higher_altitudes_need_enough_track_miles_to_descend() {
         assert!(altitude_within_descent(100.0, 50.0, 28000));

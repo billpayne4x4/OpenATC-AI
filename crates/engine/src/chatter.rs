@@ -602,6 +602,45 @@ fn exchange(
     Some(lines)
 }
 
+/// Callsigns already used by a real aircraft, a real radio exchange or the player.
+fn live_callsigns(state: &EngineState) -> BTreeSet<String> {
+    let mut callsigns = BTreeSet::new();
+    let player = state.session.plan.callsign.trim().to_uppercase();
+    if !player.is_empty() {
+        callsigns.insert(player);
+    }
+    for target in state.traffic_targets() {
+        let callsign = target.callsign.trim().to_uppercase();
+        if !callsign.is_empty() {
+            callsigns.insert(callsign);
+        }
+    }
+    for entry in &state.session.transcript {
+        if entry.chatter
+            || matches!(
+                entry.speaker.as_str(),
+                "ATC" | "COPILOT" | "CABIN" | "ATTENDANT" | "GROUND" | "SYSTEM" | "ATIS"
+            )
+        {
+            continue;
+        }
+        let callsign = entry.speaker.trim().to_uppercase();
+        if !callsign.is_empty() {
+            callsigns.insert(callsign);
+        }
+    }
+    callsigns
+}
+
+fn callsign_available(
+    live: &BTreeSet<String>,
+    session: &Chatter,
+    player: &str,
+    value: &str,
+) -> bool {
+    value != player && !live.contains(value) && !session.used_callsigns.contains(value)
+}
+
 fn callsign(
     state: &EngineState,
     airport: &Airport,
@@ -631,6 +670,7 @@ fn callsign(
         return None;
     }
     let player = state.session.plan.callsign.to_uppercase();
+    let live = live_callsigns(state);
     for _ in 0..8 {
         let airline = candidates[rand::rng().random_range(0..candidates.len())];
         let value = format!(
@@ -638,7 +678,7 @@ fn callsign(
             airline.operator,
             100 + rand::rng().random_range(0..8900)
         );
-        if value == player || session.used_callsigns.contains(&value) {
+        if !callsign_available(&live, session, &player, &value) {
             continue;
         }
         return Some(value);
@@ -811,6 +851,51 @@ mod tests {
         assert!(lines[1].text.contains("runway 09"));
         assert!(lines[1].text.contains("Alpha, Bravo"));
         assert!(lines[2].text.contains("runway 09"));
+    }
+
+    #[test]
+    fn chatter_never_reuses_a_live_traffic_callsign() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "QFA123".into();
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 7,
+            callsign: "EZY4204".into(),
+            on_ground: true,
+            ..Default::default()
+        }]);
+        let live = live_callsigns(&state);
+        assert!(live.contains("QFA123"));
+        assert!(live.contains("EZY4204"));
+        add_transmission(&mut state.session, "HAL123", "Test", &SpeechTag::default());
+        assert!(live_callsigns(&state).contains("HAL123"));
+        add_transmission(
+            &mut state.session,
+            "CHT999",
+            "Test",
+            &SpeechTag {
+                chatter: true,
+                ..Default::default()
+            },
+        );
+        assert!(!live_callsigns(&state).contains("CHT999"));
+        let chatter = Chatter {
+            frequency_khz: 121_900,
+            airport: "YSSY".to_owned(),
+            station: String::new(),
+            service: "Ground".to_owned(),
+            voice: String::new(),
+            radio: Radio::Com1,
+            next_at: Instant::now(),
+            last_station_check: Instant::now(),
+            station_elevation: 0.0,
+            seed: 1,
+            runway: "09".to_owned(),
+            via: String::new(),
+            used_callsigns: BTreeSet::new(),
+        };
+        assert!(!callsign_available(&live, &chatter, "QFA123", "EZY4204"));
+        assert!(!callsign_available(&live, &chatter, "QFA123", "QFA123"));
+        assert!(callsign_available(&live, &chatter, "QFA123", "ABC123"));
     }
 
     #[test]

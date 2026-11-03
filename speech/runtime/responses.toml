@@ -335,6 +335,14 @@ say = [
   "No outstanding clearance to acknowledge.",
 ]
 
+[readback_correct]
+slots = []
+say = [
+  "Readback correct.",
+  "Correct readback.",
+  "Your readback is correct.",
+]
+
 [readback_correct_for_recorded_altitude_and_route]
 slots = []
 say = [
