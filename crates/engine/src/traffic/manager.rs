@@ -29,10 +29,6 @@ const RUNWAY_EDGE_MARGIN: f64 = 25.0;
 const SEED_SPACING: f64 = 150.0;
 /// Space kept between the last queued departure and the runway hold.
 const HOLD_QUEUE_MARGIN: f64 = 60.0;
-/// Hard floor for two ground aircraft. Directional separation should keep them much
-/// farther apart; this catches a merge where neither aircraft sees the other ahead.
-const MIN_GROUND_SEPARATION: f64 = 25.0;
-
 /// Deterministic mixture used for the random GA share and weighted operator draw.
 fn mix(mut value: u64) -> u64 {
     value = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
@@ -805,7 +801,11 @@ impl TrafficManager {
                             [latitude, longitude],
                             [other_latitude, other_longitude],
                         ) * 1852.0;
-                        (gap < MIN_GROUND_SEPARATION).then_some((gap, other.id, other))
+                        let required = separation::required_gap(
+                            self.aircraft[index].profile.length,
+                            other.profile.length,
+                        );
+                        (gap < required).then_some((gap, other.id, other))
                     })
                     .min_by(|left, right| left.0.total_cmp(&right.0));
                 match closest {

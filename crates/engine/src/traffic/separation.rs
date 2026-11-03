@@ -116,7 +116,7 @@ pub(crate) fn right_conflict(
 /// Speed a follower may use behind the leader without closing the gap too quickly.
 #[must_use]
 pub(crate) fn follow_speed(leader: Ahead, taxi_speed: f64) -> f64 {
-    let stop = leader.required * 0.55;
+    let stop = leader.required;
     if leader.gap <= stop {
         0.0
     } else if leader.speed < 0.1 {
@@ -270,8 +270,11 @@ mod tests {
             gap: required * 0.7,
             ..leader
         };
-        let speed = follow_speed(close, 8.0);
-        assert!(speed > 0.0 && speed <= 8.0);
+        assert_eq!(
+            follow_speed(close, 8.0),
+            0.0,
+            "a follower inside the protected gap must stop"
+        );
         let stopped = Ahead {
             speed: 0.0,
             gap: required - 1.0,
