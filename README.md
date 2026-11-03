@@ -405,7 +405,7 @@ Generated radio keeps one durable station per published frequency, but its worke
 
 Tower lines a departure up as soon as the runway surface is clear, even when traffic is still on final. The take-off clearance waits for same-runway arrival traffic to pass; an arrival on a parallel runway, including one on short final, does not withhold it. Once the roll has started, a late conflict does not cancel the take-off; the arrival or go-around is sequenced around the departing aircraft. A lined-up aircraft is not repeatedly told to hold, and a distant arrival does not block take-off if the departure will be airborne before it reaches the threshold.
 
-A takeoff instruction may include known wind, pressure and departure guidance. The cleared altitude and departure constraints remain authoritative. The departure handoff is tied to the airborne workflow; accepting a takeoff readback alone should not send the aircraft to another controller while still parked at the hold.
+A takeoff instruction may include known wind, pressure and departure guidance. The cleared altitude and departure constraints remain authoritative. Conversational radio lines and information-only wake cautions do not hold the takeoff clearance; the runway, wake and required-readback state govern it. The departure handoff is tied to the airborne workflow; accepting a takeoff readback alone should not send the aircraft to another controller while still parked at the hold.
 
 ### 5. Departure, enroute requests and constraints
 

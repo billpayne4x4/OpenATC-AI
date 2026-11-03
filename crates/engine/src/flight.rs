@@ -1138,7 +1138,7 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
     else {
         return;
     };
-    if !crate::traffic::ready(state) {
+    if !crate::traffic::departure_ready(state) {
         return;
     }
     let sequence = crate::routes::runway_sequence(state, &airport, &runway);
