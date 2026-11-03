@@ -11,19 +11,36 @@ use crate::pages::setting_input;
 use crate::widgets;
 use openatc_core::state::State;
 
+fn frequency_text(khz: Option<i32>) -> String {
+    khz.filter(|frequency| *frequency > 0).map_or_else(
+        || "—".to_owned(),
+        |frequency| format!("{:.3}", f64::from(frequency) / 1000.0),
+    )
+}
+
 /// Draw generated poses alongside fresh simulator telemetry, preferring the engine pose by ID.
 pub(crate) fn targets(state: &State) -> impl Iterator<Item = &openatc_core::state::TrafficTarget> {
+    let ids: std::collections::BTreeSet<u32> = state
+        .generated_traffic
+        .iter()
+        .map(|frame| frame.target.id)
+        .collect();
+    let callsigns: std::collections::BTreeSet<String> = state
+        .generated_traffic
+        .iter()
+        .map(|frame| openatc_core::ops::callsign_key(&frame.target.callsign))
+        .filter(|callsign| !callsign.is_empty())
+        .collect();
     state
         .telemetry
         .traffic
         .iter()
         .flatten()
-        .filter(|target| {
-            !state.generated_traffic.iter().any(|frame| {
-                frame.target.id == target.id
-                    || (!frame.target.callsign.is_empty()
-                        && frame.target.callsign == target.callsign)
-            })
+        .filter(move |target| {
+            !ids.contains(&target.id) && {
+                let callsign = openatc_core::ops::callsign_key(&target.callsign);
+                callsign.is_empty() || !callsigns.contains(&callsign)
+            }
         })
         .chain(state.generated_traffic.iter().map(|frame| &frame.target))
 }
@@ -300,6 +317,13 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
         ui.text_wrapped(&interface.native_traffic_status);
     }
     widgets::section_title(ui, "TRAFFIC RADIO");
+    if ui.checkbox(
+        "Airport radio chatter",
+        &mut interface.settings.airport_chatter,
+    ) {
+        interface.save_settings();
+    }
+    ui.text_wrapped("When tuned to a receivable Ground or Tower station, on the ground or airborne, you may hear other aircraft taxi and depart. The calls use the installed airport's runways and taxiways. Chatter stops when you retune or leave reception.");
     ui.checkbox(
         "Hear simulated traffic pilot reports",
         &mut interface.settings.hear_traffic_radio,
@@ -346,6 +370,19 @@ pub fn tab(ui: &imgui::Ui, interface: &mut crate::interface::Interface, state: &
         ui.text_wrapped(&interface.traffic_notice);
     }
     ui.text_wrapped("OpenATC checks simulator-reported aircraft before issuing runway crossing, takeoff and landing clearances.");
+    ui.checkbox(
+        "En-route generated traffic",
+        &mut interface.settings.generated_traffic,
+    );
+    if interface.settings.generated_traffic {
+        ui.text_wrapped("ON. Complete flights are prepared around your plan and destination STAR.");
+    } else {
+        ui.text_wrapped("OFF. Ambient traffic only stays around airports; switch it on for traffic around your route and STAR.");
+    }
+    ui.checkbox(
+        "Enable generated traffic automatically for a loaded plan",
+        &mut interface.settings.auto_generated_traffic,
+    );
     if state.telemetry.traffic.is_none() {
         ui.text_colored(widgets::warning(ui), "Traffic feed unavailable");
         ui.text_wrapped("Runway checks cannot confirm clear traffic. Check the simulator connection and the traffic provider's TCAS output.");
@@ -371,7 +408,7 @@ pub fn tab(ui: &imgui::Ui, interface: &mut crate::interface::Interface, state: &
     widgets::section_title(ui, "NEARBY AIRCRAFT");
     if let Some(_table) = ui.begin_table_with_flags(
         "TrafficTargets",
-        5,
+        8,
         imgui::TableFlags::ROW_BG
             | imgui::TableFlags::BORDERS_INNER_H
             | imgui::TableFlags::SORTABLE
@@ -383,6 +420,9 @@ pub fn tab(ui: &imgui::Ui, interface: &mut crate::interface::Interface, state: &
             "Altitude (ft MSL)",
             "Track",
             "Position",
+            "GS (kt)",
+            "COM1",
+            "COM2",
         ] {
             ui.table_setup_column(column);
         }
@@ -447,6 +487,16 @@ pub fn tab(ui: &imgui::Ui, interface: &mut crate::interface::Interface, state: &
             } else {
                 "Airborne"
             });
+            ui.table_next_column();
+            ui.text(
+                target
+                    .ground_speed_knots
+                    .map_or_else(|| "—".to_owned(), |speed| format!("{speed:.0}")),
+            );
+            ui.table_next_column();
+            ui.text(frequency_text(target.com1_khz));
+            ui.table_next_column();
+            ui.text(frequency_text(target.com2_khz));
         }
     }
     if interface.settings.dev_mode
@@ -773,6 +823,43 @@ pub(crate) fn scenery_setup(ui: &imgui::Ui, interface: &mut crate::interface::In
 mod map_tests {
     use super::*;
     use openatc_core::state::{GeneratedTraffic, TrafficTarget};
+
+    #[test]
+    fn frequencies_are_formatted_or_dashed() {
+        assert_eq!(frequency_text(Some(118_700)), "118.700");
+        assert_eq!(frequency_text(None), "—");
+        assert_eq!(frequency_text(Some(0)), "—");
+    }
+
+    #[test]
+    fn punctuation_does_not_duplicate_a_generated_target() {
+        let mut state = State::default();
+        state.telemetry.traffic = Some(vec![TrafficTarget {
+            id: 7,
+            callsign: "FOMBT".into(),
+            ..Default::default()
+        }]);
+        state.generated_traffic.push(GeneratedTraffic {
+            target: TrafficTarget {
+                id: 14_680_064,
+                callsign: "F-OMBT".into(),
+                ..Default::default()
+            },
+            model: std::sync::Arc::new(openatc_core::traffic::csl::Model {
+                id: "TEST".into(),
+                objects: vec![],
+                vertical_offset: None,
+                matches: vec![],
+            }),
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            animation: Default::default(),
+        });
+        let shown: Vec<_> = targets(&state).collect();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].id, 14_680_064);
+    }
+
     #[test]
     fn fresh_simulator_samples_keep_generated_map_targets_without_duplicates() {
         let mut state = State::default();

@@ -69,6 +69,8 @@ pub(crate) fn traffic_seed() -> u64 {
 pub struct EngineState {
     /// Generated scene preparation and future movement state.
     pub generated: generated::Runtime,
+    /// Plan key already auto-enabled for generated traffic.
+    pub auto_generated_plan: String,
     /// Shared CPU budget for work that must not occupy the HTTP executor.
     pub workers: Arc<workers::Workers>,
     /// Model downloads run separately from flight and radio work.
@@ -204,14 +206,16 @@ impl EngineState {
         // Some simulator builds report an injected model back as native traffic with a
         // different id. The drawn frame is authoritative; drop the native echo so the
         // aircraft does not appear twice or block itself.
-        let drawn: std::collections::BTreeSet<&str> = self
+        let drawn: std::collections::BTreeSet<String> = self
             .session
             .generated_traffic
             .iter()
-            .map(|frame| frame.target.callsign.as_str())
+            .map(|frame| openatc_core::ops::callsign_key(&frame.target.callsign))
             .filter(|callsign| !callsign.is_empty())
             .collect();
-        targets.retain(|target| target.id == 0 || !drawn.contains(target.callsign.as_str()));
+        targets.retain(|target| {
+            target.id == 0 || !drawn.contains(&openatc_core::ops::callsign_key(&target.callsign))
+        });
         let mut ids: std::collections::BTreeSet<u32> =
             targets.iter().map(|target| target.id).collect();
         for frame in &self.session.generated_traffic {
@@ -615,15 +619,35 @@ async fn main() {
         controllers = saved;
     }
     let workers = Arc::new(workers::Workers::new(settings.cpu_workers));
-    let wake_text = [
-        config_dir.join("traffic/wake.toml"),
-        exe_dir.join("traffic/wake.toml"),
-    ]
-    .into_iter()
-    .find_map(|path| std::fs::read_to_string(path).ok())
-    .unwrap_or_else(|| include_str!("../../../traffic/wake.toml").to_owned());
-    if let Err(error) = openatc_core::traffic::wake_policy::load(&wake_text) {
-        eprintln!("Wake policy rejected: {error}");
+    let mut wake_loaded = false;
+    for path in [
+        config_dir.join("traffic/wake"),
+        exe_dir.join("traffic/wake"),
+        exe_dir.join("../traffic/wake"),
+    ] {
+        if !path.is_dir() {
+            continue;
+        }
+        match openatc_core::traffic::wake_policy::load_dir(&path) {
+            Ok(()) => {
+                wake_loaded = true;
+                break;
+            }
+            Err(error) => eprintln!("Wake policy folder {} rejected: {error}", path.display()),
+        }
+    }
+    if !wake_loaded {
+        let wake_text = [
+            config_dir.join("traffic/wake.toml"),
+            exe_dir.join("traffic/wake.toml"),
+            exe_dir.join("../traffic/wake.toml"),
+        ]
+        .into_iter()
+        .find_map(|path| std::fs::read_to_string(path).ok())
+        .unwrap_or_else(|| include_str!("../../../traffic/wake.toml").to_owned());
+        if let Err(error) = openatc_core::traffic::wake_policy::load(&wake_text) {
+            eprintln!("Wake policy rejected: {error}");
+        }
     }
     let traffic_profiles = traffic_profiles::Store::default();
     if let Err(error) = traffic_profiles.get(&config_dir, &workers, false).await {
@@ -649,6 +673,7 @@ async fn main() {
         station_bus: Default::default(),
         traffic_profiles,
         generated: Default::default(),
+        auto_generated_plan: String::new(),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,
@@ -819,6 +844,7 @@ fn test_state() -> EngineState {
         station_bus: Default::default(),
         traffic_profiles: Default::default(),
         generated: Default::default(),
+        auto_generated_plan: String::new(),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,
@@ -897,6 +923,20 @@ mod traffic_target_tests {
             ..Default::default()
         }]);
         state.session.generated_traffic = vec![frame(14_680_064, "AMBIENT2")];
+        let targets = state.traffic_targets();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].id, 14_680_064);
+    }
+
+    #[test]
+    fn punctuation_does_not_leave_a_native_echo_of_a_drawn_aircraft() {
+        let mut state = test_state();
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 7,
+            callsign: "FOMBT".into(),
+            ..Default::default()
+        }]);
+        state.session.generated_traffic = vec![frame(14_680_064, "F-OMBT")];
         let targets = state.traffic_targets();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].id, 14_680_064);

@@ -4,7 +4,16 @@ use openatc_core::airport::Airport;
 use openatc_core::state::TrafficTarget;
 use openatc_core::traffic::motion::Waypoint;
 
-/// Taxi speed for the current path segment.
+/// Distance before a corner where the turn speed begins.
+const TURN_LOOKAHEAD_METERS: f64 = 40.0;
+/// Distance after a corner before accelerating back to taxi speed.
+const TURN_LOOKBEHIND_METERS: f64 = 15.0;
+
+/// Taxi speed near the current position.
+///
+/// A long leg ending in a turn must not be driven at turn speed for its whole
+/// length. The aircraft keeps taxi speed until it is close to the corner, slows
+/// through the corner itself, and accelerates once clear of it.
 pub(crate) fn taxi_speed(
     points: &[Waypoint],
     cumulative: &[f64],
@@ -12,19 +21,43 @@ pub(crate) fn taxi_speed(
     straight: f64,
     turn: f64,
 ) -> f64 {
+    if points.len() < 2 || cumulative.len() != points.len() {
+        return straight;
+    }
     let index = cumulative
         .iter()
         .position(|value| *value >= distance)
         .unwrap_or(points.len().saturating_sub(1))
         .max(1);
-    let Some(previous) = points.get(index.saturating_sub(1)) else {
-        return straight;
+    if index >= 2
+        && distance - cumulative[index - 1] <= TURN_LOOKBEHIND_METERS
+        && corner_turn(points, index - 1) > 15.0
+    {
+        return turn;
+    }
+    for corner in index..points.len().saturating_sub(1) {
+        let Some(ahead) = cumulative.get(corner) else {
+            break;
+        };
+        if ahead - distance > TURN_LOOKAHEAD_METERS {
+            break;
+        }
+        if corner_turn(points, corner) > 15.0 {
+            return turn;
+        }
+    }
+    straight
+}
+
+fn corner_turn(points: &[Waypoint], index: usize) -> f64 {
+    let Some(previous) = index.checked_sub(1).and_then(|i| points.get(i)) else {
+        return 0.0;
     };
     let Some(current) = points.get(index) else {
-        return straight;
+        return 0.0;
     };
     let Some(next) = points.get(index + 1) else {
-        return straight;
+        return 0.0;
     };
     let first = openatc_core::arrival::bearing(
         [previous.latitude, previous.longitude],
@@ -34,11 +67,7 @@ pub(crate) fn taxi_speed(
         [current.latitude, current.longitude],
         [next.latitude, next.longitude],
     );
-    if openatc_core::navigation::turn(first, second).abs() > 15.0 {
-        turn
-    } else {
-        straight
-    }
+    openatc_core::navigation::turn(first, second).abs()
 }
 
 /// Whether the player is ahead on a taxi route, or close in front of the aircraft.
@@ -111,4 +140,62 @@ fn position_heading(points: &[Waypoint], cumulative: &[f64], distance: f64) -> (
         start.longitude + (end.longitude - start.longitude) * fraction,
         heading,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn route() -> (Vec<Waypoint>, Vec<f64>) {
+        let points = vec![
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.01,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.01,
+                longitude: 0.01,
+                altitude_feet: 0.0,
+            },
+        ];
+        let mut cumulative = vec![0.0];
+        for pair in points.windows(2) {
+            let leg = openatc_core::arrival::distance_nm(
+                [pair[0].latitude, pair[0].longitude],
+                [pair[1].latitude, pair[1].longitude],
+            ) * 1_852.0;
+            cumulative.push(cumulative.last().copied().unwrap_or(0.0) + leg);
+        }
+        (points, cumulative)
+    }
+
+    #[test]
+    fn a_long_leg_keeps_taxi_speed_until_the_corner() {
+        let (points, cumulative) = route();
+        let straight = 11.3;
+        let turn = 6.2;
+        let corner = cumulative[1];
+        assert_eq!(
+            taxi_speed(&points, &cumulative, corner - 200.0, straight, turn),
+            straight
+        );
+        assert_eq!(
+            taxi_speed(&points, &cumulative, corner - 20.0, straight, turn),
+            turn
+        );
+        assert_eq!(
+            taxi_speed(&points, &cumulative, corner + 5.0, straight, turn),
+            turn
+        );
+        assert_eq!(
+            taxi_speed(&points, &cumulative, corner + 30.0, straight, turn),
+            straight
+        );
+    }
 }

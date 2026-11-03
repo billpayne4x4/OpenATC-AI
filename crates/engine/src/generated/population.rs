@@ -609,8 +609,11 @@ pub(super) fn merge(
     // The first complete scene replaces the plan-less seed outright. Incremental admission
     // only accepts aircraft at segment zero, so merging a cast that already contains
     // mid-taxi, holding and taxi-in aircraft silently keeps the parked ones and drops
-    // everything that is already moving.
-    if runtime.flights.is_empty() && !scene.flights.is_empty() {
+    // everything that is already moving. A scene for another airport replaces the old one
+    // instead of merging two airports into one visible set.
+    if super::replaces_airport(runtime, &scene.airport)
+        || (runtime.flights.is_empty() && !scene.flights.is_empty())
+    {
         super::publish_scene(runtime, scene, key, epoch);
         return;
     }

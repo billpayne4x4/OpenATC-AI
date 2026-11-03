@@ -277,6 +277,8 @@ Kitten exposes Bella, Bruno, Hugo, Jasper, Kiki, Leo, Luna and Rosie through `/v
 
 Controller voices are saved by controller identity and reused on later visits. New controllers use unused voices before reusing an exhausted pool. With eight Kitten presets, more than eight controllers necessarily share voices. A saved voice absent from the newly selected provider is replaced with an available one. The selected provider therefore affects both variety and pronunciation.
 
+Traffic pilots are assigned a voice by callsign and keep it for the flight. A new callsign takes the least recently used pilot voice, so a used voice moves to the back of the queue rather than being picked again immediately. Ambient, generated and airport-chatter calls share the same assignment. Controller and pilot pools avoid each other where the provider has enough voices, and fall back to sharing when it does not.
+
 ### GPU preferred, CPU available
 
 An accelerated build tries its GPU backend first and falls back to CPU if initialization or the TTS warm-up fails. There are four independent command-line overrides:
@@ -385,7 +387,7 @@ Automatic crossing requests reuse the active airport data and cached controller 
 
 A Ground taxi request made from physical runway pavement identifies the occupied runway and directs the pilot to Tower for exit instructions, rather than suggesting an unrelated departure-runway backtrack. Ordinary gate taxi routing remains subject to the same runway protection.
 
-Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. The crossing check uses the time needed to taxi across, plus the clearance/readback and radio buffer, so a distant final that cannot reach the threshold in time does not block the runway. A landing aircraft that has already passed the crossing point and is moving away does not block the crossing behind it. An aircraft before or over the crossing, stopped past it, or still on final does block it. Generated traffic crosses at the taxi-turn speed (8 kt with the jet envelope) and switches its landing lights on for the crossing.
+Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. The crossing check uses the time needed to taxi across, plus the clearance/readback and radio buffer, so a distant final that cannot reach the threshold in time does not block the runway. A landing aircraft that has already passed the crossing point and is moving away does not block the crossing behind it. An aircraft before or over the crossing, stopped past it, or still on final does block it. Generated traffic crosses at the taxi-turn speed (12 kt with the jet envelope) and switches its landing lights on for the crossing.
 
 After the crossing, the copilot can report vacated at the observed completion point. The next taxi instruction replaces the route and requires its own readback. In manual mode physical completion can advance the crossing workflow; a vacated report is not treated as an altitude readback.
 
@@ -726,9 +728,13 @@ Trigger words, response priority, humour flags and fact conditions are editable 
 
 Open **Traffic** from the visible page tabs to see simulator-reported aircraft. **Settings → Traffic** holds model downloads, aircraft amount and the separate **Hear simulated traffic pilot reports** and **Talk to simulated traffic pilots** switches. Select an identified aircraft to ask about weather, its landing or crosswind. Replies use recent simulator weather and observed landing history; missing information gets an honest unavailable response. These are simulated pilot conversations, not messages sent to multiplayer users.
 
-**Airport radio chatter** plays short background Ground and Tower exchanges when you are airborne above a receivable station and tuned to it. Calls use the installed airport's real runway designators, taxiway names and operator codes; no 3D aircraft, TCAS targets or calculated taxi routes are created. COM1 and COM2 can carry separate sessions. The rate follows the traffic mix and congestion setting: quiet traffic gives longer gaps, busy traffic shorter ones. Chatter yields to your own transmissions and stops when you retune, leave reception, descend below 1,000 ft above the station, or switch the setting off. The setting is `airportChatter` and defaults on.
+**Airport radio chatter** plays short background Ground and Tower exchanges when you are tuned to a receivable station, on the ground or airborne. Calls use the installed airport's real runway designators, taxiway names and operator codes; no 3D aircraft, TCAS targets or calculated taxi routes are created. COM1 and COM2 can carry separate sessions, and both radios are audible independently. Live traffic calls take priority over synthetic chatter on the same frequency. The rate follows the traffic mix and congestion setting: quiet traffic gives longer gaps, busy traffic shorter ones. Chatter yields to your own transmissions and stops when you retune, leave reception, or switch the setting off. The setting is `airportChatter` and defaults on.
 
 **Settings → Traffic → Traffic mix** controls the relative airline, regional, freight and general-aviation shares. Set **Regional** to zero to remove regional turboprops and regional jets, or **General aviation** to zero to remove light aircraft and business jets. The ambient layer rolls the general-aviation share per aircraft, so the mix varies rather than switching models at a fixed interval.
+
+Ambient traffic is airport-scoped; it remains around the active airport and does not follow the player en route. En-route and STAR traffic comes from **generated traffic**, which prepares complete flights around the loaded plan. It is enabled automatically for a loaded plan unless either automatic enable or generated traffic is switched off. The Traffic page shows its on/off state, provides the switch, and lists each nearby aircraft's ground speed, COM1 and COM2 frequencies.
+
+Generated and ambient aircraft share one published traffic set. Each layer updates only its own entries, so a paused or incomplete layer cannot hide the other, and the map, table, radio and 3D models all read the same list. When the active airport changes, the previous airport's generated flights are retired rather than kept alongside the arrival scene. Simulator echoes are matched with punctuation removed, so `F-OMBT` and `FOMBT` cannot appear as two aircraft.
 
 **Set X-Plane AI traffic amount** adjusts the native active-aircraft count, up to 19 and limited by available simulator aircraft. It is off by default, leaves flight models enabled, yields to other traffic plugins and restores the previous count when disabled. Native AI flies its own simulator routes and consumes flight-model CPU. Start with a small count and compare X-Plane's performance readings. The SDK exposes aircraft ownership/count and AI control, but no documented interface for handing arbitrary per-aircraft IFR plans to native ATC. See [XPLMPlanes](https://developer.x-plane.com/sdk/XPLMPlanes/).
 
@@ -760,8 +766,8 @@ and the expected time is never permission to leave. This is a restricted direct-
 implementation; general published/parallel/teardrop entry, vectors and full native
 flight acceptance remain open.
 
-- **Wake protection** uses editable tables in `traffic/wake.toml` for FAA CWT, ICAO Doc 4444, EUROCONTROL RECAT-EU and Australian MATS. The **Wake separation** setting selects a table or `auto`, which uses FAA at US airports, MATS at Australian airports and ICAO elsewhere. Aircraft category comes from the simulator when reported, then from the aircraft profile.
-- Observed departures can produce a **Hold for wake turbulence** instruction, with different intervals for full-length, intersection and opposite-direction departures and qualifying close parallel runways.
+- **Wake protection** uses editable tables in `traffic/wake/`: `runways.toml` holds the shared runway relationships and each standard has its own file (`icao.toml`, `faa.toml`, `recat_eu.toml`, `mats.toml`). The **Wake separation** setting selects a table or `auto`, which uses FAA at US airports, MATS at Australian airports and ICAO elsewhere. Aircraft category comes from the simulator when reported, then from the aircraft profile. The single `traffic/wake.toml` remains the bundled fallback when the folder is absent.
+- Observed departures can produce a **Hold for wake turbulence** instruction, with different intervals for full-length, intersection and opposite-direction departures and qualifying close parallel runways. A non-zero interval is spoken to the affected aircraft; a zero interval produces no warning, so a light GA leader does not cause a blanket wake caution.
 - Timing uses simulator flight time, stops while paused and does not expire instantly after a clock jump.
 - Starting the interval at observed liftoff is conservative; no pilot waiver is assumed.
 - Australian heavy-behind-heavy departures use a live distance check; a timer or a missing leader cannot satisfy it. Missing verified medium-aircraft MTOW conservatively applies the Medium→Light protection to all supported Medium types.
@@ -818,7 +824,7 @@ Copilot playback and acceptance are separate steps. Repeated preparation request
 - A stopped aircraft whose current clearance is a runway crossing has that current crossing clearance reissued when the runway is clear. This prevents a lost crossing grant from holding the runway indefinitely.
 - Generated poses without a frame, flight plan or station assignment are removed on the next movement tick and release their resources.
 - The runway is fixed to the ATIS flow. Reciprocal runway ends are not selected for generated traffic just to improve the mix.
-- **Wake separation** in Traffic settings selects `auto`, `icao`, `recat_eu`, `faa_cwt` or `mats`. The tables and runway-relationship thresholds are in `traffic/wake.toml`; aircraft category comes from the simulator when reported, then from the aircraft profile. A wake interval produces **line up and wait**, not hold short; a landing on one parallel runway does not block a departure on the other.
+- **Wake separation** in Traffic settings selects `auto`, `icao`, `recat_eu`, `faa_cwt` or `mats`. The tables and runway-relationship thresholds are in `traffic/wake/`, with `traffic/wake.toml` used only when the folder is absent; aircraft category comes from the simulator when reported, then from the aircraft profile. **Settings → Realism → Allow wake separation waits** turns departure wake intervals off for the player and ambient traffic; runway occupancy, landing, crossing and go-around protection still apply. A wake interval produces **line up and wait**, not hold short; a landing on one parallel runway does not block a departure on the other.
 - A takeoff clearance names the flight's own SID and initial level. It does not read latitude, longitude or a full hold procedure; a hold is issued separately only when needed.
 - Hold short is reserved for actual runway occupancy, a crossing or a blocked holding point. Line up and wait is used when the runway is available but the wake interval is still running.
 - The experimental generated-traffic simulation also uses this pool, with at most one simulation job outstanding and complete snapshots published to the plugin.
@@ -1221,10 +1227,16 @@ waits for the runway and wake interval before taking off. The player is sequence
 same way, with line up and wait followed by takeoff clearance as the runway and wake
 interval clear. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
-does not use jet speeds. Ambient aircraft detect the player's position and yield
+does not use jet speeds. Straight taxi legs use the full taxi speed and slow only
+near a turn, so a long leg ending in a corner is not crawled at turn speed for its
+whole length; the line-up from the hold likewise keeps taxi speed until the final
+turn onto the runway. Ambient aircraft detect the player's position and yield
 rather than taxiing through. Followers on the same taxi route keep a speed-controlled
-gap to the aircraft ahead instead of stopping and starting in a queue; right-of-way
-is applied only where different routes converge. Departures are seeded along the
+gap to the aircraft ahead instead of stopping and starting in a queue. Surface
+conflict warnings are limited to traffic crossing ahead: traffic behind, traffic
+ahead on the same route, traffic at the hold and runway-queue traffic are ignored.
+When joining a taxiway, traffic already established on it has right of way and the
+joining aircraft merges behind; a genuine crossing conflict still produces a hold. Departures are seeded along the
 surface route from the spawn node toward the hold, spread across the usable taxiway
 and spaced from the hold and from each other.
 A seed is rejected if it is inside the runway strip or within the runway-edge margin,
@@ -1239,8 +1251,15 @@ runway end nearest that hold, so the aircraft enters at the near threshold and r
 away from it. Takeoff accelerates at the handling acceleration rate to rotation
 speed, using a firmer rate only when the runway is shorter than the nominal roll,
 then climbs at the gradient implied by its published climb rate and climb speed.
-A jet therefore climbs steeply after liftoff while a light aircraft climbs shallowly,
-instead of both following a fixed three-degree line. Ambient departures and arrivals use separate same-flow
+Climb speed is a nominal 55% of cruise speed, with approach and rotation speeds as
+the lower bound, so a jet does not climb at approach speed. A jet therefore climbs
+at a much higher vertical speed than a light aircraft while both use a comparable
+flight-path angle, instead of every type following a fixed three-degree line.
+A faster departure is not released immediately behind a much slower one. It waits
+at the hold or lines up and waits until the performance gap is safe, then climbs at
+its normal speed. The anti-overtake speed cap only applies to similar-performance
+pairs and cannot reduce an airborne aircraft below its safe climb speed.
+Ambient departures and arrivals use separate same-flow
 runways when the airport has a usable parallel; runway occupancy is tracked per
 physical runway, so traffic on 04R does not block 04L. Ambient airliners are chosen
 from the airport's operator preferences in `traffic/hubs.toml`, with matching
@@ -1340,7 +1359,7 @@ The crossing practice is national guidance, not an ICAO rule, and it is not univ
 The FAA AIM recommends all exterior lights when taxiing on or across a runway at the
 pilot's discretion; European and ICAO rules require night lighting but leave the
 crossing procedure to the operator. There is also no universal numeric crossing speed.
-Generated traffic crosses at `taxi_turn_knots` from the handling catalogue (8 kt with
+Generated traffic crosses at `taxi_turn_knots` from the handling catalogue (12 kt with
 the jet envelope); ambient aircraft use the same per-type taxi speeds.
 
 See [validation](docs/VALIDATION.md) for current test results and earlier engineering

@@ -1,4 +1,6 @@
 # Wake turbulence and runway-relationship policy.
+# The editable layout is traffic/wake/: runways.toml plus one file per standard.
+# This single file is the bundled fallback when that folder is absent.
 # Edit these tables to change regional procedures without rebuilding.
 # Categories are matched to the aircraft profile's `cwt` or `wake` field.
 # departure rows: leader category, columns: follower category,

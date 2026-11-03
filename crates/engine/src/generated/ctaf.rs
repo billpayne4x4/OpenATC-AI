@@ -1503,9 +1503,10 @@ pub(super) fn announce(state: &mut EngineState) {
     let Some(radio) = state.session.receiving_radio(frequency) else {
         return;
     };
+    let pilot_voice = crate::traffic::pilot_voice_for_callsign(state, &callsign);
     let mut tag = SpeechTag {
         position: "Traffic".into(),
-        voice: crate::traffic::pilot_voice(state, id),
+        voice: pilot_voice.clone(),
         ..Default::default()
     };
     tag.radio = Some(radio);
@@ -1564,7 +1565,7 @@ pub(super) fn announce(state: &mut EngineState) {
                 let spoken_readback = state.generated.spoken_text(&readback);
                 let mut tag = SpeechTag {
                     position: "Traffic".into(),
-                    voice: crate::traffic::pilot_voice(state, id),
+                    voice: pilot_voice,
                     ..Default::default()
                 };
                 tag.radio = Some(radio);

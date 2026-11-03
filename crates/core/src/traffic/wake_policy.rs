@@ -2,11 +2,15 @@
 //!
 #![allow(missing_docs)]
 //!
-//! The data lives in `traffic/wake.toml` so regional procedures can be changed without
-//! rebuilding. The compiled fallback is the same file, embedded for tests and first start.
+//! The data lives in `traffic/wake/` so a standard can be changed without rebuilding.
+//! `runways.toml` holds the shared runway relationships and the other files each hold
+//! one wake standard. The single `traffic/wake.toml` remains the bundled fallback for
+//! first start and for installations that still use one file.
 use serde::Deserialize;
 use std::{
     collections::BTreeMap,
+    ffi::OsStr,
+    path::Path,
     sync::{OnceLock, RwLock},
 };
 
@@ -15,6 +19,19 @@ pub struct File {
     pub version: u32,
     pub runways: RunwayRules,
     pub regions: BTreeMap<String, Region>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RunwayFile {
+    version: u32,
+    runways: RunwayRules,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct StandardFile {
+    name: String,
+    #[serde(flatten)]
+    region: Region,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -61,6 +78,11 @@ pub struct Policy {
 impl Policy {
     pub fn parse(text: &str) -> Result<Self, String> {
         let file: File = toml::from_str(text).map_err(|error| error.to_string())?;
+        Self::from_file(file)
+    }
+
+    /// Validate a policy that has already been parsed from TOML.
+    pub fn from_file(file: File) -> Result<Self, String> {
         if file.version != 1 {
             return Err(format!("Unsupported wake policy version {}", file.version));
         }
@@ -87,6 +109,47 @@ impl Policy {
         Ok(Self {
             file,
             standard: "auto".into(),
+        })
+    }
+
+    /// Read the split policy folder: `runways.toml` plus one standard per TOML file.
+    pub fn from_dir(path: &Path) -> Result<Self, String> {
+        let runways_path = path.join("runways.toml");
+        let text = std::fs::read_to_string(&runways_path)
+            .map_err(|error| format!("{}: {error}", runways_path.display()))?;
+        let runways: RunwayFile = toml::from_str(&text)
+            .map_err(|error| format!("{}: {error}", runways_path.display()))?;
+        let mut paths = std::fs::read_dir(path)
+            .map_err(|error| format!("{}: {error}", path.display()))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|candidate| candidate.extension() == Some(OsStr::new("toml")))
+            .collect::<Vec<_>>();
+        paths.sort();
+        let mut regions = BTreeMap::new();
+        for standard_path in paths {
+            if standard_path == runways_path {
+                continue;
+            }
+            let text = std::fs::read_to_string(&standard_path)
+                .map_err(|error| format!("{}: {error}", standard_path.display()))?;
+            let standard: StandardFile = toml::from_str(&text)
+                .map_err(|error| format!("{}: {error}", standard_path.display()))?;
+            let name = standard.name.trim().to_owned();
+            if name.is_empty() {
+                return Err(format!("{} needs a standard name", standard_path.display()));
+            }
+            if regions.insert(name.clone(), standard.region).is_some() {
+                return Err(format!("Wake policy standard `{name}` is defined twice"));
+            }
+        }
+        if regions.is_empty() {
+            return Err("Wake policy folder has no standards".into());
+        }
+        Self::from_file(File {
+            version: runways.version,
+            runways: runways.runways,
+            regions,
         })
     }
 
@@ -278,7 +341,15 @@ fn global() -> &'static RwLock<Policy> {
 }
 
 pub fn load(text: &str) -> Result<(), String> {
-    let policy = Policy::parse(text)?;
+    install(Policy::parse(text)?)
+}
+
+/// Load a split policy folder and keep the selected standard.
+pub fn load_dir(path: &Path) -> Result<(), String> {
+    install(Policy::from_dir(path)?)
+}
+
+fn install(policy: Policy) -> Result<(), String> {
     let standard = global()
         .read()
         .map_or("auto".into(), |current| current.standard.clone());
@@ -308,4 +379,132 @@ pub fn current() -> Policy {
         |_| Policy::parse(include_str!("../../../../traffic/wake.toml")).unwrap(),
         |policy| policy.clone(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        path::PathBuf,
+        sync::atomic::{AtomicU32, Ordering},
+    };
+
+    fn folder() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../traffic/wake")
+    }
+
+    struct TempFolder(PathBuf);
+
+    impl TempFolder {
+        fn new(tag: &str) -> Self {
+            static NEXT: AtomicU32 = AtomicU32::new(0);
+            let path = std::env::temp_dir().join(format!(
+                "openatc-wake-{tag}-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_dir_all(&path);
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn write(&self, name: &str, text: &str) {
+            std::fs::write(self.0.join(name), text).unwrap();
+        }
+    }
+
+    impl Drop for TempFolder {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    const RUNWAYS: &str = "version = 1\n[runways]\nparallel_independent_m = 760.0\nparallel_wake_m = 760.0\ncrossing_degrees = 12.0\n";
+
+    fn standard(name: &str) -> String {
+        format!(
+            "name = \"{name}\"\nlabel = \"{name}\"\ncategory = \"wake\"\ncategories = [\"L\"]\nlua_w_small_behind_heavy = false\narrival = [[0]]\ndeparture = [[[0, 0, 0]]]\n"
+        )
+    }
+
+    #[test]
+    fn the_split_folder_loads_every_standard() {
+        let policy = Policy::from_dir(&folder()).expect("split policy");
+        for key in ["faa", "icao", "recat_eu", "mats"] {
+            assert!(policy.file.regions.contains_key(key), "{key}");
+        }
+        assert_eq!(policy.runways().crossing_degrees, 12.0);
+    }
+
+    #[test]
+    fn the_split_folder_matches_the_bundled_single_file() {
+        let split = Policy::from_dir(&folder()).expect("split policy");
+        let bundled =
+            Policy::parse(include_str!("../../../../traffic/wake.toml")).expect("bundled policy");
+        assert_eq!(split.file.regions.len(), bundled.file.regions.len());
+        assert_eq!(
+            split.file.runways.parallel_independent_m,
+            bundled.file.runways.parallel_independent_m
+        );
+        assert_eq!(
+            split.file.runways.parallel_wake_m,
+            bundled.file.runways.parallel_wake_m
+        );
+        assert_eq!(
+            split.file.runways.crossing_degrees,
+            bundled.file.runways.crossing_degrees
+        );
+        for (key, region) in &bundled.file.regions {
+            let split = split
+                .file
+                .regions
+                .get(key)
+                .unwrap_or_else(|| panic!("missing standard {key}"));
+            assert_eq!(split.label, region.label, "{key}");
+            assert_eq!(split.prefixes, region.prefixes, "{key}");
+            assert_eq!(split.category, region.category, "{key}");
+            assert_eq!(split.categories, region.categories, "{key}");
+            assert_eq!(split.arrival, region.arrival, "{key}");
+            assert_eq!(split.departure, region.departure, "{key}");
+            assert_eq!(split.max_lua_w_seconds, region.max_lua_w_seconds, "{key}");
+            assert_eq!(split.parallel_wake_m, region.parallel_wake_m, "{key}");
+            assert_eq!(
+                split.parallel_independent_m, region.parallel_independent_m,
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn duplicate_standards_are_rejected() {
+        let folder = TempFolder::new("duplicate");
+        folder.write("runways.toml", RUNWAYS);
+        folder.write("first.toml", &standard("icao"));
+        folder.write("second.toml", &standard("icao"));
+        let error = Policy::from_dir(&folder.0).expect_err("duplicate standard");
+        assert!(error.contains("defined twice"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_icao_fallback_is_rejected() {
+        let folder = TempFolder::new("fallback");
+        folder.write("runways.toml", RUNWAYS);
+        folder.write("faa.toml", &standard("faa"));
+        let error = Policy::from_dir(&folder.0).expect_err("missing icao");
+        assert!(error.contains("icao"), "{error}");
+    }
+
+    #[test]
+    fn a_missing_runway_file_is_rejected() {
+        let folder = TempFolder::new("runways");
+        let error = Policy::from_dir(&folder.0).expect_err("missing runways");
+        assert!(error.contains("runways.toml"), "{error}");
+    }
+
+    #[test]
+    fn an_inconsistent_matrix_is_rejected() {
+        let text = "version = 1\n[runways]\nparallel_independent_m = 760.0\nparallel_wake_m = 760.0\ncrossing_degrees = 12.0\n[regions.icao]\nlabel = \"ICAO\"\ncategory = \"wake\"\ncategories = [\"J\", \"H\"]\nlua_w_small_behind_heavy = true\narrival = [[0, 4], [0, 0]]\ndeparture = [[[0, 0, 0], [120, 180, 180]]]\n";
+        let error = Policy::parse(text).expect_err("short departure matrix");
+        assert!(error.contains("inconsistent tables"), "{error}");
+    }
 }

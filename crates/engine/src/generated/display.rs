@@ -268,4 +268,67 @@ mod tests {
         invalid.target.latitude = f64::NAN;
         assert!(select(&[invalid], &own, &previous, &policy).is_empty());
     }
+
+    #[test]
+    fn publishing_generated_frames_keeps_the_ambient_slice() {
+        let mut state = crate::test_state();
+        state.settings.generated_traffic = true;
+        state.generated.epoch = Some(state.session_generation);
+        state.generated.policy =
+            Some(parse_operations(include_str!("../../../../traffic/operations.toml")).unwrap());
+        state.generated.frames = vec![frame(1, 10.0)];
+        state.session.telemetry = Telemetry {
+            position_valid: true,
+            latitude: 40.0,
+            longitude: 8.0,
+            traffic: Some(vec![]),
+            ..Default::default()
+        };
+        state.session.generated_traffic = vec![frame(0x00e0_0000, 12.0)];
+        step(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .any(|frame| frame.target.id == 1)
+        );
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .any(|frame| frame.target.id == 0x00e0_0000)
+        );
+
+        state.generated.published_ids.insert(99);
+        state.session.generated_traffic.push(frame(99, 9.0));
+        step(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .all(|frame| frame.target.id != 99),
+            "a retired generated frame must leave the published set"
+        );
+
+        state.settings.generated_traffic = false;
+        step(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .all(|frame| frame.target.id != 1)
+        );
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .any(|frame| frame.target.id == 0x00e0_0000),
+            "ambient traffic must survive when generated traffic is switched off"
+        );
+    }
 }

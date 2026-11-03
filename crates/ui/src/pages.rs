@@ -2599,6 +2599,7 @@ fn voice_popup(ui: &imgui::Ui, interface: &mut Interface) {
                             gap_ms: 0,
                             information_only: false,
                             speaker: "ATC".into(),
+                            chatter: false,
                             text: interface.voice_preview_text.clone(),
                             voice: voice.id.clone(),
                             delivery: "standard".into(),
@@ -2774,6 +2775,7 @@ fn audio_levels_row(ui: &imgui::Ui, interface: &mut Interface) {
             information_only: false,
             pilot_reply: String::new(),
             background: false,
+            chatter: false,
             speaker: "ATC".to_owned(),
             text: "OpenATC AI radio check. Reading you five.".to_owned(),
             sequence: 0,
@@ -3094,6 +3096,12 @@ fn readbacks_row(ui: &imgui::Ui, interface: &mut Interface) {
         &mut interface.settings.player_traffic_holding,
     );
     ui.text_wrapped("Allows a discretionary delay hold when arrival spacing needs more time and a protected holding route is available. Turning this off prevents new optional holds; accepted holds, wake separation, runway protection and go-arounds still apply. Holding and safety instructions do not use a random chance.");
+    widgets::section_title(ui, "WAKE SEPARATION");
+    ui.checkbox(
+        "Allow wake separation waits",
+        &mut interface.settings.allow_wake_waits,
+    );
+    ui.text_wrapped("When off, departure wake intervals are ignored for the player and ambient traffic. Runway occupancy, landing, crossing and go-around protection still apply.");
     widgets::section_title(ui, "OPTIONAL ATC OFFERS");
     ui.checkbox(
         "Allow ATC to offer en-route shortcuts",
@@ -3974,6 +3982,7 @@ mod tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
+                chatter: false,
                 speaker: "VH-BIL".to_owned(),
                 text: "request ifr clearance".to_owned(),
                 sequence: 1,
@@ -3990,6 +3999,7 @@ mod tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
+                chatter: false,
                 speaker: "ATC".to_owned(),
                 text: "Cleared.".to_owned(),
                 sequence: 2,
@@ -4224,6 +4234,7 @@ mod tests {
             text: "Taxi via Alpha, Singapore one nine seven five.".into(),
             position: "Traffic".into(),
             background: true,
+            chatter: false,
             radio: Some(openatc_core::state::Radio::Com1),
             sequence: 1,
             voice: String::new(),

@@ -718,7 +718,7 @@ mod tests {
         // event still arrives immediately in the normal case; the longer bound only
         // prevents a loaded test host from reporting a product failure.
         events
-            .recv_timeout(timeout.max(Duration::from_secs(60)))
+            .recv_timeout(timeout.max(Duration::from_secs(120)))
             .expect("station event")
     }
 

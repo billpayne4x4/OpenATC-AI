@@ -11,7 +11,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-const CHATTER_HEIGHT_FEET: f64 = 1_000.0;
 const FIRST_DELAY_SECS: f64 = 4.0;
 const GAP_MS: u32 = 700;
 
@@ -42,6 +41,7 @@ struct Chatter {
     airport: String,
     station: String,
     service: String,
+    voice: String,
     radio: Radio,
     next_at: Instant,
     last_station_check: Instant,
@@ -169,11 +169,7 @@ impl ChatterManager {
     pub fn tick(&mut self, state: &mut EngineState) {
         let now = Instant::now();
         let telemetry = state.session.telemetry.clone();
-        if !state.settings.airport_chatter
-            || telemetry.on_ground
-            || telemetry.paused
-            || !telemetry.position_valid
-        {
+        if !state.settings.airport_chatter || telemetry.paused || !telemetry.position_valid {
             self.clear(state);
             return;
         }
@@ -183,24 +179,19 @@ impl ChatterManager {
             let radio = radio_for(&telemetry, frequency);
             let mut keep = false;
             if let Some(session) = self.sessions.get(&frequency) {
-                if telemetry.altitude_feet >= session.station_elevation + CHATTER_HEIGHT_FEET {
-                    if session.last_station_check.elapsed() < Duration::from_secs(5) {
-                        keep = true;
-                    } else if let Some(station) = station_for(state, frequency, &telemetry) {
-                        if station.airport == session.airport
-                            && service_for(&station) == session.service
-                        {
-                            if let Some(session) = self.sessions.get_mut(&frequency) {
-                                session.last_station_check = now;
-                                session.station_elevation = station.elevation_feet;
-                                session.radio = preferred_radio(
-                                    radio,
-                                    state.session.control_radio,
-                                    session.radio,
-                                );
-                            }
-                            keep = true;
+                if session.last_station_check.elapsed() < Duration::from_secs(5) {
+                    keep = true;
+                } else if let Some(station) = station_for(state, frequency, &telemetry) {
+                    if station.airport == session.airport
+                        && service_for(&station) == session.service
+                    {
+                        if let Some(session) = self.sessions.get_mut(&frequency) {
+                            session.last_station_check = now;
+                            session.station_elevation = station.elevation_feet;
+                            session.radio =
+                                preferred_radio(radio, state.session.control_radio, session.radio);
                         }
+                        keep = true;
                     }
                 }
             }
@@ -234,6 +225,7 @@ impl ChatterManager {
                     airport: station.airport.clone(),
                     station: station_label(&station, &airport),
                     service: service_for(&station),
+                    voice: crate::flight::tag(state, &station).voice,
                     radio,
                     next_at: now + Duration::from_secs_f64(FIRST_DELAY_SECS),
                     last_station_check: now,
@@ -284,19 +276,15 @@ impl ChatterManager {
         };
         for line in lines {
             let voice = if line.speaker == "ATC" {
-                state.voices.first().map(|voice| voice.id.clone())
+                session.voice.clone()
             } else {
-                state
-                    .voices
-                    .get(1)
-                    .or_else(|| state.voices.first())
-                    .map(|voice| voice.id.clone())
-            }
-            .unwrap_or_default();
+                crate::traffic::pilot_voice_for_callsign(state, &line.speaker)
+            };
             let tag = SpeechTag {
                 radio: Some(session.radio),
                 frequency: Some(frequency),
                 gap_ms: line.gap_ms,
+                chatter: true,
                 position: line.position,
                 voice,
                 delivery: "standard".to_owned(),
@@ -353,7 +341,6 @@ fn station_for(state: &EngineState, frequency: i32, telemetry: &Telemetry) -> Op
         .iter()
         .filter(|station| station.khz == frequency)
         .filter(|station| role(station, "Ground") || role(station, "Tower"))
-        .filter(|station| telemetry.altitude_feet >= station.elevation_feet + CHATTER_HEIGHT_FEET)
         .filter_map(|station| {
             reception_distance(station, telemetry).map(|distance| (distance, station))
         })
@@ -406,7 +393,13 @@ fn airport_voice(airport: &Airport, state: &EngineState) -> (String, String) {
 }
 
 fn active_runway(airport: &Airport, state: &EngineState) -> Option<String> {
-    let planned = &state.session.plan.runway;
+    let planned = if airport.icao == state.session.plan.destination
+        && !state.session.plan.arrival_runway.is_empty()
+    {
+        &state.session.plan.arrival_runway
+    } else {
+        &state.session.plan.runway
+    };
     if !planned.is_empty()
         && airport
             .runways
@@ -772,6 +765,16 @@ mod tests {
     }
 
     #[test]
+    fn destination_chatter_uses_the_arrival_runway() {
+        let airport = airport();
+        let mut state = crate::test_state();
+        state.session.plan.destination = "YSSY".into();
+        state.session.plan.runway = "09".into();
+        state.session.plan.arrival_runway = "27".into();
+        assert_eq!(active_runway(&airport, &state).as_deref(), Some("27"));
+    }
+
+    #[test]
     fn chatter_uses_the_installed_runway_and_taxiways() {
         let airport = airport();
         assert_eq!(
@@ -784,6 +787,7 @@ mod tests {
             airport: "YSSY".to_owned(),
             station: "Sydney Ground".to_owned(),
             service: "Ground".to_owned(),
+            voice: "test-voice".to_owned(),
             radio: Radio::Com1,
             next_at: Instant::now(),
             last_station_check: Instant::now(),
@@ -847,14 +851,14 @@ mod tests {
     }
 
     #[test]
-    fn chatter_needs_height_and_two_radios_hold_two_sessions() {
+    fn chatter_runs_on_the_ground_and_two_radios_hold_two_sessions() {
         let mut manager = ChatterManager::default();
         let mut state = fixture(121_900, 400.0);
         manager
             .airports
             .insert("YSSY".to_owned(), Arc::new(airport()));
         manager.tick(&mut state);
-        assert!(manager.sessions.is_empty());
+        assert_eq!(manager.sessions.len(), 1);
 
         let mut state = fixture(121_900, 5_000.0);
         state.session.telemetry.com2_khz = Some(118_000);

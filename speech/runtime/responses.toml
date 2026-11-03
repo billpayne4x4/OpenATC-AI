@@ -1491,6 +1491,30 @@ say = ["{callsign}, {weather} {climb} {expected} Runway {runway}, cleared for ta
 slots = ["callsign", "runway"]
 say = ["{callsign}, runway {runway}, line up and wait.", "{callsign}, line up and wait runway {runway}, traffic departing."]
 
+[flight_line_up_and_wait_wake]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, line up and wait, caution wake turbulence.", "{callsign}, line up and wait runway {runway}, caution wake turbulence."]
+
+[flight_wake_caution]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, caution wake turbulence."]
+
+[pilot_wake_caution_readback]
+slots = ["callsign"]
+say = ["Caution wake turbulence, {callsign}."]
+
+[flight_continue_holding]
+slots = ["callsign", "runway"]
+say = ["{callsign}, continue holding, runway {runway} occupied.", "{callsign}, hold position, runway {runway} occupied."]
+
+[pilot_continue_holding_readback]
+slots = ["callsign"]
+say = ["Continuing to hold, {callsign}.", "Holding position, {callsign}."]
+
+[flight_report_ready]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, report ready.", "{callsign}, report ready for runway {runway}."]
+
 [flight_hold_short_landing]
 slots = ["callsign", "runway"]
 say = ["{callsign}, hold short of runway {runway}, traffic on short final.", "{callsign}, hold short runway {runway}, landing traffic."]
@@ -1549,7 +1573,7 @@ say = ["{callsign}, {weather} Runway {runway}, cleared to land, taxi to stand {s
 
 [pilot_landing_readback_stand]
 slots = ["callsign", "runway", "stand"]
-say = ["Runway {runway}, stand {stand}, {callsign}", "Cleared to land runway {runway}, stand {stand}, {callsign}"]
+say = ["Runway {runway}, cleared to land, stand {stand}, {callsign}", "Cleared to land runway {runway}, stand {stand}, {callsign}"]
 
 [crossing_route_unavailable]
 slots = []
@@ -17714,6 +17738,14 @@ say = ["Cross {fix} at {speed} knots or less.", "Make your speed {speed} knots o
 slots = ["fix", "speed"]
 say = ["Cross {fix} at {speed} knots.", "Make your speed {speed} knots by {fix}.", "At {fix}, {speed} knots.", "Adjust speed to cross {fix} at {speed} knots."]
 
+[pilot_descent_altitude]
+slots = ["callsign", "altitude", "altitude_fix", "altitude_restriction", "crossing_altitude"]
+say = ["Descending to {altitude}, cross {altitude_fix} {altitude_restriction} {crossing_altitude}, {callsign}."]
+
+[pilot_descent_altitude_speed]
+slots = ["callsign", "altitude", "altitude_fix", "altitude_restriction", "crossing_altitude", "speed_fix", "speed", "speed_restriction"]
+say = ["Descending to {altitude}, cross {altitude_fix} {altitude_restriction} {crossing_altitude}, {speed} knots {speed_restriction} {speed_fix}, {callsign}."]
+
 [pilot_descent_speed_maximum]
 slots = ["callsign", "altitude", "fix", "speed"]
 say = ["Descending to {altitude}, {speed} knots or less at {fix}, {callsign}.", "Descend to {altitude}, cross {fix} at {speed} knots or less, {callsign}.", "Continuing descent to {altitude}, {speed} knots maximum at {fix}, {callsign}.", "Descending to {altitude}, reducing to {speed} knots or less by {fix}, {callsign}."]
@@ -17954,9 +17986,21 @@ say = ["Holding short runway {runway}, {callsign}."]
 slots = ["callsign", "runway"]
 say = ["{callsign}, runway {runway}, line up and wait."]
 
+[ambient_line_up_wake]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, line up and wait, caution wake turbulence.", "{callsign}, line up and wait runway {runway}, caution wake turbulence."]
+
 [ambient_line_up_readback]
 slots = ["callsign", "runway"]
 say = ["Line up and wait, runway {runway}, {callsign}."]
+
+[ambient_wake]
+slots = ["callsign", "runway"]
+say = ["{callsign}, runway {runway}, caution wake turbulence."]
+
+[ambient_wake_readback]
+slots = ["callsign"]
+say = ["Caution wake turbulence, {callsign}."]
 
 [ambient_takeoff]
 slots = ["callsign", "runway"]
@@ -18021,6 +18065,10 @@ say = ["Cleared to land runway {runway}, {callsign}."]
 [windshear_advise]
 slots = ["callsign", "station"]
 say = ["{callsign}, windshear reported at {station}. Advise intentions."]
+
+[pilot_exit_runway]
+slots = ["callsign", "runway"]
+say = ["Exit runway {runway}, {callsign}.", "Vacating runway {runway}, {callsign}."]
 
 [arrival_vacate_contact_ground]
 slots = ["callsign", "runway", "side", "taxiway", "station", "frequency"]

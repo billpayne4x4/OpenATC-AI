@@ -509,6 +509,19 @@ pub struct SpeedReadback {
     pub exact: bool,
 }
 
+/// Altitude crossing restriction attached to the current clearance.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AltitudeReadback {
+    /// Clearance sequence carrying the restriction.
+    pub sequence: u32,
+    /// Published crossing fix.
+    pub fix: String,
+    /// Crossing altitude in feet.
+    pub altitude_feet: i32,
+    /// The restriction is exact rather than at or below.
+    pub exact: bool,
+}
+
 /// Active ATC clearance.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -532,6 +545,8 @@ pub struct Clearance {
     pub readback_scope: String,
     /// Speed component of the same instruction, tied to its clearance sequence.
     pub readback_speed: Option<SpeedReadback>,
+    /// Altitude crossing component of the same instruction.
+    pub readback_altitude: Option<AltitudeReadback>,
     /// Pilot read it back.
     #[serde(default)]
     pub acknowledged: bool,
@@ -565,6 +580,9 @@ pub struct Transmission {
     /// Radio exchange addressed to another aircraft.
     #[serde(default)]
     pub background: bool,
+    /// Synthetic airport chatter, subject to the chatter-frequency gate.
+    #[serde(default)]
+    pub chatter: bool,
     /// Speaker tag (`ATC`, callsign, `COPILOT`, …).
     #[serde(default)]
     pub speaker: String,
@@ -656,6 +674,8 @@ pub struct SpeechTag {
     pub frequency: Option<i32>,
     /// Silence after this line before the next background chatter line.
     pub gap_ms: u32,
+    /// Synthetic airport chatter, not a live aircraft call.
+    pub chatter: bool,
     /// ATC position, empty when none.
     pub position: String,
     /// Voice id.
@@ -674,6 +694,7 @@ impl Default for SpeechTag {
             radio: None,
             frequency: None,
             gap_ms: 0,
+            chatter: false,
             position: String::new(),
             voice: String::new(),
             delivery: "standard".to_owned(),

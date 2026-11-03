@@ -840,6 +840,7 @@ fn transmit_descent(
     mut text: String,
     target: i32,
     direction: Vertical,
+    altitude_crossing: Option<(String, i32, bool)>,
 ) {
     if direction == Vertical::Descend {
         state
@@ -867,11 +868,20 @@ fn transmit_descent(
             exact,
         }
     });
+    let altitude_readback = altitude_crossing.map(|(fix, altitude_feet, exact)| {
+        openatc_core::state::AltitudeReadback {
+            sequence: state.session.next_sequence,
+            fix,
+            altitude_feet,
+            exact,
+        }
+    });
     let clearance = state.session.clearance.as_mut().unwrap();
     clearance.altitude_feet = target;
     clearance.sequence = state.session.next_sequence;
     clearance.readback_scope = "altitude".into();
     clearance.readback_speed = speed;
+    clearance.readback_altitude = altitude_readback;
     clearance.acknowledged = false;
     let altitude =
         openatc_core::altitude_text(f64::from(target), openatc_core::UnitSystem::Imperial, true);
@@ -980,7 +990,18 @@ fn descend(state: &mut EngineState, station: &Station) -> bool {
     );
     text.push(' ');
     text.push_str(&crossing);
-    transmit_descent(state, station, text, target, direction);
+    transmit_descent(
+        state,
+        station,
+        text,
+        target,
+        direction,
+        Some((
+            fix.identifier.clone(),
+            target,
+            fix.minimum_altitude_feet == fix.maximum_altitude_feet,
+        )),
+    );
     true
 }
 
@@ -1095,7 +1116,7 @@ fn destination_descent(state: &mut EngineState, station: &Station) -> bool {
         text.push(' ');
         text.push_str(&say(phrase, &[("pressure", value)]));
     }
-    transmit_descent(state, station, text, target, Vertical::Descend);
+    transmit_descent(state, station, text, target, Vertical::Descend, None);
     true
 }
 

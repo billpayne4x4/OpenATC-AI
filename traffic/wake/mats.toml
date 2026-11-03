@@ -1,0 +1,21 @@
+name = "mats"
+label = "Australian MATS"
+prefixes = ["Y"]
+category = "wake"
+categories = ["J", "H", "M", "L"]
+lua_w_small_behind_heavy = true
+max_lua_w_seconds = 90
+parallel_wake_m = 760.0
+parallel_independent_m = 760.0
+arrival = [
+  [0, 6, 7, 8],
+  [0, 4, 5, 6],
+  [0, 0, 0, 5],
+  [0, 0, 0, 0]
+]
+departure = [
+  [[0, 0, 0], [180, 240, 180], [180, 240, 180], [180, 240, 180]],
+  [[0, 0, 0], [0, 0, 0], [120, 180, 120], [120, 180, 120]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0], [120, 180, 120]],
+  [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+]

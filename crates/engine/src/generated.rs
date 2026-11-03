@@ -107,6 +107,8 @@ pub struct Runtime {
     detail_logged: BTreeSet<(u32, usize, bool)>,
     frames: Vec<GeneratedTraffic>,
     visible: BTreeSet<u32>,
+    /// Frames this runtime last placed in the session traffic set.
+    published_ids: BTreeSet<u32>,
     world: openatc_core::traffic::motion::World,
     pub(crate) airport: Option<Arc<Airport>>,
     pub(crate) destination: Option<Arc<Airport>>,
@@ -3831,8 +3833,12 @@ fn prepare_direction_with_terrain(
 
 fn scene_key(state: &EngineState) -> String {
     format!(
-        "{}|{}|{}|{}|{}|{:?}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{:?}|{}|{}",
         state.settings.simulator_root,
+        state
+            .airport
+            .as_ref()
+            .map_or("", |airport| airport.icao.as_str()),
         state.session.plan.departure,
         state.session.plan.destination,
         state.session.plan.runway,
@@ -4359,23 +4365,41 @@ fn merge_apron_frames(
     frames
 }
 
+fn replaces_airport(runtime: &Runtime, airport: &Airport) -> bool {
+    !airport.icao.is_empty()
+        && runtime
+            .airport
+            .as_ref()
+            .is_some_and(|current| !current.icao.is_empty() && current.icao != airport.icao)
+}
+
 fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u64) {
     // Never replace a live scene with fewer planned aircraft. The population and replenishment
     // passes add traffic; publishing a smaller scene over a larger one deletes aircraft the
     // player is already watching, including the one that was about to ask for departure.
-    if !runtime.flights.is_empty() && scene.flights.len() < runtime.flights.len() {
+    // A scene for another airport is different: the old traffic belongs to the departure airport
+    // and must not stay visible after the player has landed elsewhere.
+    let replacing_airport = replaces_airport(runtime, &scene.airport);
+    if !replacing_airport
+        && !runtime.flights.is_empty()
+        && scene.flights.len() < runtime.flights.len()
+    {
         runtime.status =
             "Smaller replacement scene skipped; the live traffic owns the world".into();
         return;
     }
 
     let previous = runtime.clone();
-    let live_apron: BTreeSet<_> = previous
-        .apron_routes
-        .keys()
-        .copied()
-        .filter(|id| previous.world.current_segment(*id).is_some())
-        .collect();
+    let live_apron: BTreeSet<_> = if replacing_airport {
+        BTreeSet::new()
+    } else {
+        previous
+            .apron_routes
+            .keys()
+            .copied()
+            .filter(|id| previous.world.current_segment(*id).is_some())
+            .collect()
+    };
     let mut deferred = BTreeSet::new();
     for id in &live_apron {
         for resource in previous.world.owned_resources(*id) {
@@ -4432,12 +4456,21 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
         .join(" | ");
         eprintln!("Generated traffic warnings: {sample}");
     }
+    let published_ids = runtime.published_ids.clone();
     let weather_observations = runtime.weather_observations.clone();
     let network = runtime.network.clone();
     let anchor = runtime.anchor;
     let scene_revision = runtime.scene_revision;
-    let apron_key = runtime.apron_key.clone();
-    let apron_ids = runtime.apron_ids.clone();
+    let apron_key = if replacing_airport {
+        None
+    } else {
+        runtime.apron_key.clone()
+    };
+    let apron_ids = if replacing_airport {
+        BTreeSet::new()
+    } else {
+        runtime.apron_ids.clone()
+    };
     let apron = runtime
         .frames
         .iter()
@@ -4445,6 +4478,7 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
         .cloned()
         .collect::<Vec<_>>();
     *runtime = Runtime::default();
+    runtime.published_ids = published_ids;
     runtime.population = previous.population.clone();
     runtime.population.started |= !scene.flights.is_empty();
     runtime.weather_observations = weather_observations;
@@ -5636,8 +5670,23 @@ pub fn animation_handling(
 
 /// Publish the most recent complete worker sample without waiting for simulation.
 pub fn step(state: &mut EngineState) {
+    let plan_key = format!(
+        "{}/{}/{}",
+        state.session_generation, state.session.plan.departure, state.session.plan.destination
+    );
+    if state.settings.auto_generated_traffic
+        && state.session.ifr
+        && !state.session.demo
+        && !state.session.plan.departure.is_empty()
+        && !state.session.plan.destination.is_empty()
+        && state.auto_generated_plan != plan_key
+    {
+        state.auto_generated_plan = plan_key;
+        state.settings.generated_traffic = true;
+    }
     state.generated.log = state.settings.traffic_log;
     set_traffic_log(state.settings.traffic_log);
+    let generated_ids = state.generated.published_ids.clone();
     if !state.settings.generated_traffic {
         state.generated = Runtime::default();
     }
@@ -5647,7 +5696,22 @@ pub fn step(state: &mut EngineState) {
     }
     if !state.settings.generated_traffic || state.generated.epoch != Some(state.session_generation)
     {
-        state.session.generated_traffic.clear();
+        if state.settings.generated_traffic {
+            state.session.generated_traffic.clear();
+            state.session.generated_traffic_debug.clear();
+            state.generated.visible.clear();
+            state.generated.published_ids.clear();
+        } else {
+            // Generated traffic is off, but ambient traffic still owns its frames.
+            state
+                .session
+                .generated_traffic
+                .retain(|frame| !generated_ids.contains(&frame.target.id));
+            state
+                .session
+                .generated_traffic_debug
+                .retain(|debug| !generated_ids.contains(&debug.id));
+        }
         state.session.generated_traffic_clock = None;
         state.session.generated_animation_channels.clear();
         state.session.generated_traffic_diagnostics.clear();
@@ -5720,9 +5784,15 @@ pub fn step(state: &mut EngineState) {
                 .map(|station| station.khz);
         }
     }
+    let published_ids: BTreeSet<u32> = generated_ids
+        .iter()
+        .copied()
+        .chain(visible.iter().map(|frame| frame.target.id))
+        .collect();
     state.generated.visible = visible.iter().map(|frame| frame.target.id).collect();
+    state.generated.published_ids = state.generated.visible.clone();
     let poses = state.generated.world.snapshot();
-    state.session.generated_traffic_debug = visible
+    let debug: Vec<_> = visible
         .iter()
         .map(|frame| {
             let pose = poses.iter().find(|pose| pose.id == frame.target.id);
@@ -5759,7 +5829,23 @@ pub fn step(state: &mut EngineState) {
             }
         })
         .collect();
-    state.session.generated_traffic = visible;
+    state
+        .session
+        .generated_traffic_debug
+        .retain(|debug| !published_ids.contains(&debug.id));
+    state.session.generated_traffic_debug.extend(debug);
+    if state.session.generated_traffic_debug.len() > 126 {
+        state.session.generated_traffic_debug.truncate(126);
+    }
+    state
+        .session
+        .generated_traffic
+        .retain(|frame| !published_ids.contains(&frame.target.id));
+    state.session.generated_traffic.extend(visible);
+    state
+        .session
+        .generated_traffic
+        .sort_by_key(|frame| frame.target.id);
     state.session.generated_traffic_clock = state
         .generated
         .previous_time
@@ -5779,7 +5865,17 @@ pub fn step(state: &mut EngineState) {
             .iter()
             .map(|frame| frame.target.id)
             .collect();
-        observed.retain(|target| !ids.contains(&target.id));
+        let callsigns: BTreeSet<String> = state
+            .generated
+            .frames
+            .iter()
+            .map(|frame| openatc_core::ops::callsign_key(&frame.target.callsign))
+            .filter(|callsign| !callsign.is_empty())
+            .collect();
+        observed.retain(|target| {
+            !ids.contains(&target.id)
+                && !callsigns.contains(&openatc_core::ops::callsign_key(&target.callsign))
+        });
         observed.extend(
             state
                 .generated
@@ -5911,6 +6007,64 @@ pub(crate) async fn prepare_turnaround(shared: Shared) {
 mod tests {
     use super::*;
     use openatc_core::traffic::motion::{Route, Segment, Stage, Waypoint};
+
+    #[test]
+    fn scene_identity_follows_the_active_airport() {
+        let mut state = crate::test_state();
+        state.airport = Some(Airport {
+            icao: "LFMN".into(),
+            ..Default::default()
+        });
+        let departure = scene_key(&state);
+        state.airport = Some(Airport {
+            icao: "LIMC".into(),
+            ..Default::default()
+        });
+        assert_ne!(departure, scene_key(&state));
+    }
+
+    #[test]
+    fn a_scene_for_another_airport_replaces_the_live_world() {
+        let mut runtime = Runtime::default();
+        runtime.airport = Some(Arc::new(Airport {
+            icao: "LFMN".into(),
+            ..Default::default()
+        }));
+        assert!(replaces_airport(
+            &runtime,
+            &Airport {
+                icao: "LIMC".into(),
+                ..Default::default()
+            }
+        ));
+        assert!(!replaces_airport(
+            &runtime,
+            &Airport {
+                icao: "LFMN".into(),
+                ..Default::default()
+            }
+        ));
+    }
+
+    #[test]
+    fn generated_traffic_auto_enables_once_per_plan() {
+        let mut state = crate::test_state();
+        state.settings.generated_traffic = false;
+        state.settings.auto_generated_traffic = true;
+        state.session.demo = false;
+        state.session.ifr = true;
+        state.session.plan.departure = "TEST".into();
+        state.session.plan.destination = "DEST".into();
+        step(&mut state);
+        assert!(state.settings.generated_traffic);
+        state.settings.generated_traffic = false;
+        step(&mut state);
+        assert!(
+            !state.settings.generated_traffic,
+            "a manual off must survive the same plan"
+        );
+    }
+
     #[test]
     fn fleet_selection_uses_the_selected_runway_and_published_airport_code() {
         use openatc_core::traffic::csl::{Match, Model};

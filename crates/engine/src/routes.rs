@@ -1416,7 +1416,7 @@ pub async fn post_copilot_reply(
     AxumState(shared): AxumState<Shared>,
     Json(body): Json<Value>,
 ) -> Response {
-    let request = {
+    let (request, source_sequence) = {
         let mut state = shared.write().await;
         if let Some(expected) = body.get("sequence")
             && state
@@ -1436,7 +1436,7 @@ pub async fn post_copilot_reply(
                         == state.session.telemetry.frequency(prepared.request.radio)
                     && state.settings.copilot_replies =>
             {
-                prepared.request
+                (prepared.request, prepared.sequence)
             }
             _ => {
                 return bad_request(openatc_core::dialogue::say(
@@ -1456,6 +1456,7 @@ pub async fn post_copilot_reply(
         )
     };
     let response = atc_request(&shared, &settings, request).await;
+    clear_readback(&mut *shared.write().await, source_sequence);
     record_response(&shared, id, generation, response).await
 }
 
@@ -1501,6 +1502,20 @@ pub async fn post_automation(
             }))
         }
         _ => bad_request("Invalid automation action"),
+    }
+}
+
+/// A spoken readback clears the outstanding reply marker. Without this, a
+/// frequency handoff remains "awaiting readback" and suppresses the automatic
+/// check-in and the next controller clearance.
+fn clear_readback(state: &mut crate::EngineState, sequence: u32) {
+    if let Some(entry) = state
+        .session
+        .transcript
+        .iter_mut()
+        .find(|entry| entry.sequence == sequence && entry.speaker == "ATC")
+    {
+        entry.pilot_reply.clear();
     }
 }
 
@@ -2210,12 +2225,7 @@ pub(crate) fn assign_airspace_controller(
         .collect();
     if let Some(saved) = state.controllers.assignments.get(airspace) {
         let valid = pool.iter().any(|v| identity(v) == identity(&saved.voice));
-        let duplicate = state
-            .controllers
-            .assignments
-            .iter()
-            .any(|(key, c)| key != airspace && identity(&c.voice) == identity(&saved.voice));
-        if !valid || (duplicate && !unused.is_empty()) {
+        if !valid {
             state.controllers.assignments.remove(airspace);
         }
     }
@@ -2245,6 +2255,7 @@ pub(crate) fn assign_airspace_controller(
         radio: None,
         frequency: None,
         gap_ms: 0,
+        chatter: false,
         position,
         voice: controller.voice.clone(),
         delivery: controller.delivery.clone(),
@@ -2272,9 +2283,10 @@ pub(crate) fn runway_sequence(
             )
         })
         .flatten();
-    let ambient = state
-        .ambient
-        .runway_state_for(&airport.icao, runway, player_remaining, None);
+    let ambient =
+        state
+            .ambient
+            .runway_state_for(&airport.icao, runway, player_remaining, None, None);
     let generated = airport
         .runways
         .iter()
@@ -3267,6 +3279,26 @@ mod chatter_tests {
         );
         reconcile_pending_reply(&mut state);
         assert!(state.pending_copilot_reply.is_none());
+    }
+
+    #[test]
+    fn a_completed_frequency_readback_is_cleared() {
+        let mut state = crate::test_state();
+        let tag = SpeechTag::default();
+        add_transmission(&mut state.session, "ATC", "Contact Tower, 118.700.", &tag);
+        let sequence = state.session.transcript.last().unwrap().sequence;
+        state.session.transcript.last_mut().unwrap().pilot_reply =
+            "Contact Tower, 118.700, C-GTLT.".into();
+        clear_readback(&mut state, sequence);
+        assert!(
+            state
+                .session
+                .transcript
+                .last()
+                .unwrap()
+                .pilot_reply
+                .is_empty()
+        );
     }
 
     #[test]

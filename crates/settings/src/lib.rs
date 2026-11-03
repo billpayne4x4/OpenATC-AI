@@ -201,6 +201,9 @@ pub struct Settings {
     pub native_traffic_count: u8,
     /// Enable `OpenATC`'s lightweight generated model instances.
     pub generated_traffic: bool,
+    /// Enable generated traffic automatically when a flight plan is loaded.
+    #[serde(default = "yes")]
+    pub auto_generated_traffic: bool,
     /// How often the generated traffic is drawn. A higher rate moves the traffic more smoothly
     /// and costs more of the simulator's frame time.
     pub traffic_rate: TrafficRate,
@@ -230,6 +233,9 @@ pub struct Settings {
     pub traffic_circuit_ga_nm: f64,
     /// Wake-separation table: auto, icao, `recat_eu`, `faa_cwt` or mats.
     pub wake_standard: String,
+    /// Allow departure wake-separation waits.
+    #[serde(default = "yes")]
+    pub allow_wake_waits: bool,
     /// Speak simulated pilot reports based on observed local traffic movements.
     pub hear_traffic_radio: bool,
     /// Allow conversations with simulated pilots for identified traffic.
@@ -515,6 +521,7 @@ impl Default for Settings {
             mute_native_radio: true,
             native_traffic_count: 0,
             generated_traffic: false,
+            auto_generated_traffic: true,
             traffic_rate: TrafficRate::EveryFrame,
             traffic_log: TrafficLog::Summary,
             local_pattern_traffic: false,
@@ -529,6 +536,7 @@ impl Default for Settings {
             traffic_circuit_turboprop_nm: 20.0,
             traffic_circuit_ga_nm: 10.0,
             wake_standard: "auto".into(),
+            allow_wake_waits: true,
             hear_traffic_radio: true,
             talk_to_traffic: false,
             informal_pilot_chat: false,

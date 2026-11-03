@@ -333,7 +333,7 @@ fn run(e: &mut Engine, steps: &mut Vec<Value>, variant: &str) -> Result {
         steps,
         "Automatic descent and readback before published STAR restriction",
     )?;
-    handoff(e, 123200, 119300, json!({"longitude":3.38}))?;
+    handoff(e, 123200, 119300, json!({"longitude":3.42}))?;
     record(e, steps, "Arrival Approach handoff")?;
     // Descend on the final approach course. No phase is injected into the engine.
     ticks(
@@ -418,12 +418,14 @@ fn run(e: &mut Engine, steps: &mut Vec<Value>, variant: &str) -> Result {
         "Ground handoff before runway exit",
     )?;
     require(
-        !latest(&e.state()?).to_lowercase().contains("vacat"),
+        !latest(&e.state()?).to_lowercase().contains("vacat")
+            && !latest(&e.state()?).to_lowercase().contains("exit runway"),
         "Routine runway-exit call interrupted high-speed landing rollout",
     )?;
     e.tune(118900, json!({"groundSpeedKnots":25}))?;
+    let exit = latest(&e.state()?).to_lowercase();
     require(
-        latest(&e.state()?).to_lowercase().contains("vacat"),
+        exit.contains("vacat") || exit.contains("exit runway"),
         "No runway-vacate instruction after slowing on rollout",
     )?;
     ticks(

@@ -166,7 +166,43 @@ pub fn descent_reply(clearance: &crate::state::Clearance, callsign: &str) -> Str
         crate::UnitSystem::Imperial,
         true,
     );
-    let Some(speed) = speed_component(clearance) else {
+    let altitude_crossing = clearance.readback_altitude.as_ref();
+    let speed = speed_component(clearance);
+    if let Some(crossing) = altitude_crossing {
+        let crossing_altitude = crate::altitude_text(
+            f64::from(crossing.altitude_feet),
+            crate::UnitSystem::Imperial,
+            true,
+        );
+        let altitude_restriction = if crossing.exact { "at" } else { "at or below" };
+        if let Some(speed) = speed {
+            let speed_restriction = if speed.exact { "at" } else { "or less at" };
+            return crate::dialogue::say(
+                "pilot_descent_altitude_speed",
+                &[
+                    ("callsign", callsign.to_owned()),
+                    ("altitude", altitude),
+                    ("altitude_fix", crossing.fix.clone()),
+                    ("altitude_restriction", altitude_restriction.to_owned()),
+                    ("crossing_altitude", crossing_altitude),
+                    ("speed_fix", speed.fix.clone()),
+                    ("speed", format!("{:.0}", speed.knots)),
+                    ("speed_restriction", speed_restriction.to_owned()),
+                ],
+            );
+        }
+        return crate::dialogue::say(
+            "pilot_descent_altitude",
+            &[
+                ("callsign", callsign.to_owned()),
+                ("altitude", altitude),
+                ("altitude_fix", crossing.fix.clone()),
+                ("altitude_restriction", altitude_restriction.to_owned()),
+                ("crossing_altitude", crossing_altitude),
+            ],
+        );
+    }
+    let Some(speed) = speed else {
         return crate::dialogue::say(
             "pilot_continue_descent",
             &[("callsign", callsign.to_owned()), ("altitude", altitude)],
@@ -601,7 +637,7 @@ pub fn auto_reply(state: &State) -> Option<Request> {
             && !last.pilot_reply.is_empty()
         {
             last.pilot_reply.clone()
-        } else if speed_component(clearance).is_some() {
+        } else if speed_component(clearance).is_some() || clearance.readback_altitude.is_some() {
             descent_reply(clearance, &state.plan.callsign)
         } else if !clearance.readback_scope.is_empty() {
             crate::dialogue::say(
@@ -731,6 +767,40 @@ mod tests {
                 .contains("descen")
         );
     }
+    #[test]
+    fn altitude_crossing_readbacks_keep_the_fix() {
+        let mut state = State::default();
+        state.plan.callsign = "TEST".into();
+        state.clearance = Some(crate::state::Clearance {
+            altitude_feet: 9000,
+            readback_scope: "altitude".into(),
+            readback_altitude: Some(crate::state::AltitudeReadback {
+                sequence: 4,
+                fix: "IBSAP".into(),
+                altitude_feet: 9000,
+                exact: false,
+            }),
+            ..Default::default()
+        });
+        crate::apply::add_transmission(
+            &mut state,
+            "ATC",
+            "Descend to 9000 feet, cross IBSAP at or below 9000 feet.",
+            &crate::state::SpeechTag {
+                position: "Center".into(),
+                ..Default::default()
+            },
+        );
+        let pilot = auto_reply(&state).unwrap();
+        assert!(pilot.text.contains("IBSAP"), "{}", pilot.text);
+        assert!(pilot.text.contains("9000"), "{}", pilot.text);
+        assert!(
+            pilot.text.to_lowercase().contains("at or below"),
+            "{}",
+            pilot.text
+        );
+    }
+
     #[test]
     fn compound_descent_readbacks_keep_both_values_fix_limit_and_sequence() {
         let mut state = State::default();

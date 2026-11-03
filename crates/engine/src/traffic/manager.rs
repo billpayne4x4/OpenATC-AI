@@ -7,7 +7,7 @@
 use crate::traffic::{phase::TrafficPhase, phases, separation};
 use openatc_core::airport::Airport;
 use openatc_core::apply::{RunwaySequence, TakeoffDecision};
-use openatc_core::state::{GeneratedTraffic, Point, TrafficDebug, TrafficTarget};
+use openatc_core::state::{GeneratedTraffic, Point, TakeoffState, TrafficDebug, TrafficTarget};
 use openatc_core::traffic::animation::{self, Animation, Handling, Kind};
 use openatc_core::traffic::csl::{Catalogue, Model};
 use openatc_core::traffic::motion::{Stage, Waypoint};
@@ -328,6 +328,15 @@ pub(crate) enum RunwayState {
     Landing,
 }
 
+/// The player's own use of a departure runway.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlayerRunway {
+    /// Lined up and waiting.
+    pub lined_up: bool,
+    /// Cleared for takeoff and rolling.
+    pub rolling: bool,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum AmbientKind {
     Departure,
@@ -360,6 +369,8 @@ struct AmbientAircraft {
     taxi_knots: f64,
     taxi_turn_knots: f64,
     climb_speed: f64,
+    /// Lowest safe climb speed; the anti-overtake cap cannot go below it.
+    minimum_climb_speed: f64,
     climb_fpm: f64,
     descent_fpm: f64,
     approach_speed: f64,
@@ -375,6 +386,8 @@ struct AmbientAircraft {
     blocker: Option<u32>,
     /// Waiting for a departure clearance at the hold.
     awaiting_clearance: bool,
+    /// Remaining wake delay for the next line-up or takeoff clearance.
+    wake_delay: f64,
     last: Instant,
     frequency_khz: Option<i32>,
 }
@@ -386,6 +399,8 @@ pub struct TrafficManager {
     models: Option<Arc<Catalogue>>,
     last_spawn: Option<Instant>,
     next_id: u32,
+    /// Ambient frames currently present in the published traffic set.
+    published: BTreeSet<u32>,
     attempts: u32,
     rejected_route: u32,
     rejected_pavement: u32,
@@ -402,7 +417,7 @@ impl TrafficManager {
     #[cfg(test)]
     #[must_use]
     pub(crate) fn runway_state(&self, airport: &str, runway: &str) -> RunwayState {
-        self.runway_state_for(airport, runway, None, None)
+        self.runway_state_for(airport, runway, None, None, None)
     }
 
     /// Runway use with the player's place in the departure queue.
@@ -415,10 +430,11 @@ impl TrafficManager {
         airport: &str,
         runway: &str,
         player_remaining: Option<f64>,
+        player: Option<PlayerRunway>,
         exclude: Option<u32>,
     ) -> RunwayState {
-        let mut line_up = false;
-        let mut rolling = false;
+        let mut line_up = player.is_some_and(|player| player.lined_up && !player.rolling);
+        let mut rolling = player.is_some_and(|player| player.rolling);
         let mut landing = false;
         for aircraft in &self.aircraft {
             if aircraft.airport != airport
@@ -458,10 +474,10 @@ impl TrafficManager {
         }
         if landing {
             RunwayState::Landing
-        } else if line_up {
-            RunwayState::LineUp
         } else if rolling {
             RunwayState::Rolling
+        } else if line_up {
+            RunwayState::LineUp
         } else {
             RunwayState::Clear
         }
@@ -508,6 +524,11 @@ impl TrafficManager {
 
     /// Advance ambient traffic and publish frames. Called once per telemetry update.
     pub fn tick(&mut self, state: &mut crate::EngineState) {
+        self.advance(state);
+        self.publish(state);
+    }
+
+    fn advance(&mut self, state: &mut crate::EngineState) {
         state
             .session
             .generated_animation_channels
@@ -633,6 +654,18 @@ impl TrafficManager {
         });
         let queue_lead = queue_leader(&self.aircraft);
         let player_runway = state.session.plan.runway.clone();
+        let player_takeoff = state.session.taxi_clearance.takeoff_state;
+        let player_runway_state = (telemetry.on_ground
+            && !state.session.has_departed
+            && state.session.plan.runway == player_runway
+            && matches!(
+                player_takeoff,
+                TakeoffState::LineUpAndWait | TakeoffState::Cleared
+            ))
+        .then_some(PlayerRunway {
+            lined_up: player_takeoff == TakeoffState::LineUpAndWait,
+            rolling: player_takeoff == TakeoffState::Cleared,
+        });
         let player_departing = matches!(
             state.session.phase,
             openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::Departure
@@ -799,8 +832,14 @@ impl TrafficManager {
             // Give way to traffic on the right at a converging taxiway. The higher id yields
             // when both aircraft see each other, which breaks the mutual-yield case.
             let leader_id = ahead.map(|leader| leader.id);
+            let own_position = position_heading_at(
+                &self.aircraft[index].points,
+                &self.aircraft[index].cumulative,
+                distance,
+            );
             let right_blocker = if on_ground && queue_lead != Some(self.aircraft[index].id) {
-                self.aircraft
+                let ambient = self
+                    .aircraft
                     .iter()
                     .enumerate()
                     .find_map(|(other_index, other)| {
@@ -813,17 +852,12 @@ impl TrafficManager {
                         {
                             return None;
                         }
-                        let (own_lat, own_lon, own_heading) = position_heading_at(
-                            &self.aircraft[index].points,
-                            &self.aircraft[index].cumulative,
-                            distance,
-                        );
                         let (other_lat, other_lon, _) =
                             position_heading_at(&other.points, &other.cumulative, other.distance);
                         separation::right_conflict(
-                            own_lat,
-                            own_lon,
-                            own_heading,
+                            own_position.0,
+                            own_position.1,
+                            own_position.2,
                             other_lat,
                             other_lon,
                             other.id,
@@ -832,7 +866,36 @@ impl TrafficManager {
                             100.0,
                         )
                         .then_some(other.id)
-                    })
+                    });
+                ambient.or_else(|| {
+                    // A joining ambient aircraft must also give way to the player
+                    // when the player is already on the taxiway to its right.
+                    traffic
+                        .iter()
+                        .find(|target| target.id == 0 && target.on_ground)
+                        .and_then(|player| {
+                            let p = openatc_core::airport::airport_point(
+                                &airport,
+                                player.latitude,
+                                player.longitude,
+                            );
+                            if openatc_core::airport::within_runway(&airport, &p) {
+                                return None;
+                            }
+                            separation::right_conflict(
+                                own_position.0,
+                                own_position.1,
+                                own_position.2,
+                                player.latitude,
+                                player.longitude,
+                                0,
+                                leader_id,
+                                false,
+                                100.0,
+                            )
+                            .then_some(0)
+                        })
+                })
             } else {
                 None
             };
@@ -863,6 +926,7 @@ impl TrafficManager {
             } else {
                 0.0
             };
+            self.aircraft[index].wake_delay = wake_delay;
             let takeoff_targets: Vec<&TrafficTarget> = traffic
                 .iter()
                 .filter(|target| target.id != own_id)
@@ -871,6 +935,7 @@ impl TrafficManager {
                 &airport.icao,
                 &own_runway,
                 player_remaining,
+                player_runway_state,
                 Some(own_id),
             ) {
                 RunwayState::Landing => RunwaySequence::Landing,
@@ -878,13 +943,18 @@ impl TrafficManager {
                 RunwayState::Rolling => RunwaySequence::Rolling,
                 RunwayState::Clear => RunwaySequence::Clear,
             };
-            let decision = openatc_core::apply::takeoff_decision(
+            let mut decision = openatc_core::apply::takeoff_decision(
                 &airport,
                 &own_runway,
                 takeoff_targets.iter().copied(),
                 sequence,
                 wake_delay,
             );
+            if decision == openatc_core::apply::TakeoffDecision::Cleared
+                && self.performance_hold(index)
+            {
+                decision = openatc_core::apply::TakeoffDecision::LineUpAndWait;
+            }
             let behind_player = player_remaining.is_some_and(|player| {
                 own_runway == player_runway
                     && self.aircraft[index].distance < self.aircraft[index].runway_start
@@ -929,6 +999,7 @@ impl TrafficManager {
                     &airport.icao,
                     &own_runway,
                     player_remaining,
+                    player_runway_state,
                     Some(own_id),
                 ) {
                     RunwayState::Landing => RunwaySequence::Landing,
@@ -936,14 +1007,14 @@ impl TrafficManager {
                     RunwayState::Rolling => RunwaySequence::Rolling,
                     RunwayState::Clear => RunwaySequence::Clear,
                 };
-                if openatc_core::apply::takeoff_decision(
+                let decision = openatc_core::apply::takeoff_decision(
                     &airport,
                     &own_runway,
                     takeoff_targets.iter().copied(),
                     sequence,
                     wake_delay,
-                ) == TakeoffDecision::Cleared
-                {
+                );
+                if decision == TakeoffDecision::Cleared && !self.performance_hold(index) {
                     self.aircraft[index].takeoff = true;
                 }
             }
@@ -968,23 +1039,8 @@ impl TrafficManager {
             } else {
                 None
             };
-            let flight_leader = if self.aircraft[index].kind == AmbientKind::Departure
-                && distance >= self.aircraft[index].ground_end
-            {
-                self.aircraft
-                    .iter()
-                    .filter(|other| {
-                        other.id != own_id
-                            && other.kind == AmbientKind::Departure
-                            && other.airport == own_airport
-                            && other.runway == own_runway
-                            && other.distance > distance
-                    })
-                    .min_by(|left, right| left.distance.total_cmp(&right.distance))
-                    .map(|other| (other.distance, other.speed))
-            } else {
-                None
-            };
+            let own_progress = distance - self.aircraft[index].runway_start;
+            let flight_leader = climb_leader(&self.aircraft, index);
             let blocked = runway_blocked
                 || right_blocked
                 || player_blocked
@@ -1053,13 +1109,15 @@ impl TrafficManager {
             } else {
                 taxi
             };
-            if let Some((leader_distance, leader_speed)) = flight_leader {
-                let gap = leader_distance - distance;
+            if let Some((leader_progress, leader_speed)) = flight_leader {
+                let gap = leader_progress - own_progress;
                 if gap < 3.0 * 1_852.0 {
                     aircraft.speed = aircraft.speed.min(leader_speed);
                     if gap < 1.5 * 1_852.0 {
                         aircraft.speed *= (gap / (1.5 * 1_852.0)).clamp(0.35, 1.0);
                     }
+                    // Never command an airborne aircraft below its safe climb speed.
+                    aircraft.speed = aircraft.speed.max(aircraft.minimum_climb_speed);
                 }
             }
             if aircraft.speed > follow_speed {
@@ -1104,7 +1162,45 @@ impl TrafficManager {
         state.airports.prune(own, 60.0);
 
         // Speak only when the player is tuned to the aircraft's frequency.
-        let mut calls: Vec<(openatc_core::state::Radio, i32, String, String, String)> = Vec::new();
+        let mut tower_tags = std::collections::BTreeMap::new();
+        for aircraft in &self.aircraft {
+            let Some(frequency) = aircraft.frequency_khz else {
+                continue;
+            };
+            let key = (aircraft.airport.clone(), frequency);
+            if tower_tags.contains_key(&key) {
+                continue;
+            }
+            let station = state
+                .stations
+                .iter()
+                .find(|station| {
+                    station.airport == aircraft.airport
+                        && station.khz == frequency
+                        && (station.service == "Tower"
+                            || station.services.iter().any(|service| service == "Tower"))
+                })
+                .cloned();
+            let tag = station.map_or_else(
+                || openatc_core::state::SpeechTag {
+                    position: "Tower".into(),
+                    voice: "tower".into(),
+                    ..Default::default()
+                },
+                |station| crate::flight::tag(state, &station),
+            );
+            tower_tags.insert(key, tag);
+        }
+        let mut calls: Vec<(
+            openatc_core::state::Radio,
+            i32,
+            String,
+            String,
+            String,
+            String,
+            String,
+            String,
+        )> = Vec::new();
         for aircraft in &mut self.aircraft {
             let Some(frequency) = aircraft.frequency_khz else {
                 continue;
@@ -1115,6 +1211,7 @@ impl TrafficManager {
             let phase = match aircraft.kind {
                 AmbientKind::Departure if aircraft.distance < aircraft.hold_distance => continue,
                 AmbientKind::Departure if aircraft.takeoff => "takeoff",
+                AmbientKind::Departure if aircraft.cleared && aircraft.wake_delay > 0.0 => "wake",
                 AmbientKind::Departure if aircraft.cleared => "lineup",
                 AmbientKind::Departure => "hold",
                 AmbientKind::Arrival if aircraft.distance >= aircraft.ground_start => "landing",
@@ -1131,24 +1228,34 @@ impl TrafficManager {
                 // The aircraft is already on the Tower frequency; a handoff here would be circular.
                 "hold" => openatc_core::dialogue::say("ambient_hold_short", &slots),
                 "lineup" => openatc_core::dialogue::say("ambient_line_up", &slots),
+                "wake" => openatc_core::dialogue::say("ambient_wake", &slots),
                 "takeoff" => openatc_core::dialogue::say("ambient_takeoff", &slots),
                 _ => openatc_core::dialogue::say("ambient_landing", &slots),
             };
             let pilot_reply = match phase {
                 "hold" => openatc_core::dialogue::say("ambient_hold_short_readback", &slots),
                 "lineup" => openatc_core::dialogue::say("ambient_line_up_readback", &slots),
+                "wake" => openatc_core::dialogue::say("ambient_wake_readback", &slots),
                 "takeoff" => openatc_core::dialogue::say("ambient_takeoff_readback", &slots),
                 _ => openatc_core::dialogue::say("ambient_landing_readback", &slots),
             };
+            let key = (aircraft.airport.clone(), frequency);
+            let atc_tag = tower_tags.get(&key).cloned().unwrap_or_default();
+            let pilot_voice = crate::traffic::pilot_voice_for_callsign(state, &aircraft.callsign);
             calls.push((
                 radio,
                 frequency,
                 text,
                 pilot_reply,
                 aircraft.callsign.clone(),
+                atc_tag.voice,
+                atc_tag.position,
+                pilot_voice,
             ));
         }
-        for (radio, frequency, text, pilot_reply, callsign) in calls {
+        for (radio, frequency, text, pilot_reply, callsign, atc_voice, atc_position, pilot_voice) in
+            calls
+        {
             openatc_core::apply::add_transmission(
                 &mut state.session,
                 "ATC",
@@ -1156,8 +1263,8 @@ impl TrafficManager {
                 &openatc_core::state::SpeechTag {
                     radio: Some(radio),
                     frequency: Some(frequency),
-                    position: "Tower".into(),
-                    voice: "tower".into(),
+                    position: atc_position,
+                    voice: atc_voice,
                     ..Default::default()
                 },
             );
@@ -1173,6 +1280,7 @@ impl TrafficManager {
                     radio: Some(radio),
                     frequency: Some(frequency),
                     position: "Traffic".into(),
+                    voice: pilot_voice,
                     ..Default::default()
                 },
             );
@@ -1180,7 +1288,10 @@ impl TrafficManager {
                 last.background = true;
             }
         }
+    }
 
+    /// Republish the ambient frames even when traffic advancement stopped early.
+    fn publish(&mut self, state: &mut crate::EngineState) {
         let frames: Vec<GeneratedTraffic> =
             self.aircraft.iter().filter_map(ambient_frame).collect();
         let debug: Vec<TrafficDebug> = self
@@ -1204,8 +1315,12 @@ impl TrafficManager {
             })
             .collect();
         // Replace the ambient portion only; keep frames produced by other layers.
-        let ambient_ids: std::collections::BTreeSet<u32> =
-            self.aircraft.iter().map(|aircraft| aircraft.id).collect();
+        let ambient_ids: BTreeSet<u32> = self
+            .published
+            .iter()
+            .copied()
+            .chain(self.aircraft.iter().map(|aircraft| aircraft.id))
+            .collect();
         state
             .session
             .generated_traffic
@@ -1223,6 +1338,7 @@ impl TrafficManager {
             .session
             .generated_traffic
             .sort_by_key(|frame| frame.target.id);
+        self.published = self.aircraft.iter().map(|aircraft| aircraft.id).collect();
     }
 
     /// Read-only route diagnostics for the ambient layer.
@@ -1253,6 +1369,7 @@ impl TrafficManager {
                     },
                     "distance": aircraft.distance,
                     "stage": format!("{:?}", aircraft.stage()),
+                    "wakeDelay": aircraft.wake_delay,
                     "runway": aircraft.runway,
                     "taxiEnd": aircraft.taxi_end,
                     "runwayStart": aircraft.runway_start,
@@ -1518,6 +1635,8 @@ impl TrafficManager {
                 altitude_feet: airport.elevation_feet,
             };
             let climb_speed = phases::sid::climb_speed(&identity.profile, &handling);
+            let minimum_climb_speed =
+                phases::sid::minimum_climb_speed(&identity.profile, &handling);
             let climb_fpm = identity.profile.climb_fpm;
             let path = match kind {
                 AmbientKind::Departure => departure_path(
@@ -1684,6 +1803,7 @@ impl TrafficManager {
                 taxi_knots,
                 taxi_turn_knots,
                 climb_speed,
+                minimum_climb_speed,
                 climb_fpm,
                 descent_fpm,
                 approach_speed,
@@ -1697,6 +1817,7 @@ impl TrafficManager {
                 blocked: false,
                 blocker: None,
                 awaiting_clearance: false,
+                wake_delay: 0.0,
                 last: Instant::now(),
                 frequency_khz: frequency,
             });
@@ -2381,6 +2502,58 @@ pub(crate) fn player_runway_remaining(
     (distance <= 600.0).then_some(distance)
 }
 
+/// Closest departure ahead on the same takeoff path after both have lifted off.
+///
+/// Route distance includes the surface taxi path, which differs between aircraft.
+/// Comparing it directly can make a taxiing aircraft on a long route look like a
+/// leader and freeze an aircraft that has already taken off. Progress is measured
+/// from each aircraft's own runway threshold so only aircraft on the same climb
+/// path are compared.
+fn climb_leader(aircraft: &[AmbientAircraft], index: usize) -> Option<(f64, f64)> {
+    let own = aircraft.get(index)?;
+    if own.kind != AmbientKind::Departure || own.distance < own.ground_end {
+        return None;
+    }
+    let own_progress = own.distance - own.runway_start;
+    aircraft
+        .iter()
+        .filter(|other| {
+            other.id != own.id
+                && other.kind == AmbientKind::Departure
+                && other.airport == own.airport
+                && other.runway == own.runway
+                && other.distance >= other.ground_end
+                && other.distance - other.runway_start > own_progress
+        })
+        .min_by(|left, right| {
+            (left.distance - left.runway_start).total_cmp(&(right.distance - right.runway_start))
+        })
+        .map(|other| (other.distance - other.runway_start, other.speed))
+}
+
+impl TrafficManager {
+    /// A faster departure must not be released immediately behind a much slower
+    /// airborne departure. The follower waits at the hold or lines up and waits
+    /// until the performance gap is safe, then climbs at its own speed.
+    fn performance_hold(&self, index: usize) -> bool {
+        let own = &self.aircraft[index];
+        if own.kind != AmbientKind::Departure {
+            return false;
+        }
+        let own_progress = own.distance - own.runway_start;
+        self.aircraft.iter().any(|other| {
+            other.id != own.id
+                && other.kind == AmbientKind::Departure
+                && other.airport == own.airport
+                && other.runway == own.runway
+                && other.distance >= other.ground_end
+                && other.distance - other.runway_start > own_progress
+                && own.climb_speed > other.speed * 1.4
+                && (other.distance - other.runway_start) - own_progress < 3.0 * 1_852.0
+        })
+    }
+}
+
 /// First departure at the hold in arrival order.
 fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
     aircraft
@@ -2704,6 +2877,7 @@ mod phase_tests {
             taxi_knots: TAXI_STRAIGHT_METERS_PER_SECOND,
             taxi_turn_knots: 10.0 * 0.514_444,
             climb_speed: 80.0,
+            minimum_climb_speed: 0.0,
             climb_fpm: 2_200.0,
             descent_fpm: 1_800.0,
             approach_speed: 75.0,
@@ -2717,6 +2891,7 @@ mod phase_tests {
             blocked: false,
             blocker: None,
             awaiting_clearance: false,
+            wake_delay: 0.0,
             last: Instant::now(),
             frequency_khz: None,
         }
@@ -2793,6 +2968,69 @@ mod phase_tests {
     }
 
     #[test]
+    fn ambient_frames_are_published_when_advancement_cannot_run() {
+        let mut state = crate::test_state();
+        let mut manager = TrafficManager {
+            aircraft: vec![ambient(AmbientKind::Departure, 100.0, 0.0, 1_000.0)],
+            ..Default::default()
+        };
+        manager.tick(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .any(|frame| frame.target.id == 1),
+            "a missing model catalogue must not hide ambient traffic"
+        );
+        manager.aircraft.clear();
+        manager.tick(&mut state);
+        assert!(
+            state
+                .session
+                .generated_traffic
+                .iter()
+                .all(|frame| frame.target.id != 1),
+            "retired ambient traffic must leave the published set"
+        );
+    }
+
+    #[test]
+    fn the_player_lined_up_blocks_the_ambient_runway() {
+        let manager = TrafficManager::default();
+        assert_eq!(
+            manager.runway_state_for(
+                "LFMN",
+                "04R",
+                None,
+                Some(PlayerRunway {
+                    lined_up: true,
+                    rolling: false,
+                }),
+                None,
+            ),
+            RunwayState::LineUp
+        );
+        assert_eq!(
+            manager.runway_state_for(
+                "LFMN",
+                "04R",
+                None,
+                Some(PlayerRunway {
+                    lined_up: false,
+                    rolling: true,
+                }),
+                None,
+            ),
+            RunwayState::Rolling
+        );
+        assert_eq!(
+            manager.runway_state_for("LFMN", "04R", None, None, None),
+            RunwayState::Clear
+        );
+    }
+
+    #[test]
     fn an_aircraft_behind_the_player_is_not_the_runway_leader() {
         let mut manager = TrafficManager::default();
         let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 2_000.0);
@@ -2806,12 +3044,12 @@ mod phase_tests {
         departure.takeoff = false;
         manager.aircraft.push(departure);
         assert_eq!(
-            manager.runway_state_for("LFMN", "04R", Some(100.0), None),
+            manager.runway_state_for("LFMN", "04R", Some(100.0), None, None),
             RunwayState::Clear,
             "the player is closer to the threshold than the lined-up ambient"
         );
         assert_eq!(
-            manager.runway_state_for("LFMN", "04R", Some(500.0), None),
+            manager.runway_state_for("LFMN", "04R", Some(500.0), None, None),
             RunwayState::LineUp,
             "an ambient ahead of the player still owns the runway"
         );
@@ -2987,6 +3225,40 @@ mod phase_tests {
     }
 
     #[test]
+    fn a_jet_climb_path_uses_the_cruise_derived_speed() {
+        let airport = openatc_core::airport::demo_airport();
+        let points = [Point {
+            east: -1_300.0,
+            north: 0.0,
+            height: 0.0,
+        }];
+        let stand = Waypoint {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude_feet: 0.0,
+        };
+        let handling = jet_handling();
+        let a320 = openatc_core::traffic::profiles::aircraft("A320").expect("A320");
+        let climb_speed = phases::sid::climb_speed(a320, &handling);
+        let (path, _, _, _, _, _) = departure_path(
+            &airport,
+            &points,
+            "09",
+            stand,
+            &handling,
+            climb_speed,
+            a320.climb_fpm,
+        )
+        .expect("departure path");
+        let last = path.last().expect("climb end");
+        assert!(
+            (4_500.0..=6_000.0).contains(&last.altitude_feet),
+            "a jet at 2,200 fpm should be near 5,300 ft at 10 NM, got {}",
+            last.altitude_feet
+        );
+    }
+
+    #[test]
     fn seeds_are_spaced_along_the_surface_route() {
         let positions = seed_distances(1_000.0, 6);
         assert_eq!(positions.len(), 6);
@@ -3095,6 +3367,79 @@ mod phase_tests {
     }
 
     #[test]
+    fn a_fast_departure_waits_behind_a_slow_airborne_leader() {
+        let mut leader = ambient(AmbientKind::Departure, 1_000.0, 0.0, 900.0);
+        leader.id = 1;
+        leader.runway_start = 0.0;
+        leader.speed = 20.0;
+        leader.climb_speed = 20.0;
+        let mut follower = ambient(AmbientKind::Departure, 500.0, 0.0, 4_000.0);
+        follower.id = 2;
+        follower.runway_start = 0.0;
+        follower.climb_speed = 120.0;
+        let manager = TrafficManager {
+            aircraft: vec![leader, follower],
+            ..Default::default()
+        };
+        assert!(
+            manager.performance_hold(1),
+            "a jet must not be released behind a much slower airborne aircraft"
+        );
+        let mut similar = manager;
+        similar.aircraft[1].climb_speed = 25.0;
+        assert!(!similar.performance_hold(1));
+    }
+
+    #[test]
+    fn climb_spacing_ignores_taxiing_traffic_on_a_longer_route() {
+        let mut taxiing = ambient(AmbientKind::Departure, 3_198.0, 0.0, 5_288.0);
+        taxiing.id = 1;
+        taxiing.runway_start = 0.0;
+        taxiing.speed = 0.0;
+        let mut airborne = ambient(AmbientKind::Departure, 3_168.0, 0.0, 3_147.0);
+        airborne.id = 2;
+        airborne.runway_start = 2_847.0;
+        airborne.speed = 80.0;
+        let aircraft = vec![taxiing, airborne];
+        assert_eq!(
+            climb_leader(&aircraft, 1),
+            None,
+            "a taxiing aircraft cannot be a climb leader"
+        );
+    }
+
+    #[test]
+    fn climb_spacing_compares_progress_from_the_runway_threshold() {
+        // This aircraft has the larger absolute route distance but is behind the
+        // other aircraft relative to its own runway threshold.
+        let mut longer = ambient(AmbientKind::Departure, 4_000.0, 0.0, 3_900.0);
+        longer.id = 1;
+        longer.runway_start = 3_900.0;
+        longer.speed = 70.0;
+        let mut ahead = ambient(AmbientKind::Departure, 3_500.0, 0.0, 3_400.0);
+        ahead.id = 2;
+        ahead.runway_start = 3_000.0;
+        ahead.speed = 90.0;
+        let aircraft = vec![longer, ahead];
+        assert_eq!(
+            climb_leader(&aircraft, 1),
+            None,
+            "absolute route distance must not order aircraft on different routes"
+        );
+
+        let mut leader = ambient(AmbientKind::Departure, 3_500.0, 0.0, 3_400.0);
+        leader.id = 3;
+        leader.runway_start = 3_000.0;
+        leader.speed = 90.0;
+        let mut follower = ambient(AmbientKind::Departure, 3_200.0, 0.0, 3_100.0);
+        follower.id = 4;
+        follower.runway_start = 2_900.0;
+        follower.speed = 80.0;
+        let aircraft = vec![leader, follower];
+        assert_eq!(climb_leader(&aircraft, 1), Some((500.0, 90.0)));
+    }
+
+    #[test]
     fn a_faster_departure_does_not_overrun_a_slower_leader() {
         let airport = openatc_core::airport::demo_airport();
         let mut state = crate::test_state();
@@ -3194,6 +3539,48 @@ mod phase_tests {
             Waypoint {
                 latitude: 0.01,
                 longitude: 0.01,
+                altitude_feet: 0.0,
+            },
+        ];
+        departure.cumulative = cumulative_distances(&departure.points);
+        departure.distance = 0.0;
+        departure.speed = 0.0;
+        manager.aircraft.push(departure);
+        manager.tick(&mut state);
+        assert_eq!(manager.aircraft[0].blocker, Some(0));
+        assert!(manager.aircraft[0].blocked);
+    }
+
+    #[test]
+    fn a_joining_ambient_yields_to_the_player_on_its_right() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.0008;
+        state.session.telemetry.longitude = 0.0002;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut departure = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        departure.airport = "DEMO".into();
+        departure.runway = "09".into();
+        departure.hold_distance = 600.0;
+        departure.runway_start = 1_000.0;
+        departure.runway_end = 2_000.0;
+        departure.points = vec![
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.01,
+                longitude: 0.0,
                 altitude_feet: 0.0,
             },
         ];
