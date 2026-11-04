@@ -71,7 +71,7 @@ impl Intent {
             )
             .all(|(control, value)| {
                 count += 1;
-                count <= 8 && seen.insert(control) && validate(profile, role, control, value)
+                count <= 24 && seen.insert(control) && validate(profile, role, control, value)
             })
     }
 }

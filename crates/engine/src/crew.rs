@@ -238,12 +238,29 @@ pub async fn observe(
     s.session.crew_controls = profile
         .controls
         .iter()
-        .map(|(id, c)| openatc_core::crew::Capability {
-            id: id.clone(),
-            label: c.label.clone(),
-            role: c.role.clone(),
-            available: input.available.contains(id),
-            value: input.values.get(id).copied(),
+        .map(|(id, c)| {
+            let value = input.values.get(id).copied();
+            let state = value.map_or_else(
+                || "unknown".to_owned(),
+                |value| {
+                    let tolerance = c.tolerance.max(0.01);
+                    if (value - c.on).abs() <= tolerance {
+                        "on".to_owned()
+                    } else if (value - c.off).abs() <= tolerance {
+                        "off".to_owned()
+                    } else {
+                        "value".to_owned()
+                    }
+                },
+            );
+            openatc_core::crew::Capability {
+                id: id.clone(),
+                label: c.label.clone(),
+                role: c.role.clone(),
+                available: input.available.contains(id),
+                value,
+                state,
+            }
         })
         .collect();
     s.crew.profile = profile;
@@ -324,7 +341,7 @@ fn queue(s: &mut crate::EngineState, role: &str, id: &str, value: f64, response:
         || s.crew
             .observed_at
             .is_none_or(|t| t.elapsed() > std::time::Duration::from_secs(3))
-        || s.session.crew_actions.len() >= 8
+        || s.session.crew_actions.len() >= 24
     {
         return false;
     }
@@ -1231,11 +1248,40 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     let pilot = s.session.plan.callsign.clone();
     let mut pilot_sequence = s.session.next_sequence;
     let using_ai = s.settings.ai_enabled && !s.settings.ai_model.is_empty();
-    if using_ai {
+    if using_ai || !request.controls.is_empty() {
         add_transmission(&mut s.session, &pilot, &request.text, &SpeechTag::default());
     }
     let profile = s.crew.profile.clone();
-    let parsed = if s.settings.ai_enabled && !s.settings.ai_model.is_empty() {
+    let parsed = if !request.controls.is_empty() {
+        let mut actions = Vec::new();
+        let mut resolved = true;
+        for command in &request.controls {
+            let Some(control) = profile.controls.get(&command.control) else {
+                resolved = false;
+                break;
+            };
+            let value = match command.value.as_str() {
+                "on" => control.on,
+                "off" => control.off,
+                other => match other.parse::<f64>() {
+                    Ok(value) => value,
+                    Err(_) => {
+                        resolved = false;
+                        break;
+                    }
+                },
+            };
+            actions.push(openatc_core::crew::request::ControlAction {
+                control: command.control.clone(),
+                value,
+            });
+        }
+        let intent = openatc_core::crew::request::Intent {
+            actions,
+            ..Default::default()
+        };
+        (resolved && intent.valid(&profile, role)).then_some(intent)
+    } else if s.settings.ai_enabled && !s.settings.ai_model.is_empty() {
         let generation = s.session_generation;
         let revision = s.crew.revision;
         let aircraft = s.crew.aircraft.clone();
@@ -2604,6 +2650,7 @@ mod conversation_routing_tests {
                     role: "copilot".into(),
                     available: true,
                     value: None,
+                    state: "unknown".into(),
                 });
         }
         state
@@ -2615,6 +2662,7 @@ mod conversation_routing_tests {
                 role: "copilot".into(),
                 available: true,
                 value: Some(275.0),
+                state: "value".into(),
             });
         state.crew.values.insert("heading".into(), 275.0);
         state

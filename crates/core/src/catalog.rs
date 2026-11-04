@@ -58,6 +58,9 @@ pub fn quick_buttons() -> Vec<QuickButton> {
                     },
                     phase: entry.phase.clone(),
                     control: entry.control.clone(),
+                    aircraft: entry.aircraft.clone(),
+                    when: entry.when.clone(),
+                    actions: entry.actions.clone(),
                 })
         })
         .collect()
@@ -118,6 +121,25 @@ pub fn activate(path: &Path) -> Result<(), String> {
         !matches!(entry.crew.as_str(), "" | "copilot" | "ground" | "attendant")
             || entry.say.len() > 160
             || entry.control.len() > 64
+            || entry.aircraft.len() > 8
+            || entry.aircraft.iter().any(|tag| {
+                tag.is_empty()
+                    || tag.len() > 8
+                    || !tag.bytes().all(|byte| byte.is_ascii_alphanumeric())
+            })
+            || entry.when.as_ref().is_some_and(|when| {
+                when.control.len() > 64
+                    || !matches!(when.is.as_str(), "on" | "off" | "available" | "unavailable")
+            })
+            || entry.actions.len() > 24
+            || entry.actions.iter().any(|action| {
+                action.control.len() > 64
+                    || action.control.is_empty()
+                    || action.value.len() > 16
+                    || (action.value != "on"
+                        && action.value != "off"
+                        && action.value.parse::<f64>().is_err())
+            })
             || entry
                 .phase
                 .iter()
@@ -207,8 +229,34 @@ pub struct IntentEntry {
     pub phase: Vec<String>,
     /// Aircraft control the request operates, when it is a control request.
     pub control: String,
+    /// Aircraft types this button applies to; empty means every aircraft.
+    pub aircraft: Vec<String>,
+    /// Show the button only when this control condition holds.
+    pub when: Option<When>,
+    /// Controls set by this button, in order. Empty sends the spoken phrase.
+    pub actions: Vec<ButtonAction>,
     /// True for crew-page buttons that the radio parser must ignore.
     pub quick_only: bool,
+}
+
+/// Visibility condition for a quick button.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct When {
+    /// Profile control to inspect.
+    pub control: String,
+    /// on | off | available | unavailable.
+    pub is: String,
+}
+
+/// One aircraft control set by a quick button.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ButtonAction {
+    /// Profile control identifier.
+    pub control: String,
+    /// on | off | numeric target.
+    pub value: String,
 }
 
 /// Phase keys accepted by quick-button catalogues.
@@ -248,6 +296,12 @@ pub struct QuickButton {
     pub phase: Vec<String>,
     /// Aircraft control required for the button, when any.
     pub control: String,
+    /// Aircraft types this button applies to; empty means every aircraft.
+    pub aircraft: Vec<String>,
+    /// Visibility condition.
+    pub when: Option<When>,
+    /// Controls set by the button.
+    pub actions: Vec<ButtonAction>,
 }
 
 /// Whole catalogue, keyed by intent, alphabetical for determinism.
@@ -514,12 +568,27 @@ mod tests {
     #[test]
     fn crew_buttons_come_from_the_same_catalogue_and_respect_phases() {
         let ground = crew_buttons("ground");
-        assert!(ground.iter().any(|button| button.intent == "crew_chocks"));
+        let chocks = ground
+            .iter()
+            .find(|button| button.intent == "crew_chocks_on")
+            .expect("add chocks");
+        assert_eq!(chocks.actions.len(), 1);
+        assert_eq!(chocks.actions[0].value, "on");
+        assert_eq!(
+            chocks.when.as_ref().map(|when| when.is.as_str()),
+            Some("off")
+        );
         assert!(
             ground
                 .iter()
                 .all(|button| button.crew == "ground" && !button.control.is_empty())
         );
+        let prepare = crew_buttons("copilot")
+            .into_iter()
+            .find(|button| button.intent == "crew_prepare_a320")
+            .expect("prepare A320");
+        assert_eq!(prepare.aircraft, vec!["A20N".to_owned()]);
+        assert!(prepare.actions.len() > 8);
         assert!(
             buttons()
                 .iter()

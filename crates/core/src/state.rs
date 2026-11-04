@@ -682,6 +682,18 @@ pub struct Request {
     pub readback_kind: String,
     /// Requesting role (`atc` default).
     pub role: String,
+    /// Structured controls for a quick crew button; empty falls back to `text`.
+    pub controls: Vec<ControlCommand>,
+}
+
+/// One aircraft control selected by a quick button.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ControlCommand {
+    /// Profile control identifier.
+    pub control: String,
+    /// on | off | numeric target.
+    pub value: String,
 }
 
 /// Voice and delivery settings attached to a transmission.

@@ -3819,6 +3819,14 @@ say = ["chocks", "chock", "chalks", "shocks"]
 slots = []
 say = ["external power", "ground power", "gpu", "ext power", "ext pwr"]
 
+[crew_request_apu_start]
+slots = []
+say = ["apu start", "start the apu", "start apu", "apu starter"]
+
+[crew_control_apu_start]
+slots = []
+say = ["APU start"]
+
 [crew_request_beacon]
 slots = []
 say = ["beacon"]

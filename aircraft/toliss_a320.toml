@@ -185,6 +185,301 @@ integer = true
 on = 1
 off = 0
 
+# A320 quick-request controls. Arrays are the overhead panel state; index order
+# follows the panel layout in smartcopilot.cfg.
+[aircraft.crew.controls.bat1]
+label = "Battery 1"
+role = "copilot"
+dataref = "sim/cockpit/electrical/battery_array_on"
+index = 0
+readback_ref = "sim/cockpit/electrical/battery_array_on"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.bat2]
+label = "Battery 2"
+role = "copilot"
+dataref = "sim/cockpit/electrical/battery_array_on"
+index = 1
+readback_ref = "sim/cockpit/electrical/battery_array_on"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.ext_pwr]
+label = "External power"
+role = "copilot"
+dataref = "AirbusFBW/EnableExternalPower"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.apu_master]
+label = "APU master"
+role = "copilot"
+dataref = "AirbusFBW/APUMaster"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.apu_start]
+label = "APU start"
+role = "copilot"
+on_command = "toliss_airbus/apucommands/StarterOn"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+momentary = true
+
+[aircraft.crew.controls.adir1]
+label = "ADIR 1"
+role = "copilot"
+dataref = "AirbusFBW/ADIRUSwitchArray"
+index = 0
+readback_ref = "AirbusFBW/ADIRUSwitchArray"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+states = { off = 0, nav = 1, att = 2 }
+
+[aircraft.crew.controls.adir2]
+label = "ADIR 2"
+role = "copilot"
+dataref = "AirbusFBW/ADIRUSwitchArray"
+index = 1
+readback_ref = "AirbusFBW/ADIRUSwitchArray"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+states = { off = 0, nav = 1, att = 2 }
+
+[aircraft.crew.controls.adir3]
+label = "ADIR 3"
+role = "copilot"
+dataref = "AirbusFBW/ADIRUSwitchArray"
+index = 2
+readback_ref = "AirbusFBW/ADIRUSwitchArray"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+states = { off = 0, nav = 1, att = 2 }
+
+[aircraft.crew.controls.gnd_ctl]
+label = "GND CTL"
+role = "copilot"
+dataref = "AirbusFBW/CvrGndCtrl"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.smoke_sign]
+label = "No smoking signs"
+role = "copilot"
+dataref = "AirbusFBW/NoSmokingSignsOn"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.cockpit_door]
+label = "Cockpit door lock"
+role = "copilot"
+dataref = "AirbusFBW/CockpitDoorLockState"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+states = { unlocked = 0, locked = 1 }
+
+[aircraft.crew.controls.wx_gain]
+label = "Weather radar gain"
+role = "copilot"
+dataref = "AirbusFBW/WXRadarGain"
+min = -1
+max = 1
+on = 1
+off = -1
+tolerance = 0.05
+states = { max = 1, min = -1 }
+
+[aircraft.crew.controls.wx_tilt]
+label = "Weather radar tilt"
+role = "copilot"
+dataref = "AirbusFBW/WXRadarTilt"
+min = -15
+max = 15
+on = 0
+off = 0
+tolerance = 0.1
+states = { zero = 0 }
+
+[aircraft.crew.controls.wx_mode]
+label = "Weather radar mode"
+role = "copilot"
+dataref = "AirbusFBW/WXSwitchMode"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+states = { wx = 0, wx_t = 1, turb = 2 }
+
+[aircraft.crew.controls.wx_multiscan]
+label = "Weather radar multiscan"
+role = "copilot"
+dataref = "AirbusFBW/WXSwitchMultiscan"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+states = { off = 0, auto = 1, man = 2 }
+
+[aircraft.crew.controls.wx_pws]
+label = "Weather radar PWS"
+role = "copilot"
+dataref = "AirbusFBW/WXSwitchPWS"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+states = { off = 0, auto = 1, on = 2 }
+
+[aircraft.crew.controls.nav_logo]
+label = "NAV and logo lights"
+role = "copilot"
+dataref = "AirbusFBW/OHPLightSwitches"
+index = 2
+readback_ref = "AirbusFBW/OHPLightSwitches"
+min = 0
+max = 2
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+states = { off = 0, nav = 1, nav_logo = 2 }
+
+[aircraft.crew.controls.fuel_l_pump_1]
+label = "L TK pump 1"
+role = "copilot"
+dataref = "AirbusFBW/FuelOHPArray"
+index = 1
+readback_ref = "AirbusFBW/FuelOHPArray"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.fuel_l_pump_2]
+label = "L TK pump 2"
+role = "copilot"
+dataref = "AirbusFBW/FuelOHPArray"
+index = 2
+readback_ref = "AirbusFBW/FuelOHPArray"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.fuel_ctr_l_xfr]
+label = "CTR TK L XFR"
+role = "copilot"
+dataref = "AirbusFBW/FuelOHPArray"
+index = 3
+readback_ref = "AirbusFBW/FuelOHPArray"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.fuel_ctr_r_xfr]
+label = "CTR TK R XFR"
+role = "copilot"
+dataref = "AirbusFBW/FuelOHPArray"
+index = 5
+readback_ref = "AirbusFBW/FuelOHPArray"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.fuel_r_pump_1]
+label = "R TK pump 1"
+role = "copilot"
+dataref = "AirbusFBW/FuelOHPArray"
+index = 6
+readback_ref = "AirbusFBW/FuelOHPArray"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.fuel_r_pump_2]
+label = "R TK pump 2"
+role = "copilot"
+dataref = "AirbusFBW/FuelOHPArray"
+index = 7
+readback_ref = "AirbusFBW/FuelOHPArray"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+tolerance = 0.1
+
+[aircraft.crew.controls.transponder_mode]
+label = "Transponder TX+RX"
+role = "copilot"
+dataref = "AirbusFBW/XPDRTCASMode"
+min = 0
+max = 1
+on = 1
+off = 0
+integer = true
+states = { auto = 0, on = 1 }
+
 # Short editable examples, not a replacement for your operator's checklist.
 [[aircraft.crew.checklists.before_start]]
 control = "seatbelts"

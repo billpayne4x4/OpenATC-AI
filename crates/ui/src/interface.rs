@@ -429,6 +429,13 @@ impl Interface {
         );
         self.search.clear();
         self.stations_checked = 0.0;
+        // The simulator confirms the tune before the telemetry snapshot does. Drop the old
+        // station's chatter now, so it cannot play after the handoff.
+        self.stop_chatter(self.requested_frequency_radio);
+        self.speech_queue.retain(|entry| {
+            entry.radio != Some(self.requested_frequency_radio)
+                || entry.frequency.is_none_or(|tuned| tuned == frequency)
+        });
     }
     /// Connect to the engine at the endpoint.
     #[must_use]
@@ -749,8 +756,8 @@ impl Interface {
             .unwrap_or(&state.plan.callsign)
     }
 
-    /// Transmit the message box to ATC.
-    pub fn transmit_box(&mut self) -> bool {
+    /// Transmit the message box to the selected crew role or radio.
+    pub fn transmit_box_for(&mut self, role: &str) -> bool {
         if !self.engine.connected() {
             "Transmit blocked: engine down".clone_into(&mut self.last_action);
             return false;
@@ -765,10 +772,10 @@ impl Interface {
             text: self.message.clone(),
             altitude_feet: parsed.altitude_feet,
             waypoint: parsed.waypoint,
+            role: role.to_owned(),
             ..Default::default()
         };
-        full.role.clone_from(&self.crew_role());
-        if full.role == "atc" {
+        if role == "atc" {
             let state = self.engine.state();
             let nearby = openatc_core::stations::nearby(&self.nearby_stations, &state.telemetry);
             if let Some(station) = state
@@ -794,34 +801,10 @@ impl Interface {
         true
     }
 
-    /// Talk to the copilot instead of the radio.
-    pub fn transmit_box_to_copilot(&mut self) -> bool {
-        if !self.settings.copilot_button {
-            "Talk blocked: copilot button off".clone_into(&mut self.last_action);
-            return false;
-        }
-        if !self.engine.connected() {
-            "Talk blocked: engine down".clone_into(&mut self.last_action);
-            return false;
-        }
-        if self.message.is_empty() {
-            "Talk blocked: empty box".clone_into(&mut self.last_action);
-            return false;
-        }
-        let parsed = interpret_text(&self.message);
-        let request = openatc_core::state::Request {
-            intent: parsed.intent,
-            text: self.message.clone(),
-            altitude_feet: parsed.altitude_feet,
-            waypoint: parsed.waypoint,
-            role: "copilot".to_owned(),
-            ..Default::default()
-        };
-        self.notice.clear();
-        self.send(&request);
-        self.message.clear();
-        "Talk sent (copilot)".clone_into(&mut self.last_action);
-        true
+    /// Transmit the message box to the role selected on the panel.
+    pub fn transmit_box(&mut self) -> bool {
+        let role = self.crew_role();
+        self.transmit_box_for(&role)
     }
 
     /// Push settings to the engine for validation and save.
@@ -2805,6 +2788,35 @@ mod radio_busy_tests {
         let own: Transmission =
             serde_json::from_value(serde_json::json!({"radio": "com1"})).expect("own entry");
         assert!(entry_frequency_tuned(&own, &state));
+    }
+
+    #[test]
+    fn confirming_a_tune_clears_the_previous_station_chatter() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.requested_frequency_radio = openatc_core::state::Radio::Com1;
+        for (frequency, chatter) in [(118_700, true), (118_700, false), (120_160, true)] {
+            interface
+                .speech_queue
+                .push_back(openatc_core::state::Transmission {
+                    radio: Some(openatc_core::state::Radio::Com1),
+                    frequency: Some(frequency),
+                    gap_ms: 0,
+                    speaker: "ATC".into(),
+                    information_only: false,
+                    pilot_reply: String::new(),
+                    background: chatter,
+                    chatter,
+                    text: String::new(),
+                    sequence: u32::from(chatter),
+                    position: String::new(),
+                    voice: String::new(),
+                    delivery: String::new(),
+                    speed: 1.0,
+                    urgent: false,
+                });
+        }
+        interface.radio_tuned(120_160);
+        assert!(interface.speech_queue.is_empty());
     }
 
     #[test]

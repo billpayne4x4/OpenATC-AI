@@ -302,6 +302,8 @@ pub struct Capability {
     pub available: bool,
     /// Last observed setting, when readable.
     pub value: Option<f64>,
+    /// Observed switch state: on, off or unknown.
+    pub state: String,
 }
 
 /// Built-in simulator controls for aircraft without a third-party override.
