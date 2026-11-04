@@ -303,10 +303,15 @@ pub fn takeoff_decision<'a>(
     {
         return TakeoffDecision::Hold("flight_hold_short_landing");
     }
+    let stopped = || crate::holding::stationary_on_runway(airport, runway, targets.clone());
     match sequence {
         RunwaySequence::Landing => TakeoffDecision::Hold("flight_hold_short_landing"),
         RunwaySequence::LineUp => TakeoffDecision::Hold("flight_hold_short_traffic"),
+        RunwaySequence::Rolling if stopped() => TakeoffDecision::Hold("flight_hold_short_traffic"),
         RunwaySequence::Rolling => TakeoffDecision::LineUpAndWait,
+        RunwaySequence::Clear if wake_seconds > 0.0 && stopped() => {
+            TakeoffDecision::Hold("flight_hold_short_traffic")
+        }
         RunwaySequence::Clear if wake_seconds > 0.0 => TakeoffDecision::LineUpAndWait,
         RunwaySequence::Clear => {
             match crate::holding::blocked_for_movement(airport, runway, targets, 90.0) {
@@ -1786,6 +1791,41 @@ mod tests {
         );
         assert_eq!(
             takeoff_decision(&airport, "09", empty.iter(), RunwaySequence::Rolling, 0.0),
+            TakeoffDecision::LineUpAndWait
+        );
+        let stopped = TrafficTarget {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude_feet: 0.0,
+            track_degrees: 90.0,
+            ground_speed_knots: Some(0.0),
+            on_ground: true,
+            runway_occupancy: Some(true),
+            ..Default::default()
+        };
+        assert_eq!(
+            takeoff_decision(
+                &airport,
+                "09",
+                std::iter::once(&stopped),
+                RunwaySequence::Rolling,
+                0.0,
+            ),
+            TakeoffDecision::Hold("flight_hold_short_traffic"),
+            "a stopped aircraft on the runway blocks a line-up behind it"
+        );
+        let rolling = TrafficTarget {
+            ground_speed_knots: Some(60.0),
+            ..stopped.clone()
+        };
+        assert_eq!(
+            takeoff_decision(
+                &airport,
+                "09",
+                std::iter::once(&rolling),
+                RunwaySequence::Rolling,
+                0.0,
+            ),
             TakeoffDecision::LineUpAndWait
         );
         let final_target = TrafficTarget {
