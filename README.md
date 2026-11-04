@@ -528,7 +528,7 @@ The copilot can change mapped cockpit settings, including heading, autopilot con
 
 Checklists support two modes: the copilot reads a challenge and waits for your response, or you read an item and the copilot performs supported actions and responds. Checklist definitions belong with the aircraft; spoken pilot/copilot wording belongs in the speech library. The included checklists are examples and need operator/aircraft review before expansion.
 
-Cabin conversation receives the live flight phase and ground state. With CABIN or ground services selected, both Talk and Transmit address that crew member. On the ATC channel, the separate Copilot button explicitly addresses the copilot. Greetings and refreshment requests do not prepare the cabin for landing. Arming and cross-check requests still depend on the aircraft's mapped indications; an unconfirmed slide indication must not be announced as armed. See [Aircraft controls and checklists](docs/AIRCRAFT_CONTROLS.md) for editing examples and limitations.
+Cabin conversation receives the live flight phase and ground state. With CABIN or ground services selected, both Talk and Transmit address that crew member. Copilot requests use the Crew page, where Transmit addresses the selected tab. Greetings and refreshment requests do not prepare the cabin for landing. Arming and cross-check requests still depend on the aircraft's mapped indications; an unconfirmed slide indication must not be announced as armed. See [Aircraft controls and checklists](docs/AIRCRAFT_CONTROLS.md) for editing examples and limitations.
 
 Landing preparation and passenger-watch requests are cabin services rather than switch operations. They can be combined with light commands, and service-only requests do not wait for an unrelated control acknowledgement. The LLM interprets unfamiliar paraphrases using the same service/action schema; TOML examples guide it without requiring an exact phrase match. Cabin conversation uses a bounded set of style examples instead of sending the entire role phrasebook.
 
@@ -892,9 +892,23 @@ quick request names its `crew` tab, the phrase sent when pressed, the aircraft
 `control` it needs, and a `phase` list. Omit `phase` or use `["all"]` for every
 phase. Phase keys are `parked_out`, `pushback`, `taxi_out`, `takeoff`, `climb`,
 `cruise`, `descend`, `approach`, `landing`, `taxi_in` and `parked_in`; takeoff and
-climb split at 1,500 ft AGL. Crew buttons never enter the radio parser, so a spoken
-"thanks" still reaches the controller rather than a copilot button. The drink and
-snack request uses the published cabin service phrases.
+climb split at 1,500 ft AGL. `aircraft = ["A20N"]` limits a button to that type and
+an empty list applies it everywhere. `when = { control = "chocks", is = "on" }`
+shows a button only when the switch is on, off, available or unavailable.
+
+`actions = [{ control = "chocks", value = "off" }]` sets one or more controls in
+order, with `on`, `off` or a numeric target. The engine validates the whole list
+against the loaded aircraft profile and the crew role before queueing anything, and
+speaks one summary. A button with no `actions` sends its phrase as before. Missing
+controls hide the button rather than half-running the flow. Crew buttons never enter
+the radio parser, so a spoken "thanks" still reaches the controller rather than a
+copilot button. The drink and snack request uses the published cabin service phrases.
+
+The bundled ToLiss A320 profile adds stateful controls for the ADIRs, GND CTL, smoke
+sign, cockpit door, weather radar, NAV/LOGO lights, the six fuel buttons and the
+transponder mode. Two copilot buttons use them: **Prepare A320** and **Prepare
+Start**. The A320 fuel panel is read and written through `AirbusFBW/FuelOHPArray`;
+MODE SEL and X FEED are left alone.
 
 Channels identifies a ground airport using enabled scenery boundaries, pavement and runway footprints before falling back to reference-point proximity. This avoids choosing a nearby heliport or small airfield simply because its reference point is closer. It is scenery containment, not a legal airport-property survey. The station list updates as airport and radio data arrive; there is no airport filter to maintain.
 

@@ -510,22 +510,34 @@ fn header_card(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
 /// Which messages the transcript shows on a page.
 #[derive(Clone, Copy)]
 enum TranscriptScope {
-    /// ATC and radio traffic on one radio, plus neutral system lines.
+    /// Radio traffic on one radio.
     Radio(openatc_core::state::Radio),
-    /// Interphone traffic with one crew member, plus the pilot's own calls.
+    /// Interphone traffic with one crew member.
     Crew(&'static str),
 }
 
 fn transcript_visible(
-    entry: &openatc_core::state::Transmission,
+    transcript: &[openatc_core::state::Transmission],
+    index: usize,
     scope: TranscriptScope,
     callsign: &str,
 ) -> bool {
+    let entry = &transcript[index];
     match scope {
-        TranscriptScope::Radio(radio) => entry.radio.is_none_or(|entry_radio| entry_radio == radio),
+        TranscriptScope::Radio(radio) => entry.radio == Some(radio),
         TranscriptScope::Crew(speaker) => {
-            entry.radio.is_none()
-                && (entry.speaker == speaker || (!callsign.is_empty() && entry.speaker == callsign))
+            if entry.radio.is_some() {
+                return false;
+            }
+            if entry.speaker == speaker {
+                return true;
+            }
+            // A pilot interphone line belongs to the crew member who answers it.
+            !callsign.is_empty()
+                && entry.speaker == callsign
+                && transcript
+                    .get(index + 1)
+                    .is_some_and(|next| next.radio.is_none() && next.speaker == speaker)
         }
     }
 }
@@ -559,7 +571,11 @@ fn transcript_view(
         for entry in state
             .transcript
             .iter()
-            .filter(|entry| transcript_visible(entry, scope, &state.plan.callsign))
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                transcript_visible(&state.transcript, index, scope, &state.plan.callsign)
+                    .then_some(entry)
+            })
         {
             let _identifier = ui.push_id(entry.sequence.to_string());
             let airport = if interface.local_airport.icao.is_empty() { &interface.airport } else { &interface.local_airport };
@@ -850,17 +866,10 @@ fn selectable_message(ui: &imgui::Ui, text: &str) {
     }
 }
 
-/// Message box with Talk and Transmit plus the power note.
+/// Message box and Transmit for the selected radio or crew member.
 fn talk_row(ui: &imgui::Ui, interface: &mut Interface, crew: &str) {
     let scale = ui.current_font_size() / 18.0;
-    let button_space = if interface.settings.copilot_button {
-        236.0
-    } else {
-        126.0
-    };
-    ui.set_next_item_width(
-        (ui.content_region_avail()[0] - button_space * scale).max(100.0 * scale),
-    );
+    ui.set_next_item_width((ui.content_region_avail()[0] - 126.0 * scale).max(100.0 * scale));
     let mut message = std::mem::take(&mut interface.message);
     let submitted = widgets::edit_text_flags(
         ui,
@@ -873,29 +882,17 @@ fn talk_row(ui: &imgui::Ui, interface: &mut Interface, crew: &str) {
     ui.same_line();
     let power_ok =
         openatc_core::intents::can_transmit(crew, interface.radio_power, interface.bus_power);
-    if interface.settings.copilot_button {
-        let _talk_disabled = ui.begin_disabled(!interface.engine.connected());
-        if ui.button_with_size("Copilot", [102.0 * scale, 0.0]) {
-            interface.transmit_box_to_copilot();
-        }
-        if ui.is_item_hovered() {
-            ui.tooltip_text(
-                "Talk to the copilot. Transmit addresses the selected radio or crew member.",
-            );
-        }
-        ui.same_line();
-    }
     let blocked = !interface.engine.connected() || !power_ok;
     let _tx_disabled = ui.begin_disabled(blocked);
     let transmit = ui.button_with_size("Transmit", [118.0 * scale, 0.0]) || submitted;
     if transmit {
-        interface.transmit_box();
+        interface.transmit_box_for(crew);
     }
     if interface.engine.connected() && !power_ok {
         ui.text_colored(
             widgets::warning(ui),
             if crew == "atc" {
-                "Transmit needs radio power — Talk to the copilot still works."
+                "Transmit needs radio power."
             } else {
                 "Talking to the selected crew member needs electrical power."
             },
@@ -1289,6 +1286,35 @@ pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         });
 }
 
+/// Whether a quick button applies to the detected aircraft.
+fn crew_button_applies(button: &openatc_core::catalog::QuickButton, aircraft: &str) -> bool {
+    button.aircraft.is_empty()
+        || button
+            .aircraft
+            .iter()
+            .any(|tag| tag.eq_ignore_ascii_case(aircraft))
+}
+
+/// Whether a quick button's control condition currently holds.
+fn crew_condition_met(
+    when: Option<&openatc_core::catalog::When>,
+    controls: &[openatc_core::crew::Capability],
+) -> bool {
+    let Some(when) = when else {
+        return true;
+    };
+    let Some(control) = controls.iter().find(|control| control.id == when.control) else {
+        return false;
+    };
+    match when.is.as_str() {
+        "available" => control.available,
+        "unavailable" => !control.available,
+        "on" => control.available && control.state == "on",
+        "off" => control.available && control.state == "off",
+        _ => false,
+    }
+}
+
 /// Crew page: quick requests and the interphone conversation for one crew member.
 pub fn crew_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     const TABS: [&str; 3] = ["Copilot", "Ground", "Flight attendant"];
@@ -1302,32 +1328,99 @@ pub fn crew_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let request_role = REQUEST_ROLES[interface.crew_tab];
     let speaker = SPEAKERS[interface.crew_tab];
     let phase = state.phase.key(&state.telemetry);
+    let aircraft = if state.telemetry.aircraft_icao.is_empty() {
+        state.plan.aircraft.as_str()
+    } else {
+        state.telemetry.aircraft_icao.as_str()
+    };
     let buttons: Vec<_> = openatc_core::catalog::crew_buttons(role)
         .into_iter()
         .filter(|button| openatc_core::catalog::phase_allowed(&button.phase, phase))
+        .filter(|button| crew_button_applies(button, aircraft))
+        .filter(|button| crew_condition_met(button.when.as_ref(), &state.crew_controls))
         .collect();
-    if buttons.is_empty() {
-        ui.text_wrapped("No quick requests for this crew member in this phase.");
+
+    let available_height = ui.content_region_avail()[1];
+    let transcript_height = (available_height * interface.transcript_fraction)
+        .min((available_height - 215.0 * scale).max(80.0 * scale))
+        .max(80.0 * scale);
+    transcript_view(
+        ui,
+        interface,
+        state,
+        transcript_height,
+        TranscriptScope::Crew(speaker),
+    );
+    let splitter_position = ui.cursor_screen_pos();
+    let splitter_width = ui.content_region_avail()[0];
+    ui.invisible_button("##crew-transcript-divider", [splitter_width, 8.0 * scale]);
+    if ui.is_item_hovered() || ui.is_item_active() {
+        ui.set_mouse_cursor(Some(imgui::MouseCursor::ResizeNS));
     }
-    for button in buttons {
-        let control_ready = button.control.is_empty()
-            || state.crew_controls.iter().any(|control| {
-                control.id == button.control && control.available && control.role == request_role
+    if ui.is_item_active() {
+        interface.transcript_fraction = ((transcript_height + ui.io().mouse_delta[1])
+            / available_height.max(1.0))
+        .clamp(0.2, 0.8);
+    }
+    let draw = ui.get_window_draw_list();
+    for offset in [-7.0, 0.0, 7.0] {
+        draw.add_circle(
+            [
+                splitter_position[0] + splitter_width * 0.5 + offset * scale,
+                splitter_position[1] + 4.0 * scale,
+            ],
+            1.5 * scale,
+            widgets::muted(ui),
+        )
+        .filled(true)
+        .build();
+    }
+    ui.child_window("##crew-controls")
+        .size([0.0, 0.0])
+        .build(|| {
+            ui.text_disabled(format!(
+                "{}   /   {}",
+                interface.transmission_callsign(state),
+                TABS[interface.crew_tab].to_uppercase()
+            ));
+            talk_row(ui, interface, request_role);
+            ui.separator();
+            if buttons.is_empty() {
+                ui.text_wrapped("No quick requests for this crew member in this phase.");
+            }
+            ui.child_window("Crew requests").size([0.0, 0.0]).build(|| {
+                for button in buttons {
+                    let control_ready = button.control.is_empty()
+                        || state.crew_controls.iter().any(|control| {
+                            control.id == button.control
+                                && control.available
+                                && control.role == request_role
+                        });
+                    let _disabled =
+                        ui.begin_disabled(!interface.engine.connected() || !control_ready);
+                    if ui.button_with_size(
+                        &button.title,
+                        [ui.content_region_avail()[0], 32.0 * scale],
+                    ) {
+                        let mut request = Request {
+                            role: request_role.to_owned(),
+                            intent: button.intent.clone(),
+                            text: button.say.clone(),
+                            ..Default::default()
+                        };
+                        request.controls = button
+                            .actions
+                            .iter()
+                            .map(|action| openatc_core::state::ControlCommand {
+                                control: action.control.clone(),
+                                value: action.value.clone(),
+                            })
+                            .collect();
+                        interface.send(&request);
+                    }
+                }
             });
-        let _disabled = ui.begin_disabled(!interface.engine.connected() || !control_ready);
-        if ui.button_with_size(&button.title, [ui.content_region_avail()[0], 32.0 * scale]) {
-            let request = Request {
-                role: request_role.to_owned(),
-                intent: button.intent.clone(),
-                text: button.say.clone(),
-                ..Default::default()
-            };
-            interface.send(&request);
-        }
-    }
-    ui.separator();
-    let height = ui.content_region_avail()[1].max(80.0 * scale);
-    transcript_view(ui, interface, state, height, TranscriptScope::Crew(speaker));
+        });
 }
 
 /// Dispatch page: `SimBrief` import and the flight used for clearance.
@@ -1949,10 +2042,6 @@ pub fn settings_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             ui.checkbox(
                 "Show COM2 communications",
                 &mut interface.settings.show_com2,
-            );
-            ui.checkbox(
-                "Show copilot talk button",
-                &mut interface.settings.copilot_button,
             );
             ui.text_wrapped("Readbacks and tuning wait until the current transmission finishes. Enable both for automatic handoff acknowledgement, tuning and check-in. With tuning off, click an underlined frequency or tune the aircraft radio yourself.");
             widgets::section_title(ui, "AUTOPILOT TARGETS");
@@ -3449,6 +3538,54 @@ mod tests {
     }
 
     #[test]
+    fn crew_buttons_follow_aircraft_and_control_state() {
+        use openatc_core::catalog::{ButtonAction, QuickButton, When};
+        use openatc_core::crew::Capability;
+        let button = |aircraft: &[&str]| QuickButton {
+            intent: "crew_test".into(),
+            title: "Test".into(),
+            aircraft: aircraft.iter().map(|tag| (*tag).to_owned()).collect(),
+            actions: vec![ButtonAction {
+                control: "chocks".into(),
+                value: "off".into(),
+            }],
+            ..Default::default()
+        };
+        assert!(super::crew_button_applies(&button(&[]), "A20N"));
+        assert!(super::crew_button_applies(&button(&["A20N"]), "a20n"));
+        assert!(!super::crew_button_applies(&button(&["A20N"]), "B738"));
+        let controls = vec![Capability {
+            id: "chocks".into(),
+            label: "Chocks".into(),
+            role: "ground".into(),
+            available: true,
+            value: Some(1.0),
+            state: "on".into(),
+        }];
+        assert!(super::crew_condition_met(
+            Some(&When {
+                control: "chocks".into(),
+                is: "on".into()
+            }),
+            &controls
+        ));
+        assert!(!super::crew_condition_met(
+            Some(&When {
+                control: "chocks".into(),
+                is: "off".into()
+            }),
+            &controls
+        ));
+        assert!(!super::crew_condition_met(
+            Some(&When {
+                control: "external_power".into(),
+                is: "on".into()
+            }),
+            &controls
+        ));
+    }
+
+    #[test]
     fn each_radio_keeps_its_own_transcript() {
         use openatc_core::state::{Radio, Transmission};
         let entry = |radio: Option<&str>, speaker: &str| -> Transmission {
@@ -3461,29 +3598,57 @@ mod tests {
         };
         let com1 = entry(Some("com1"), "ATC");
         let com2 = entry(Some("com2"), "ATC");
+        let attendant = entry(None, "ATTENDANT");
+        let pilot = entry(None, "C-GTLT");
+        let transcript = [com1, com2, pilot, attendant];
+        let radio = |radio| super::TranscriptScope::Radio(radio);
         assert!(super::transcript_visible(
-            &com1,
-            super::TranscriptScope::Radio(Radio::Com1),
-            ""
+            &transcript,
+            0,
+            radio(Radio::Com1),
+            "C-GTLT"
         ));
         assert!(!super::transcript_visible(
-            &com2,
-            super::TranscriptScope::Radio(Radio::Com1),
-            ""
+            &transcript,
+            1,
+            radio(Radio::Com1),
+            "C-GTLT"
         ));
         assert!(super::transcript_visible(
-            &com2,
-            super::TranscriptScope::Radio(Radio::Com2),
-            ""
+            &transcript,
+            1,
+            radio(Radio::Com2),
+            "C-GTLT"
         ));
-        let attendant = entry(None, "ATTENDANT");
+        assert!(
+            !super::transcript_visible(&transcript, 2, radio(Radio::Com1), "C-GTLT"),
+            "crew interphone stays off the radio pages"
+        );
+        assert!(
+            !super::transcript_visible(&transcript, 3, radio(Radio::Com2), "C-GTLT"),
+            "crew interphone stays off the radio pages"
+        );
         assert!(super::transcript_visible(
-            &attendant,
+            &transcript,
+            3,
+            super::TranscriptScope::Crew("ATTENDANT"),
+            "C-GTLT"
+        ));
+        assert!(super::transcript_visible(
+            &transcript,
+            2,
             super::TranscriptScope::Crew("ATTENDANT"),
             "C-GTLT"
         ));
         assert!(!super::transcript_visible(
-            &attendant,
+            &transcript,
+            2,
+            super::TranscriptScope::Crew("GROUND"),
+            "C-GTLT"
+        ));
+        assert!(!super::transcript_visible(
+            &transcript,
+            3,
             super::TranscriptScope::Crew("GROUND"),
             "C-GTLT"
         ));
@@ -4524,6 +4689,7 @@ mod tests {
             arrival_page,
             airports_page,
             settings_page,
+            crew_page,
             crate::traffic::tab,
         ] {
             let ui = ctx.frame();
@@ -4542,6 +4708,7 @@ mod tests {
             arrival_page,
             airports_page,
             settings_page,
+            crew_page,
             crate::traffic::tab,
         ] {
             let ui = ctx.frame();

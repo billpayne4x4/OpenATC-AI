@@ -319,9 +319,6 @@ pub struct Settings {
     pub attendant_volume: f32,
     /// Ground interphone volume.
     pub ground_volume: f32,
-    #[serde(default = "yes")]
-    /// Show the copilot talk button beside Transmit.
-    pub copilot_button: bool,
     #[serde(default)]
     /// Show the second radio panel when COM2 is available.
     pub show_com2: bool,
@@ -549,7 +546,6 @@ impl Default for Settings {
             ground_personality: String::new(),
             attendant_volume: 0.8,
             ground_volume: 0.8,
-            copilot_button: true,
             show_com2: false,
             dev_mode: false,
             // Speeds (multiplied by the master tts_speed, clamped 0.5..2).
@@ -971,7 +967,6 @@ mod tests {
         assert_eq!(settings.units, Units::Imperial);
         assert!(settings.attendant_ref.is_empty());
         assert!(settings.ground_ref.is_empty());
-        assert!(settings.copilot_button);
         assert!(!settings.show_com2);
         assert!(settings.atis_voice.is_empty());
         assert!((settings.atis_speed - 1.0).abs() < f32::EPSILON);

@@ -646,7 +646,7 @@ pattern = "exact"
 # `crew` selects the tab, `say` is the phrase sent to the crew member, `control`
 # names the aircraft control the button needs, and `phase` lists when it shows.
 
-[intent.crew_chocks]
+[intent.crew_chocks_off]
 title = "Remove chocks"
 group = "Crew"
 catalogue = true
@@ -654,30 +654,50 @@ quick_only = true
 crew = "ground"
 control = "chocks"
 say = "remove chocks"
+when = { control = "chocks", is = "on" }
+actions = [{ control = "chocks", value = "off" }]
+phase = ["parked_out", "pushback"]
+roles = ["ground"]
+pattern = "none"
+
+[intent.crew_chocks_on]
+title = "Add chocks"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "ground"
+control = "chocks"
+say = "add chocks"
+when = { control = "chocks", is = "off" }
+actions = [{ control = "chocks", value = "on" }]
 phase = ["parked_out", "pushback"]
 roles = ["ground"]
 pattern = "none"
 
 [intent.crew_power_on]
-title = "External power on"
+title = "Connect external power"
 group = "Crew"
 catalogue = true
 quick_only = true
 crew = "ground"
 control = "external_power"
-say = "external power on"
+say = "connect external power"
+when = { control = "external_power", is = "off" }
+actions = [{ control = "external_power", value = "on" }]
 phase = ["parked_out", "pushback"]
 roles = ["ground"]
 pattern = "none"
 
 [intent.crew_power_off]
-title = "External power off"
+title = "Remove external power"
 group = "Crew"
 catalogue = true
 quick_only = true
 crew = "ground"
 control = "external_power"
-say = "external power off"
+say = "remove external power"
+when = { control = "external_power", is = "on" }
+actions = [{ control = "external_power", value = "off" }]
 phase = ["parked_out", "pushback"]
 roles = ["ground"]
 pattern = "none"
@@ -793,8 +813,58 @@ phase = ["all"]
 roles = ["copilot"]
 pattern = "none"
 
+[intent.crew_prepare_a320]
+title = "Prepare A320"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "copilot"
+aircraft = ["A20N"]
+phase = ["parked_out", "pushback"]
+roles = ["copilot"]
+pattern = "none"
+actions = [
+  { control = "bat1", value = "on" },
+  { control = "bat2", value = "on" },
+  { control = "ext_pwr", value = "on" },
+  { control = "apu_master", value = "on" },
+  { control = "adir1", value = "on" },
+  { control = "adir2", value = "on" },
+  { control = "adir3", value = "on" },
+  { control = "gnd_ctl", value = "on" },
+  { control = "seatbelts", value = "on" },
+  { control = "wx_gain", value = "on" },
+  { control = "wx_tilt", value = "0" },
+  { control = "wx_mode", value = "1" },
+  { control = "wx_multiscan", value = "1" },
+  { control = "wx_pws", value = "1" },
+  { control = "nav_logo", value = "on" },
+]
+
+[intent.crew_prepare_start]
+title = "Prepare Start"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "copilot"
+aircraft = ["A20N"]
+phase = ["parked_out", "pushback"]
+roles = ["copilot"]
+pattern = "none"
+actions = [
+  { control = "apu_start", value = "on" },
+  { control = "beacon", value = "on" },
+  { control = "fuel_l_pump_1", value = "on" },
+  { control = "fuel_l_pump_2", value = "on" },
+  { control = "fuel_ctr_l_xfr", value = "on" },
+  { control = "fuel_ctr_r_xfr", value = "on" },
+  { control = "fuel_r_pump_1", value = "on" },
+  { control = "fuel_r_pump_2", value = "on" },
+  { control = "transponder_mode", value = "on" },
+]
+
 [buttons]
-order = ["clearance", "start", "pushback", "start_pushback", "taxi", "backtrack", "ready", "gate", "progressive", "radio_check", "altimeter", "weather", "repeat", "standby", "unable", "frequency", "checkin", "traffic_sighted", "traffic_not_sighted", "cross_runway", "landing", "position", "altitude", "direct", "descent", "cancel_ifr", "approach", "change_approach", "departure_runway", "arrival_runway", "speed", "deviation", "resume_course", "go_around", "emergency", "crew_chocks", "crew_power_on", "crew_power_off", "crew_arm", "crew_cabin_departure", "crew_passengers", "crew_drink", "crew_descent", "crew_turbulence", "crew_copilot_greeting", "crew_copilot_wellbeing", "crew_copilot_radios", "crew_copilot_thanks"]
+order = ["clearance", "start", "pushback", "start_pushback", "taxi", "backtrack", "ready", "gate", "progressive", "radio_check", "altimeter", "weather", "repeat", "standby", "unable", "frequency", "checkin", "traffic_sighted", "traffic_not_sighted", "cross_runway", "landing", "position", "altitude", "direct", "descent", "cancel_ifr", "approach", "change_approach", "departure_runway", "arrival_runway", "speed", "deviation", "resume_course", "go_around", "emergency", "crew_chocks_off", "crew_chocks_on", "crew_power_on", "crew_power_off", "crew_arm", "crew_cabin_departure", "crew_passengers", "crew_drink", "crew_descent", "crew_turbulence", "crew_copilot_greeting", "crew_copilot_wellbeing", "crew_copilot_radios", "crew_copilot_thanks", "crew_prepare_a320", "crew_prepare_start"]
 
 [parser]
 altitude = '(?:request )?(?:altitude |climb |descend |descent )(?:to )?(fl\s*)?([0-9]{2,5})(?: feet| meters)?'
