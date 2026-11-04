@@ -145,6 +145,8 @@ pub enum ToolbarIcon {
     Settings,
     /// Radar sweep: nearby traffic.
     Traffic,
+    /// Two figures: copilot, ground crew and flight attendants.
+    Crew,
     /// Flag: flight missions.
     Missions,
     /// Blank page with a plus: new flight.
@@ -235,6 +237,22 @@ fn draw_toolbar_glyph(
             line([-7.0, 10.0], [1.0, 5.0]);
             line([-5.0, -4.0], [5.0, -4.0]);
             line([-5.0, 0.0], [2.0, 0.0]);
+        }
+        ToolbarIcon::Crew => {
+            draw.add_circle(point(-3.0, -6.0), 3.5 * scale, color)
+                .thickness(1.5 * scale)
+                .build();
+            draw.add_circle(point(5.0, -4.0), 2.8 * scale, color)
+                .thickness(1.5 * scale)
+                .build();
+            draw.add_rect(point(-9.0, 0.0), point(3.0, 9.0), color)
+                .rounding(4.0 * scale)
+                .thickness(1.5 * scale)
+                .build();
+            draw.add_rect(point(1.0, 2.0), point(9.0, 9.0), color)
+                .rounding(3.5 * scale)
+                .thickness(1.5 * scale)
+                .build();
         }
         ToolbarIcon::FlightPlan => {
             draw.add_rect(point(-7.0, -10.0), point(7.0, 10.0), color)

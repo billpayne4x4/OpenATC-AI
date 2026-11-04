@@ -13,26 +13,31 @@ use openatc_core::{
 };
 use serde_json::json;
 
-/// Release a crossing notification if its request is cancelled before changing the route.
+/// Releases the hold marker when an automatic crossing request produced no ATC answer.
+/// A refusal keeps the marker, so the request is not repeated on every telemetry tick.
 struct CrossingNotice {
     shared: Shared,
     generation: u64,
     sequence: u32,
     channel: i32,
+    before_sequence: u32,
 }
 impl Drop for CrossingNotice {
     fn drop(&mut self) {
         let shared = self.shared.clone();
         let (generation, sequence, channel) = (self.generation, self.sequence, self.channel);
+        let before = self.before_sequence;
         if let Ok(runtime) = tokio::runtime::Handle::try_current() {
             runtime.spawn(async move {
                 let mut state = shared.write().await;
                 let same_flight = state.session_generation == generation;
+                let answered = state.session.next_sequence != before;
                 let route = &mut state.session.taxi_clearance;
                 if same_flight
                     && route.sequence == sequence
                     && route.holding_channel == channel
                     && route.stage() == SurfaceStage::AtHold
+                    && !answered
                     && !route.waiting_for_traffic
                 {
                     route.holding_channel = 0;
@@ -478,6 +483,7 @@ pub async fn post_telemetry(
         generation,
         sequence: route_sequence,
         channel,
+        before_sequence: before,
     });
     // Normal station-role and runway checks still govern this automatic request.
     let response = super::routes::atc_request(
@@ -574,10 +580,11 @@ mod tests {
 
     #[tokio::test]
     async fn cancelled_crossing_notice_retries_without_erasing_a_new_route_or_traffic_hold() {
-        for protected in 0..3 {
+        for case in 0..4 {
             let mut state = fixture();
             state.session.taxi_clearance.guidance_complete = true;
             state.session.taxi_clearance.holding_channel = 121_400;
+            let before = state.session.next_sequence;
             let shared = std::sync::Arc::new(tokio::sync::RwLock::new(state));
             let copy = shared.clone();
             let (ready, waiting) = tokio::sync::oneshot::channel();
@@ -587,21 +594,32 @@ mod tests {
                     generation: 0,
                     sequence: 42,
                     channel: 121_400,
+                    before_sequence: before,
                 };
                 let _ = ready.send(());
                 std::future::pending::<()>().await;
             });
             waiting.await.unwrap();
-            if protected == 1 {
-                shared.write().await.session.taxi_clearance.sequence = 43;
-            }
-            if protected == 2 {
-                shared
-                    .write()
-                    .await
-                    .session
-                    .taxi_clearance
-                    .waiting_for_traffic = true;
+            match case {
+                1 => shared.write().await.session.taxi_clearance.sequence = 43,
+                2 => {
+                    shared
+                        .write()
+                        .await
+                        .session
+                        .taxi_clearance
+                        .waiting_for_traffic = true;
+                }
+                3 => {
+                    let mut state = shared.write().await;
+                    add_transmission(
+                        &mut state.session,
+                        "ATC",
+                        "Hold position; crossing is not authorized.",
+                        &Default::default(),
+                    );
+                }
+                _ => {}
             }
             task.abort();
             let _ = task.await;
@@ -610,7 +628,8 @@ mod tests {
             }
             assert_eq!(
                 shared.read().await.session.taxi_clearance.holding_channel,
-                if protected == 0 { 0 } else { 121_400 }
+                if case == 0 { 0 } else { 121_400 },
+                "case {case}"
             );
         }
     }
