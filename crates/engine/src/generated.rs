@@ -623,6 +623,8 @@ impl Preparation {
 }
 /// Upper bound on generated aircraft in one scene, including advisory traffic.
 const MAXIMUM_AIRCRAFT: usize = 63;
+/// Distance from the filed destination at which an airborne flight prepares its scene.
+const ARRIVAL_PREPARE_NM: f64 = 90.0;
 
 #[derive(Clone)]
 struct Scene {
@@ -3097,9 +3099,20 @@ impl Scene {
                 };
                 let distance =
                     openatc_core::arrival::distance_nm(own, [point.latitude, point.longitude]);
-                if distance > self.policy.display_enter_nm
-                    || airborne && distance < minimum_airborne_spawn_nm
-                {
+                // A descending or enroute flight may start beyond the drawn radius, so a STAR
+                // arrival is already established when the player reaches it. Ground traffic and
+                // departures climbing away stay local.
+                let far_seed = airborne
+                    && player_airborne
+                    && route.segment(index).is_some_and(|segment| {
+                        !matches!(segment.stage, openatc_core::traffic::motion::Stage::Climb)
+                    });
+                let horizon = if far_seed {
+                    self.policy.display_leave_nm.max(ARRIVAL_PREPARE_NM - 20.0)
+                } else {
+                    self.policy.display_enter_nm
+                };
+                if distance > horizon || airborne && distance < minimum_airborne_spawn_nm {
                     continue;
                 }
                 if airborne
@@ -4204,8 +4217,14 @@ pub async fn prepare(shared: Shared) {
         workers
             .run(move || {
                 let (_, policy, _) = policy::load(&config)?;
-                let (origin, destination, runway, arrival_runway) =
-                    network::endpoints(&settings.simulator_root, &plan, &stations, own, &policy)?;
+                let (origin, destination, runway, arrival_runway) = network::endpoints(
+                    &settings.simulator_root,
+                    &plan,
+                    &stations,
+                    own,
+                    &policy,
+                    player_airborne,
+                )?;
                 let airport_codes = airport_code_map(&settings.simulator_root, &profiles);
                 let input = Preparation {
                     stations,
@@ -5697,7 +5716,14 @@ pub fn step(state: &mut EngineState) {
     }
     if state.settings.generated_traffic {
         let telemetry = state.session.telemetry.clone();
-        population::request_nearby_scene(&mut state.generated, &telemetry, true);
+        let destination = state.arrival_airport.as_ref().map(|airport| {
+            (
+                airport.icao.clone(),
+                airport.reference_latitude,
+                airport.reference_longitude,
+            )
+        });
+        population::request_nearby_scene(&mut state.generated, &telemetry, true, destination);
     }
     if !state.settings.generated_traffic || state.generated.epoch != Some(state.session_generation)
     {

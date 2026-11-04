@@ -26,6 +26,16 @@ fn active() -> &'static RwLock<IntentCatalogue> {
 /// Editable request-button order and labels; eligibility remains controller checked.
 #[must_use]
 pub fn buttons() -> Vec<(String, String)> {
+    quick_buttons()
+        .into_iter()
+        .filter(|button| button.crew.is_empty())
+        .map(|button| (button.intent, button.title))
+        .collect()
+}
+
+/// Quick requests for every catalogue entry, in the editable order.
+#[must_use]
+pub fn quick_buttons() -> Vec<QuickButton> {
     let Ok(catalogue) = active().read() else {
         return Vec::new();
     };
@@ -37,8 +47,28 @@ pub fn buttons() -> Vec<(String, String)> {
                 .entries
                 .get(id)
                 .filter(|entry| entry.catalogue)
-                .map(|entry| (id.clone(), entry.title.clone()))
+                .map(|entry| QuickButton {
+                    intent: id.clone(),
+                    title: entry.title.clone(),
+                    crew: entry.crew.clone(),
+                    say: if entry.say.is_empty() {
+                        entry.title.clone()
+                    } else {
+                        entry.say.clone()
+                    },
+                    phase: entry.phase.clone(),
+                    control: entry.control.clone(),
+                })
         })
+        .collect()
+}
+
+/// Quick requests for one crew tab, in catalogue order.
+#[must_use]
+pub fn crew_buttons(role: &str) -> Vec<QuickButton> {
+    quick_buttons()
+        .into_iter()
+        .filter(|button| button.crew == role)
         .collect()
 }
 
@@ -84,6 +114,19 @@ pub fn activate(path: &Path) -> Result<(), String> {
     {
         return Err("Button order contains an unknown intent or exceeds supported limits".into());
     }
+    if catalogue.iter().any(|(_, entry)| {
+        !matches!(entry.crew.as_str(), "" | "copilot" | "ground" | "attendant")
+            || entry.say.len() > 160
+            || entry.control.len() > 64
+            || entry
+                .phase
+                .iter()
+                .any(|key| !PHASES.contains(&key.as_str()))
+            || entry.phase.len() > PHASES.len()
+            || (entry.phase.len() > 1 && entry.phase.iter().any(|key| key == "all"))
+    }) {
+        return Err("Quick button needs a known crew role, a short phrase and known phases".into());
+    }
     *active()
         .write()
         .map_err(|_| "Intent catalogue unavailable")? = catalogue;
@@ -96,6 +139,7 @@ pub fn matching_intent(text: &str) -> Option<String> {
     let catalogue = active().read().ok()?;
     catalogue
         .iter()
+        .filter(|(_, entry)| !entry.quick_only)
         .flat_map(|(id, entry)| {
             entry
                 .exact
@@ -155,6 +199,55 @@ pub struct IntentEntry {
     pub examples: Vec<IntentExample>,
     /// AI-off canned reply; "" means no canned reply (discipline/AI path owns it).
     pub fallback: String,
+    /// Crew tab for a quick request: empty for ATC, else copilot, ground or attendant.
+    pub crew: String,
+    /// Phrase sent when the quick button is pressed; the title when empty.
+    pub say: String,
+    /// Phases where the quick button is shown: `all` alone, or phase keys.
+    pub phase: Vec<String>,
+    /// Aircraft control the request operates, when it is a control request.
+    pub control: String,
+    /// True for crew-page buttons that the radio parser must ignore.
+    pub quick_only: bool,
+}
+
+/// Phase keys accepted by quick-button catalogues.
+pub const PHASES: [&str; 12] = [
+    "all",
+    "parked_out",
+    "pushback",
+    "taxi_out",
+    "takeoff",
+    "climb",
+    "cruise",
+    "descend",
+    "approach",
+    "landing",
+    "taxi_in",
+    "parked_in",
+];
+
+/// Whether a quick button is shown in the current phase. An empty list means all.
+#[must_use]
+pub fn phase_allowed(phase: &[String], current: &str) -> bool {
+    phase.is_empty() || phase.iter().any(|key| key == "all" || key == current)
+}
+
+/// One quick request button, for ATC or a crew role.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct QuickButton {
+    /// Intent key.
+    pub intent: String,
+    /// Button title.
+    pub title: String,
+    /// Crew tab: empty for ATC, else copilot, ground or attendant.
+    pub crew: String,
+    /// Phrase sent when pressed.
+    pub say: String,
+    /// Phases where the button is shown.
+    pub phase: Vec<String>,
+    /// Aircraft control required for the button, when any.
+    pub control: String,
 }
 
 /// Whole catalogue, keyed by intent, alphabetical for determinism.
@@ -406,7 +499,42 @@ mod tests {
         assert!(broken.validate().is_err());
         broken.direct = "[".into();
         assert!(broken.validate().is_err());
+        for (id, entry) in &file.intent {
+            assert!(
+                entry.phase.iter().all(|key| PHASES.contains(&key.as_str())),
+                "{id} has an unknown phase"
+            );
+            if entry.quick_only {
+                assert!(!entry.crew.is_empty(), "{id} needs a crew tab");
+            }
+        }
         assert_eq!(buttons().len(), 35);
+    }
+
+    #[test]
+    fn crew_buttons_come_from_the_same_catalogue_and_respect_phases() {
+        let ground = crew_buttons("ground");
+        assert!(ground.iter().any(|button| button.intent == "crew_chocks"));
+        assert!(
+            ground
+                .iter()
+                .all(|button| button.crew == "ground" && !button.control.is_empty())
+        );
+        assert!(
+            buttons()
+                .iter()
+                .all(|(intent, _)| !intent.starts_with("crew_"))
+        );
+        let parked = vec!["parked_out".to_owned(), "pushback".to_owned()];
+        assert!(phase_allowed(&parked, "pushback"));
+        assert!(!phase_allowed(&parked, "cruise"));
+        let passengers = crew_buttons("attendant")
+            .into_iter()
+            .find(|button| button.intent == "crew_passengers")
+            .expect("passenger request");
+        assert_eq!(passengers.phase, vec!["all".to_owned()]);
+        assert!(phase_allowed(&passengers.phase, "parked_out"));
+        assert!(phase_allowed(&passengers.phase, "cruise"));
     }
 
     #[test]

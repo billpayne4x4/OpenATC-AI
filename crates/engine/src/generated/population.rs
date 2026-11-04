@@ -304,35 +304,64 @@ pub(super) fn maintain(state: &mut crate::EngineState) {
     }
 }
 
-/// Request one fresh preparation when the player reaches the destination terminal area.
-/// The normal scene seeding then places a few arrivals on the STAR and final.
-pub(super) fn request_nearby_scene(runtime: &mut Runtime, telemetry: &Telemetry, generated: bool) {
+/// Request one fresh preparation before the player reaches the STAR.
+///
+/// The scene is prepared once the filed destination is within `ARRIVAL_PREPARE_NM` while
+/// the aircraft is still high, or inside 30 NM when the flight is already low. Each band
+/// is requested once per ten minutes so preparation does not run every tick.
+pub(super) fn request_nearby_scene(
+    runtime: &mut Runtime,
+    telemetry: &Telemetry,
+    generated: bool,
+    destination: Option<(String, f64, f64)>,
+) {
     if telemetry.on_ground || telemetry.paused || !telemetry.position_valid || !generated {
         return;
     }
-    let Some(airport) = runtime.destination.as_ref().or(runtime.airport.as_ref()) else {
+    let target = destination.or_else(|| {
+        runtime
+            .destination
+            .as_ref()
+            .or(runtime.airport.as_ref())
+            .map(|airport| {
+                (
+                    airport.icao.clone(),
+                    airport.reference_latitude,
+                    airport.reference_longitude,
+                )
+            })
+    });
+    let Some((icao, latitude, longitude)) = target else {
         return;
     };
-    let distance = distance_nm(
+    let direct = distance_nm(
         [telemetry.latitude, telemetry.longitude],
-        [airport.reference_latitude, airport.reference_longitude],
+        [latitude, longitude],
     );
-    if !distance.is_finite() || distance > 30.0 {
+    if !direct.is_finite() {
         return;
     }
+    let before_star = direct <= super::ARRIVAL_PREPARE_NM && telemetry.height_agl_feet >= 5_000.0;
+    if !before_star && direct > 30.0 {
+        return;
+    }
+    // The early and terminal attempts are tracked apart, so a scene that could not add
+    // flights before the STAR does not suppress the terminal refresh.
+    let key = format!(
+        "{}:{}",
+        icao,
+        if direct > 30.0 { "early" } else { "terminal" }
+    );
     let now = std::time::Instant::now();
     if runtime
         .population
         .nearby_reseed
-        .get(&airport.icao)
+        .get(&key)
         .is_some_and(|at| now.duration_since(*at) < std::time::Duration::from_secs(600))
     {
         return;
     }
-    runtime
-        .population
-        .nearby_reseed
-        .insert(airport.icao.clone(), now);
+    runtime.population.nearby_reseed.insert(key, now);
     runtime.scene_revision = runtime.scene_revision.wrapping_add(1);
     runtime.retry = None;
     runtime.population.refill_blocked_until = None;
@@ -1076,9 +1105,68 @@ mod tests {
             }));
         state.generated.scene_revision = 5;
         let telemetry = state.session.telemetry.clone();
-        request_nearby_scene(&mut state.generated, &telemetry, true);
+        request_nearby_scene(&mut state.generated, &telemetry, true, None);
         assert_eq!(state.generated.scene_revision, 6);
-        request_nearby_scene(&mut state.generated, &telemetry, true);
+        request_nearby_scene(&mut state.generated, &telemetry, true, None);
         assert_eq!(state.generated.scene_revision, 6);
+    }
+
+    #[test]
+    fn a_high_arrival_prepares_the_scene_before_the_star() {
+        fn state_at(agl: f64) -> crate::EngineState {
+            let mut state = crate::test_state();
+            state.settings.generated_traffic = true;
+            state.session.telemetry = Telemetry {
+                position_valid: true,
+                on_ground: false,
+                latitude: 0.0,
+                longitude: 0.0,
+                height_agl_feet: agl,
+                ..Default::default()
+            };
+            state
+        }
+        fn request(state: &mut crate::EngineState, nm: f64) {
+            let telemetry = state.session.telemetry.clone();
+            request_nearby_scene(
+                &mut state.generated,
+                &telemetry,
+                true,
+                Some(("TEST".to_owned(), 0.0, nm / 60.0)),
+            );
+        }
+        let mut high = state_at(12_000.0);
+        let before = high.generated.scene_revision;
+        request(&mut high, 85.0);
+        assert_eq!(high.generated.scene_revision, before.wrapping_add(1));
+        let early = high.generated.scene_revision;
+        request(&mut high, 18.0);
+        assert_eq!(
+            high.generated.scene_revision,
+            early.wrapping_add(1),
+            "the terminal refresh is not blocked by an early attempt"
+        );
+
+        let mut distant = state_at(12_000.0);
+        let before = distant.generated.scene_revision;
+        request(&mut distant, 95.0);
+        assert_eq!(distant.generated.scene_revision, before);
+
+        let mut low = state_at(2_000.0);
+        let before = low.generated.scene_revision;
+        request(&mut low, 36.0);
+        assert_eq!(
+            low.generated.scene_revision, before,
+            "a low aircraft outside the terminal radius waits"
+        );
+        let terminal = low.generated.scene_revision;
+        request(&mut low, 25.0);
+        assert_eq!(low.generated.scene_revision, terminal.wrapping_add(1));
+
+        let mut ground = state_at(12_000.0);
+        ground.session.telemetry.on_ground = true;
+        let before = ground.generated.scene_revision;
+        request(&mut ground, 20.0);
+        assert_eq!(ground.generated.scene_revision, before);
     }
 }

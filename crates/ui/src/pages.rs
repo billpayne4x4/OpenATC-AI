@@ -456,12 +456,18 @@ fn radio_assistance(ui: &imgui::Ui, settings: &mut openatc_settings::Settings) -
 /// Top of the ATC page: pin toggle, phase, COM1 readout and the clearance card.
 fn header_card(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     ui.text_colored(widgets::accent(ui), phase_name(state.phase));
-    if state.telemetry.com1_khz > 0 {
+    if let Some(frequency) = state.telemetry.frequency(interface.active_radio)
+        && frequency > 0
+    {
         ui.same_line();
         ui.text_disabled(format!(
             "{} {:.3}",
-            if interface.page == 10 { "COM2" } else { "COM1" },
-            f64::from(state.telemetry.com1_khz) / 1000.0
+            if interface.active_radio == openatc_core::state::Radio::Com2 {
+                "COM2"
+            } else {
+                "COM1"
+            },
+            f64::from(frequency) / 1000.0
         ));
     }
     if let Some(clearance) = &state.clearance {
@@ -503,15 +509,36 @@ fn header_card(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     }
 }
 
-fn transcript_on_radio(
-    entry: &openatc_core::state::Transmission,
-    state: &State,
-    radio: openatc_core::state::Radio,
-) -> bool {
-    crate::interface::on_tuned_frequency(entry, state, radio)
+/// Which messages the transcript shows on a page.
+#[derive(Clone, Copy)]
+enum TranscriptScope {
+    /// ATC and radio traffic on one radio, plus neutral system lines.
+    Radio(openatc_core::state::Radio),
+    /// Interphone traffic with one crew member, plus the pilot's own calls.
+    Crew(&'static str),
 }
 
-fn transcript_view(ui: &imgui::Ui, interface: &mut Interface, state: &State, height: f32) {
+fn transcript_visible(
+    entry: &openatc_core::state::Transmission,
+    scope: TranscriptScope,
+    callsign: &str,
+) -> bool {
+    match scope {
+        TranscriptScope::Radio(radio) => entry.radio.is_none_or(|entry_radio| entry_radio == radio),
+        TranscriptScope::Crew(speaker) => {
+            entry.radio.is_none()
+                && (entry.speaker == speaker || (!callsign.is_empty() && entry.speaker == callsign))
+        }
+    }
+}
+
+fn transcript_view(
+    ui: &imgui::Ui,
+    interface: &mut Interface,
+    state: &State,
+    height: f32,
+    scope: TranscriptScope,
+) {
     let scale = ui.current_font_size() / 18.0;
     let background_alpha = interface.background_opacity * 0.72;
     let _background = ui.push_style_color(
@@ -534,11 +561,15 @@ fn transcript_view(ui: &imgui::Ui, interface: &mut Interface, state: &State, hei
         for entry in state
             .transcript
             .iter()
-            .filter(|entry| transcript_on_radio(entry, state, interface.active_radio))
+            .filter(|entry| transcript_visible(entry, scope, &state.plan.callsign))
         {
             let _identifier = ui.push_id(entry.sequence.to_string());
             let airport = if interface.local_airport.icao.is_empty() { &interface.airport } else { &interface.local_airport };
-            let badge = transcript_badge(entry, airport, state.telemetry.com1_khz);
+            let tuned = state
+                .telemetry
+                .frequency(interface.active_radio)
+                .unwrap_or_default();
+            let badge = transcript_badge(entry, airport, tuned);
             let color = widgets::text_color(ui, match entry.speaker.as_str() {
                 "ATC" | "ATIS" => [0.48, 0.77, 0.94, 1.0],
                 "CABIN" | "ATTENDANT" => [0.75, 0.83, 0.77, 1.0],
@@ -1185,7 +1216,13 @@ fn request_grid(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
 pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let scale = ui.current_font_size() / 18.0;
     if interface.compact {
-        transcript_view(ui, interface, state, 0.0);
+        transcript_view(
+            ui,
+            interface,
+            state,
+            0.0,
+            TranscriptScope::Radio(interface.active_radio),
+        );
         return;
     }
     header_card(ui, interface, state);
@@ -1197,7 +1234,13 @@ pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let transcript_height = (available_height * interface.transcript_fraction)
         .min((available_height - 215.0 * scale).max(80.0 * scale))
         .max(80.0 * scale);
-    transcript_view(ui, interface, state, transcript_height);
+    transcript_view(
+        ui,
+        interface,
+        state,
+        transcript_height,
+        TranscriptScope::Radio(interface.active_radio),
+    );
     let splitter_position = ui.cursor_screen_pos();
     let splitter_width = ui.content_region_avail()[0];
     ui.invisible_button("##transcript-divider", [splitter_width, 8.0 * scale]);
@@ -1244,6 +1287,47 @@ pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             }
             request_grid(ui, interface, state);
         });
+}
+
+/// Crew page: quick requests and the interphone conversation for one crew member.
+pub fn crew_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
+    const TABS: [&str; 3] = ["Copilot", "Ground", "Flight attendant"];
+    const ROLES: [&str; 3] = ["copilot", "ground", "attendant"];
+    const REQUEST_ROLES: [&str; 3] = ["copilot", "ground", "cabin"];
+    const SPEAKERS: [&str; 3] = ["COPILOT", "GROUND", "ATTENDANT"];
+    let scale = ui.current_font_size() / 18.0;
+    interface.crew_tab = interface.crew_tab.min(TABS.len() - 1);
+    widgets::section_tabs(ui, &TABS, &mut interface.crew_tab);
+    let role = ROLES[interface.crew_tab];
+    let request_role = REQUEST_ROLES[interface.crew_tab];
+    let speaker = SPEAKERS[interface.crew_tab];
+    let phase = state.phase.key(&state.telemetry);
+    let buttons: Vec<_> = openatc_core::catalog::crew_buttons(role)
+        .into_iter()
+        .filter(|button| openatc_core::catalog::phase_allowed(&button.phase, phase))
+        .collect();
+    if buttons.is_empty() {
+        ui.text_wrapped("No quick requests for this crew member in this phase.");
+    }
+    for button in buttons {
+        let control_ready = button.control.is_empty()
+            || state.crew_controls.iter().any(|control| {
+                control.id == button.control && control.available && control.role == request_role
+            });
+        let _disabled = ui.begin_disabled(!interface.engine.connected() || !control_ready);
+        if ui.button_with_size(&button.title, [ui.content_region_avail()[0], 32.0 * scale]) {
+            let request = Request {
+                role: request_role.to_owned(),
+                intent: button.intent.clone(),
+                text: button.say.clone(),
+                ..Default::default()
+            };
+            interface.send(&request);
+        }
+    }
+    ui.separator();
+    let height = ui.content_region_avail()[1].max(80.0 * scale);
+    transcript_view(ui, interface, state, height, TranscriptScope::Crew(speaker));
 }
 
 /// Dispatch page: `SimBrief` import and the flight used for clearance.
@@ -3583,63 +3667,43 @@ mod tests {
     }
 
     #[test]
-    fn transcripts_keep_radio_and_interphone_messages_separate() {
+    fn each_radio_keeps_its_own_transcript() {
         use openatc_core::state::{Radio, Transmission};
-        for (value, receiver) in [
-            (serde_json::json!("com1"), Radio::Com1),
-            (serde_json::json!("com2"), Radio::Com2),
-            (serde_json::Value::Null, Radio::Com1),
-        ] {
-            let entry: Transmission = serde_json::from_value(
-                serde_json::json!({"radio":value,"speaker":"ATIS","text":"Information Alpha"}),
-            )
-            .unwrap();
-            let state = State::default();
-            assert!(super::transcript_on_radio(&entry, &state, receiver));
-            assert!(!super::transcript_on_radio(
-                &entry,
-                &state,
-                if receiver == Radio::Com1 {
-                    Radio::Com2
-                } else {
-                    Radio::Com1
-                }
-            ));
-        }
-    }
-
-    #[test]
-    fn transcript_hides_traffic_from_an_untuned_station() {
-        use openatc_core::state::{Radio, Transmission};
-        let mut state = State::default();
-        state.telemetry.com1_khz = 120_160;
-        let tower_traffic: Transmission = serde_json::from_value(serde_json::json!({
-            "radio": "com1",
-            "frequency": 118700,
-            "background": true,
-            "speaker": "Traffic"
-        }))
-        .expect("traffic entry");
-        assert!(!super::transcript_on_radio(
-            &tower_traffic,
-            &state,
-            Radio::Com1
+        let entry = |radio: Option<&str>, speaker: &str| -> Transmission {
+            serde_json::from_value(serde_json::json!({
+                "radio": radio,
+                "speaker": speaker,
+                "text": "test"
+            }))
+            .expect("transmission")
+        };
+        let com1 = entry(Some("com1"), "ATC");
+        let com2 = entry(Some("com2"), "ATC");
+        assert!(super::transcript_visible(
+            &com1,
+            super::TranscriptScope::Radio(Radio::Com1),
+            ""
         ));
-        let own_clearance: Transmission = serde_json::from_value(serde_json::json!({
-            "radio": "com1",
-            "speaker": "ATC"
-        }))
-        .expect("own clearance");
-        assert!(super::transcript_on_radio(
-            &own_clearance,
-            &state,
-            Radio::Com1
+        assert!(!super::transcript_visible(
+            &com2,
+            super::TranscriptScope::Radio(Radio::Com1),
+            ""
         ));
-        state.telemetry.com1_khz = 118_700;
-        assert!(super::transcript_on_radio(
-            &tower_traffic,
-            &state,
-            Radio::Com1
+        assert!(super::transcript_visible(
+            &com2,
+            super::TranscriptScope::Radio(Radio::Com2),
+            ""
+        ));
+        let attendant = entry(None, "ATTENDANT");
+        assert!(super::transcript_visible(
+            &attendant,
+            super::TranscriptScope::Crew("ATTENDANT"),
+            "C-GTLT"
+        ));
+        assert!(!super::transcript_visible(
+            &attendant,
+            super::TranscriptScope::Crew("GROUND"),
+            "C-GTLT"
         ));
     }
 
@@ -4105,7 +4169,15 @@ mod tests {
             ui.window("Log resize")
                 .position([0.0, 0.0], imgui::Condition::Always)
                 .size([800.0, 820.0], imgui::Condition::Always)
-                .build(|| transcript_view(ui, interface, &state, height));
+                .build(|| {
+                    transcript_view(
+                        ui,
+                        interface,
+                        &state,
+                        height,
+                        TranscriptScope::Radio(interface.active_radio),
+                    )
+                });
             ctx.render();
         };
         for _ in 0..4 {
@@ -4162,7 +4234,15 @@ mod tests {
             ui.window("Log actors")
                 .position([0.0, 0.0], imgui::Condition::Always)
                 .size([800.0, 600.0], imgui::Condition::Always)
-                .build(|| transcript_view(ui, interface, state, 300.0));
+                .build(|| {
+                    transcript_view(
+                        ui,
+                        interface,
+                        state,
+                        300.0,
+                        TranscriptScope::Radio(interface.active_radio),
+                    )
+                });
             ctx.render();
         };
         for _ in 0..4 {
@@ -4282,7 +4362,7 @@ mod tests {
                     interface.draw(ctx.frame());
                     ctx.render();
                 }
-                for index in 0..12 {
+                for index in 0..13 {
                     let bounds = interface.toolbar_bounds[index];
                     assert!(
                         bounds[0] >= position[0] && bounds[2] <= position[0] + size[0],
@@ -4307,6 +4387,8 @@ mod tests {
                     if index == 11 {
                         assert_eq!(interface.page, 10);
                         assert_eq!(interface.active_radio, openatc_core::state::Radio::Com2);
+                    } else if index == 12 {
+                        assert_eq!(interface.page, 11);
                     } else if index < 10 {
                         assert_eq!(
                             interface.page, index,

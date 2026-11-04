@@ -16470,6 +16470,10 @@ say = ["check what's available for your meal", "check the galley for a meal for 
 slots = []
 say = ["bring you a snack", "see what snacks we have for you", "get a snack ready for you", "check the galley for something to nibble on"]
 
+[crew_service_drink_snack]
+slots = []
+say = ["bring you a drink and a snack", "get you something to drink and a snack", "bring a drink and something to eat up for you", "get a drink and a snack ready for you"]
+
 [crew_service_juice]
 slots = []
 say = ["bring you some juice", "get your juice ready", "bring your juice to the flight deck", "get that juice for you"]
@@ -17651,7 +17655,7 @@ say = ["{station}, {callsign}, with you.", "{station}, {callsign}, checking in."
 
 [cabin_request_landing]
 slots = []
-say = ["prepare cabin for landing", "prepare the cabin for landing", "get ready for landing", "get the cabin ready for landing", "prepare for landing"]
+say = ["prepare cabin for landing", "prepare the cabin for landing", "get ready for landing", "get the cabin ready for landing", "prepare for landing", "get the cabin ready for descent", "prepare the cabin for descent", "cabin ready for descent"]
 
 [cabin_request_watch]
 slots = []

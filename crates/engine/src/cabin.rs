@@ -273,6 +273,31 @@ pub fn tick(state: &mut EngineState) {
     .then_some((state.cabin.passengers - state.cabin.lavatory as i32).max(0));
 }
 
+/// Answer a drink or snack request with the published cabin phrasing.
+pub fn service_reply(text: &str) -> Option<String> {
+    let text = text.to_lowercase();
+    let key = if text.contains("coffee") {
+        "crew_service_coffee"
+    } else if text.contains("tea") {
+        "crew_service_tea"
+    } else if text.contains("juice") {
+        "crew_service_juice"
+    } else if text.contains("water") {
+        "crew_service_water"
+    } else if text.contains("meal") || text.contains("food") {
+        "crew_service_meal"
+    } else if text.contains("snack") && text.contains("drink") {
+        "crew_service_drink_snack"
+    } else if text.contains("snack") || text.contains("nibble") {
+        "crew_service_snack"
+    } else if text.contains("drink") {
+        "crew_service_drink_snack"
+    } else {
+        return None;
+    };
+    Some(say("crew_service_reply", &[("service", say(key, &[]))]))
+}
+
 /// Answer cabin reports and turbulence briefings without granting aircraft permissions.
 pub fn report(state: &mut EngineState, text: &str) -> Option<String> {
     let text = text.to_lowercase();
@@ -282,7 +307,8 @@ pub fn report(state: &mut EngineState, text: &str) -> Option<String> {
     let report = matches("cabin_request_passengers");
     let landing = matches("cabin_request_landing");
     let watch = matches("cabin_request_watch");
-    if !warning && !clear && !report && !landing && !watch {
+    let departure = matches("cabin_request_departure");
+    if !warning && !clear && !report && !landing && !watch && !departure {
         return None;
     }
     if !state.session.mission.incident.is_empty() {
@@ -307,6 +333,12 @@ pub fn report(state: &mut EngineState, text: &str) -> Option<String> {
             reply.push(' ');
         }
         reply.push_str(&say("cabin_passenger_watch", &[]));
+    }
+    if departure {
+        if !reply.is_empty() {
+            reply.push(' ');
+        }
+        reply.push_str(&say("cabin_departure_preparing", &[]));
     }
     if warning {
         if !state.cabin.preparing_for_turbulence {
@@ -461,6 +493,15 @@ mod tests {
         cabin.advance(PhaseCode::Cruise, 142, 1.0, Some(true));
         assert!(cabin.report_due);
     }
+    #[test]
+    fn drink_and_snack_requests_use_the_published_cabin_phrases() {
+        let text = service_reply("can I have a drink or a snack").expect("service reply");
+        let lower = text.to_lowercase();
+        assert!(lower.contains("drink") && lower.contains("snack"), "{text}");
+        assert!(service_reply("how are the passengers").is_none());
+        assert!(service_reply("request taxi").is_none());
+    }
+
     #[test]
     fn unknown_manifest_does_not_invent_passengers_or_sleeping_during_startup() {
         let mut state = crate::test_state();

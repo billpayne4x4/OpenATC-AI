@@ -1873,13 +1873,20 @@ async fn crew_chat(
         ]
         .iter()
         .any(|prefix| request.text.trim().to_lowercase().starts_with(prefix));
-    let cabin_report = if attendant && !settings.ai_enabled {
+    let cabin_report = if attendant {
         super::cabin::report(&mut *shared.write().await, &request.text)
+    } else {
+        None
+    };
+    let service = if attendant {
+        super::cabin::service_reply(&request.text)
     } else {
         None
     };
     let mut reply_text = if let Some(report) = &cabin_report {
         report.clone()
+    } else if let Some(service) = &service {
+        service.clone()
     } else if unconfirmed_service {
         openatc_core::dialogue::say("crew_ground_service_unconfirmed", &[])
     } else if let Some(social) = &social {

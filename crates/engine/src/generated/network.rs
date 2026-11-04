@@ -307,6 +307,7 @@ pub(super) fn endpoints(
     stations: &[openatc_core::stations::Station],
     own: [f64; 2],
     policy: &Operations,
+    airborne: bool,
 ) -> Result<(Airport, Airport, String, String), String> {
     if !own.iter().all(|coordinate| coordinate.is_finite())
         || own[0].abs() >= 85.0
@@ -323,15 +324,23 @@ pub(super) fn endpoints(
             runway(&origin, &plan.runway),
             runway(&destination, &plan.arrival_runway),
         )
-        // A filed plan only names the traffic airports while the player is actually near one of
-        // them. After a landing elsewhere the plan is stale, and following it would put every
-        // generated flight at an airport the player cannot see.
-        && [&origin, &destination].iter().any(|airport| {
+        // A filed plan names the traffic airports while the player is near one of them. While
+        // airborne, the filed destination also counts out to the preparation range, so its STAR
+        // exists before arrival. After a landing elsewhere the plan is stale, and following it
+        // would put every generated flight at an airport the player cannot see.
+        && ([&origin, &destination].iter().any(|airport| {
             openatc_core::arrival::distance_nm(
                 own,
                 [airport.reference_latitude, airport.reference_longitude],
             ) <= policy.surface_monitor_radius_nm
-        })
+        }) || airborne
+            && openatc_core::arrival::distance_nm(
+                own,
+                [
+                    destination.reference_latitude,
+                    destination.reference_longitude,
+                ],
+            ) <= super::ARRIVAL_PREPARE_NM)
     {
         return Ok((origin, destination, departure, arrival));
     }

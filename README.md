@@ -383,7 +383,7 @@ Request taxi from Ground or the combined controller. OpenATC builds a route from
 
 Approved taxiway arrows remain visible from stands within 1,200 metres of the route, even when the stand is outside the published taxi network. A dashed amber ramp connector on the map remains unverified and receives no simulator arrows. Guidance stays bounded to 64 nearby arrow instances.
 
-Automatic crossing requests reuse the active airport data and cached controller voices. An interrupted request releases its holding-point notification for retry, while route changes and traffic holds remain protected.
+Automatic crossing requests reuse the active airport data and cached controller voices. A refused crossing keeps its holding-point notification, so the controller says it once for that hold instead of repeating it on every telemetry frame. A request that produces no answer releases the notification, and a new pilot request, route change or traffic hold can ask again.
 
 A Ground taxi request made from physical runway pavement identifies the occupied runway and directs the pilot to Tower for exit instructions, rather than suggesting an unrelated departure-runway backtrack. Ordinary gate taxi routing remains subject to the same runway protection.
 
@@ -416,7 +416,7 @@ A takeoff instruction may include known wind, pressure and departure guidance. T
 - Pilot check-ins use the indicated altitude.
 - Debug conversation exports include all three readings for diagnosis.
 
-Check in after tuning the assigned frequency. The airborne check-in includes current altitude and the assigned climb altitude when applicable. A completed handoff readback clears the handoff instruction so the receiving controller can issue the onward climb or route clearance. Handoffs use current and predicted sector coverage; receiving a frequency is not the same as owning the aircraft's sector. When copilot tuning is enabled, a handoff moves the handoff radio to the recommended frequency after the instruction has been heard, and the readback is still accepted after that move. A frequency handoff does not withhold the next instruction while its readback is pending; the handoff completes when the radio moves and the readback is spoken. Other readbacks hold new instructions until heard, and the controller prompts again after 45 seconds. Traffic on a station is scoped to that frequency: leaving a station hides its traffic from the transcript and stops its queued audio, while the flight's own clearances remain in the log. The debug Map displays the controller geometry used by these decisions.
+Check in after tuning the assigned frequency. The airborne check-in includes current altitude and the assigned climb altitude when applicable. A completed handoff readback clears the handoff instruction so the receiving controller can issue the onward climb or route clearance. Handoffs use current and predicted sector coverage; receiving a frequency is not the same as owning the aircraft's sector. When copilot tuning is enabled, a handoff moves the handoff radio to the recommended frequency after the instruction has been heard, and the readback is still accepted after that move. A frequency handoff does not withhold the next instruction while its readback is pending; the handoff completes when the radio moves and the readback is spoken. Other readbacks hold new instructions until heard, and the controller prompts again after 45 seconds. Audio is scoped to the tuned station: leaving a station stops its queued transmissions. Each ATC page keeps its own radio history, so COM2 traffic stays on the COM2 page, and retuning never hides earlier calls. The debug Map displays the controller geometry used by these decisions.
 
 Supported request families include an altitude change, direct to a known fix, a lateral deviation, resuming the route, a speed request, a different approach, and departure/arrival runway amendments. Availability depends on phase and controller role. Requests that cannot be interpreted or supported should be clarified rather than silently applied.
 
@@ -469,7 +469,7 @@ The source's complete HTTP flight replay includes a COM2 flight from clearance t
 
 Routine automatic ATC transmissions wait while the radio is occupied. Copilot readbacks play before their effects are committed; automatic tuning waits for the exchange, and check-in waits for telemetry to confirm the new frequency. An urgent short-final go-around preempts normal playback. These are separate steps so a fast model response cannot skip a pilot transmission.
 
-**ATC Auto Reply** handles the pending response once. It does not generate permission for unrelated movement or answer background traffic. Quick buttons are filtered by tuned service, flight phase and applicable state; completed start-up/pushback permissions and duplicate readback actions are not intended to clutter the list.
+**ATC Auto Reply** handles the pending response once. It does not generate permission for unrelated movement or answer background traffic. Quick buttons are filtered by tuned service, flight phase and applicable state; completed start-up/pushback permissions and duplicate readback actions are not intended to clutter the list. Every quick request, including crew requests, comes from `intents.toml`.
 
 - The debug Map offers **Flight path**, showing the engine’s expanded route and installed SID/STAR fixes.
 - Hover waypoints for altitude/flight-level and speed limits.
@@ -876,6 +876,8 @@ Generated flight clearances now accept published Departure controllers for climb
 | Page | What it shows |
 | --- | --- |
 | ATC | Conversation, current clearance, text entry, role controls and eligible quick requests. Click a message for selectable/copyable text. |
+| ATC COM2 | The same view on the second radio, with its own message history. |
+| Crew | Copilot, ground and flight-attendant quick requests for the current phase, with the interphone conversation for the selected crew member. |
 | Planning | Editable/imported flight plan, route, procedures and flight identity. |
 | Channels | Automatically shows the airport's stations on the ground and nearby receivable stations in flight, with frequencies, duties, distance/coverage and tuned state. Click to tune COM1; there is no airport filter to maintain. |
 | Taxi | Airport surface geometry, stands, pending/approved taxi route, aircraft and clearance limit. |
@@ -884,6 +886,15 @@ Generated flight clearances now accept published Departure controllers for climb
 | Traffic | Native AI amount, reported aircraft, optional traffic speech and pilot conversation controls. |
 | Missions | Compatible stories, form/TOML editor, captain choices and flight journal. |
 | Map, developer mode | Aircraft-following controller boundaries, altitude bands, airports and current assignment for handoff diagnosis. |
+
+The Crew page reads the same `intents.toml` catalogue as the ATC request grid. A
+quick request names its `crew` tab, the phrase sent when pressed, the aircraft
+`control` it needs, and a `phase` list. Omit `phase` or use `["all"]` for every
+phase. Phase keys are `parked_out`, `pushback`, `taxi_out`, `takeoff`, `climb`,
+`cruise`, `descend`, `approach`, `landing`, `taxi_in` and `parked_in`; takeoff and
+climb split at 1,500 ft AGL. Crew buttons never enter the radio parser, so a spoken
+"thanks" still reaches the controller rather than a copilot button. The drink and
+snack request uses the published cabin service phrases.
 
 Channels identifies a ground airport using enabled scenery boundaries, pavement and runway footprints before falling back to reference-point proximity. This avoids choosing a nearby heliport or small airfield simply because its reference point is closer. It is scenery containment, not a legal airport-property survey. The station list updates as airport and radio data arrive; there is no airport filter to maintain.
 
@@ -1293,9 +1304,13 @@ opening scene.
 Visible airborne traffic is limited to three aircraft in the player's same-direction
 flow, with at most two trailing. `same_direction_limit`, `trailing_limit`,
 `same_direction_cone_degrees` and `same_direction_range_nm` in
-`traffic/operations.toml` control the cap. Reaching the destination terminal area
-requests one fresh preparation so a few STAR and approach arrivals are seeded near
-the player.
+`traffic/operations.toml` control the cap. The filed destination is prepared while
+the aircraft is still high and 90 NM away, before the STAR entry, so arrivals are
+already established when the player reaches the procedure. Airborne flights may start
+up to 70 NM ahead of the player and are drawn once inside the display radius. A flight
+that is already low keeps the 30 NM trigger. The early and terminal attempts are
+tracked separately, so a scene that adds nothing before the STAR does not block the
+terminal refresh.
 
 **Settings → Traffic → Traffic debug** shows the exact planned hold point for each
 ambient departure, the published airport hold lines, the current blocker and the

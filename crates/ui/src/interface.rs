@@ -20,18 +20,6 @@ use openatc_core::intents::{can_transmit, resolve_crew_role};
 use openatc_core::state::{FlightPlan, State, Transmission};
 use openatc_settings::Settings;
 
-/// True when a transmission belongs to the station tuned on its radio.
-pub(crate) fn on_tuned_frequency(
-    entry: &Transmission,
-    state: &State,
-    radio: openatc_core::state::Radio,
-) -> bool {
-    entry.radio.unwrap_or_default() == radio
-        && entry
-            .frequency
-            .is_none_or(|frequency| state.telemetry.frequency(radio) == Some(frequency))
-}
-
 /// A handoff is read back when a crew or pilot transmission follows it, even
 /// if the instruction marker has not cleared yet.
 fn handoff_readback_spoken(state: &State, sequence: u32) -> bool {
@@ -57,7 +45,7 @@ pub struct LocalNotice {
 }
 
 /// Stable page indices used by saved navigation and the desktop preview.
-pub const PAGES: [&str; 11] = [
+pub const PAGES: [&str; 12] = [
     "ATC",
     "Flight Plan",
     "Taxi",
@@ -69,6 +57,7 @@ pub const PAGES: [&str; 11] = [
     "Traffic",
     "Missions",
     "ATC COM2",
+    "Crew",
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -116,6 +105,8 @@ pub struct Interface {
     pub active_radio: openatc_core::state::Radio,
     /// Radio captured when push-to-talk starts.
     pub ptt_radio: openatc_core::state::Radio,
+    /// Selected crew tab on the Crew page: copilot, ground or flight attendant.
+    pub crew_tab: usize,
     /// Cached COM2 display snapshot, rebuilt only when engine telemetry changes.
     com2_view: Option<(std::sync::Arc<State>, std::sync::Arc<State>)>,
     pub(crate) settings_section: usize,
@@ -402,7 +393,7 @@ pub struct Interface {
     #[cfg(test)]
     pub(crate) reset_button_bounds: [[f32; 4]; 2],
     #[cfg(test)]
-    pub(crate) toolbar_bounds: [[f32; 4]; 12],
+    pub(crate) toolbar_bounds: [[f32; 4]; 13],
     #[cfg(test)]
     pub(crate) collapse_bounds: [f32; 4],
     #[cfg(test)]
@@ -503,6 +494,7 @@ impl Interface {
             page: 0,
             active_radio: openatc_core::state::Radio::Com1,
             ptt_radio: openatc_core::state::Radio::Com1,
+            crew_tab: 0,
             com2_view: None,
             settings_loaded: false,
             plan_loaded: false,
@@ -607,7 +599,7 @@ impl Interface {
             #[cfg(test)]
             reset_button_bounds: [[0.0; 4]; 2],
             #[cfg(test)]
-            toolbar_bounds: [[0.0; 4]; 12],
+            toolbar_bounds: [[0.0; 4]; 13],
             #[cfg(test)]
             collapse_bounds: [0.0; 4],
             #[cfg(test)]
@@ -2353,9 +2345,10 @@ impl Interface {
 
     fn toolbar_pages(&mut self, ui: &imgui::Ui, inline: bool) {
         use widgets::ToolbarIcon;
-        const PAGES: [(usize, &str, ToolbarIcon); 11] = [
+        const PAGES: [(usize, &str, ToolbarIcon); 12] = [
             (0, "ATC and crew", ToolbarIcon::Messages),
             (10, "ATC COM2", ToolbarIcon::Messages),
+            (11, "Crew", ToolbarIcon::Crew),
             (6, "Radios", ToolbarIcon::Headset),
             (1, "Flight plan", ToolbarIcon::FlightPlan),
             (2, "Taxi", ToolbarIcon::Taxi),
@@ -2391,7 +2384,11 @@ impl Interface {
             #[cfg(test)]
             {
                 let (a, b) = (ui.item_rect_min(), ui.item_rect_max());
-                self.toolbar_bounds[if page == 10 { 11 } else { page }] = [a[0], a[1], b[0], b[1]];
+                self.toolbar_bounds[match page {
+                    10 => 11,
+                    11 => 12,
+                    _ => page,
+                }] = [a[0], a[1], b[0], b[1]];
             }
         }
     }
@@ -2572,6 +2569,7 @@ impl Interface {
             "Nearby aircraft, traffic settings and radio conversations.",
             "Choose a flight story, create your own and follow the flight journal.",
             "Talk with air traffic control on the second radio.",
+            "Talk with the copilot, ground crew and flight attendants.",
         ];
         crate::widgets::page_heading(ui, PAGES[self.page], descriptions[self.page]);
         match self.page {
@@ -2584,6 +2582,7 @@ impl Interface {
             7 => crate::sectors::page(ui, self, state),
             8 => crate::traffic::tab(ui, self, state),
             9 => self.missions.page(ui, &self.engine, state),
+            11 => crate::pages::crew_page(ui, self, state),
             _ => crate::pages::atc_page(ui, self, state),
         }
     }

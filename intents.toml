@@ -642,8 +642,159 @@ roles = ["atc", "copilot"]
 exact = ["clear of weather", "resume planned route", "back on course"]
 pattern = "exact"
 
+# Crew quick requests: written by the Crew page, never by the radio parser.
+# `crew` selects the tab, `say` is the phrase sent to the crew member, `control`
+# names the aircraft control the button needs, and `phase` lists when it shows.
+
+[intent.crew_chocks]
+title = "Remove chocks"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "ground"
+control = "chocks"
+say = "remove chocks"
+phase = ["parked_out", "pushback"]
+roles = ["ground"]
+pattern = "none"
+
+[intent.crew_power_on]
+title = "External power on"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "ground"
+control = "external_power"
+say = "external power on"
+phase = ["parked_out", "pushback"]
+roles = ["ground"]
+pattern = "none"
+
+[intent.crew_power_off]
+title = "External power off"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "ground"
+control = "external_power"
+say = "external power off"
+phase = ["parked_out", "pushback"]
+roles = ["ground"]
+pattern = "none"
+
+[intent.crew_arm]
+title = "Arm and crosscheck"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "attendant"
+control = "slides"
+say = "arm and crosscheck"
+phase = ["parked_out", "pushback"]
+roles = ["attendant"]
+pattern = "none"
+
+[intent.crew_cabin_departure]
+title = "Cabin ready for departure"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "attendant"
+say = "prepare the cabin for departure"
+phase = ["parked_out", "pushback", "taxi_out"]
+roles = ["attendant"]
+pattern = "none"
+
+[intent.crew_passengers]
+title = "How are the passengers?"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "attendant"
+say = "how are the passengers"
+phase = ["all"]
+roles = ["attendant"]
+pattern = "none"
+
+[intent.crew_drink]
+title = "Drink or snack"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "attendant"
+say = "can I have a drink or a snack"
+phase = ["climb", "cruise", "descend", "approach"]
+roles = ["attendant"]
+pattern = "none"
+
+[intent.crew_descent]
+title = "Cabin ready for descent"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "attendant"
+say = "get the cabin ready for descent"
+phase = ["descend", "approach"]
+roles = ["attendant"]
+pattern = "none"
+
+[intent.crew_turbulence]
+title = "Turbulence ahead"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "attendant"
+say = "turbulence ahead"
+phase = ["climb", "cruise", "descend", "approach"]
+roles = ["attendant"]
+pattern = "none"
+
+[intent.crew_copilot_greeting]
+title = "Good morning"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "copilot"
+say = "good morning"
+phase = ["all"]
+roles = ["copilot"]
+pattern = "none"
+
+[intent.crew_copilot_wellbeing]
+title = "How are you?"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "copilot"
+say = "how are you"
+phase = ["all"]
+roles = ["copilot"]
+pattern = "none"
+
+[intent.crew_copilot_radios]
+title = "Can you take the radios?"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "copilot"
+say = "can you take the radios"
+phase = ["climb", "cruise", "descend", "approach"]
+roles = ["copilot"]
+pattern = "none"
+
+[intent.crew_copilot_thanks]
+title = "Thanks"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "copilot"
+say = "thanks"
+phase = ["all"]
+roles = ["copilot"]
+pattern = "none"
+
 [buttons]
-order = ["clearance", "start", "pushback", "start_pushback", "taxi", "backtrack", "ready", "gate", "progressive", "radio_check", "altimeter", "weather", "repeat", "standby", "unable", "frequency", "checkin", "traffic_sighted", "traffic_not_sighted", "cross_runway", "landing", "position", "altitude", "direct", "descent", "cancel_ifr", "approach", "change_approach", "departure_runway", "arrival_runway", "speed", "deviation", "resume_course", "go_around", "emergency"]
+order = ["clearance", "start", "pushback", "start_pushback", "taxi", "backtrack", "ready", "gate", "progressive", "radio_check", "altimeter", "weather", "repeat", "standby", "unable", "frequency", "checkin", "traffic_sighted", "traffic_not_sighted", "cross_runway", "landing", "position", "altitude", "direct", "descent", "cancel_ifr", "approach", "change_approach", "departure_runway", "arrival_runway", "speed", "deviation", "resume_course", "go_around", "emergency", "crew_chocks", "crew_power_on", "crew_power_off", "crew_arm", "crew_cabin_departure", "crew_passengers", "crew_drink", "crew_descent", "crew_turbulence", "crew_copilot_greeting", "crew_copilot_wellbeing", "crew_copilot_radios", "crew_copilot_thanks"]
 
 [parser]
 altitude = '(?:request )?(?:altitude |climb |descend |descent )(?:to )?(fl\s*)?([0-9]{2,5})(?: feet| meters)?'

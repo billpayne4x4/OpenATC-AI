@@ -33,6 +33,26 @@ pub enum PhaseCode {
     Finished = 10,
 }
 
+impl PhaseCode {
+    /// Quick-button phase key for this flight stage.
+    #[must_use]
+    pub fn key(self, telemetry: &Telemetry) -> &'static str {
+        match self {
+            Self::Parked | Self::Clearance => "parked_out",
+            Self::Pushback => "pushback",
+            Self::Taxi => "taxi_out",
+            Self::Departure if telemetry.height_agl_feet >= 1_500.0 => "climb",
+            Self::Departure => "takeoff",
+            Self::Cruise => "cruise",
+            Self::Arrival => "descend",
+            Self::Approach => "approach",
+            Self::Landed => "landing",
+            Self::TaxiIn => "taxi_in",
+            Self::Finished => "parked_in",
+        }
+    }
+}
+
 /// Simulator-reported traffic target, excluding ownship.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
