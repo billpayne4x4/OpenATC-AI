@@ -1311,7 +1311,7 @@ pub(crate) fn reconcile_pending_reply(state: &mut crate::EngineState) {
         .transcript
         .iter()
         .rev()
-        .find(|entry| entry.speaker == "ATC" && !entry.background)
+        .find(|entry| entry.is_controller_instruction())
         .map_or(0, |entry| entry.sequence);
     if let Some(pending) = state.pending_copilot_reply.as_ref()
         && (pending.generation != state.session_generation || latest > pending.sequence)
@@ -3322,6 +3322,35 @@ mod chatter_tests {
                 .find(|entry| entry.sequence == source)
                 .is_some_and(|entry| entry.pilot_reply.is_empty())
         );
+    }
+
+    #[test]
+    fn an_information_only_acknowledgement_does_not_supersede_a_prepared_readback() {
+        let mut state = crate::test_state();
+        let tag = SpeechTag::default();
+        add_transmission(&mut state.session, "ATC", "Contact Tower, 118.700.", &tag);
+        add_transmission(
+            &mut state.session,
+            "COPILOT",
+            "Contact Tower, 118.700, C-GTLT.",
+            &tag,
+        );
+        let sequence = state.session.transcript.last().unwrap().sequence;
+        state.pending_copilot_reply = Some(PreparedReply {
+            generation: state.session_generation,
+            sequence,
+            frequency: 118_700,
+            request: Request::default(),
+        });
+        add_transmission(&mut state.session, "ATC", "Readback correct.", &tag);
+        state
+            .session
+            .transcript
+            .last_mut()
+            .unwrap()
+            .information_only = true;
+        reconcile_pending_reply(&mut state);
+        assert!(state.pending_copilot_reply.is_some());
     }
 
     #[test]
