@@ -1,8 +1,35 @@
 //! Taxi-out, hold and taxi conflict decisions.
 
 use openatc_core::airport::Airport;
-use openatc_core::state::TrafficTarget;
+use openatc_core::state::{Point, TrafficTarget};
+use openatc_core::traffic::animation::Handling;
 use openatc_core::traffic::motion::Waypoint;
+
+/// Round taxiway corners with the aircraft's turn geometry.
+///
+/// The raw node path is kept when a fillet cannot fit on the pavement, so a
+/// tight airport corner never removes an aircraft from the surface.
+pub(crate) fn round_taxi_path(
+    airport: &Airport,
+    points: &[Point],
+    handling: &Handling,
+) -> Vec<Point> {
+    let minimum = handling.wheelbase_meters
+        / handling
+            .maximum_steering_degrees
+            .to_radians()
+            .tan()
+            .max(0.1);
+    openatc_core::traffic::surface::rounded(
+        points,
+        handling.taxi_turn_radius_meters,
+        minimum,
+        5.0,
+        |point| openatc_core::airport::on_pavement(airport, point),
+    )
+    .map(|samples| samples.into_iter().map(|sample| sample.point).collect())
+    .unwrap_or_else(|_| points.to_vec())
+}
 
 /// Taxi speed near the current position.
 ///
@@ -176,5 +203,37 @@ mod tests {
             ),
             straight
         );
+    }
+    #[test]
+    fn taxiway_corners_are_rounded_inside_pavement() {
+        let mut airport = openatc_core::airport::demo_airport();
+        if let Some(runway) = airport.runways.first_mut() {
+            runway.width = 300.0;
+        }
+        let points = vec![
+            Point {
+                east: 0.0,
+                north: 0.0,
+                height: 0.0,
+            },
+            Point {
+                east: 100.0,
+                north: 0.0,
+                height: 0.0,
+            },
+            Point {
+                east: 100.0,
+                north: 100.0,
+                height: 0.0,
+            },
+        ];
+        let catalogue = openatc_core::traffic::animation::builtin().expect("bundled handling");
+        let handling = catalogue
+            .get(&openatc_core::traffic::animation::Kind::Jet)
+            .expect("jet handling");
+        let rounded = round_taxi_path(&airport, &points, handling);
+        assert!(rounded.len() > 3, "{rounded:?}");
+        assert_eq!(rounded.first(), points.first());
+        assert_eq!(rounded.last(), points.last());
     }
 }

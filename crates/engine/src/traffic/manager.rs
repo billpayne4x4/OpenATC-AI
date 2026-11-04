@@ -1734,6 +1734,18 @@ impl TrafficManager {
                 self.rejected_spawn_nodes.insert((size, node.id));
                 continue;
             };
+            let surface_points =
+                phases::ground::round_taxi_path(&airport, &surface_points, &handling);
+            let entry_points = (kind == AmbientKind::Departure)
+                .then(|| {
+                    runway_entry_points(
+                        &airport,
+                        surface_points.last().copied(),
+                        &departure_runway,
+                        size,
+                    )
+                })
+                .flatten();
             let stand_waypoint = Waypoint {
                 latitude,
                 longitude,
@@ -1747,6 +1759,7 @@ impl TrafficManager {
                 AmbientKind::Departure => departure_path(
                     airport,
                     &surface_points,
+                    entry_points.as_deref(),
                     &departure_runway,
                     stand_waypoint,
                     &handling,
@@ -2356,22 +2369,62 @@ fn arrival_exit_waypoint(
     (along >= minimum_rollout && along <= length - 50.0).then_some(waypoint)
 }
 
+fn runway_entry_points(
+    airport: &Airport,
+    hold: Option<Point>,
+    runway: &str,
+    size: char,
+) -> Option<Vec<Point>> {
+    let hold = hold?;
+    let latitude = airport.reference_latitude + hold.north / 111_320.0;
+    let longitude = airport.reference_longitude
+        + hold.east / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
+    let telemetry = openatc_core::state::Telemetry {
+        latitude,
+        longitude,
+        position_valid: true,
+        on_ground: true,
+        ..Default::default()
+    };
+    let mut points = openatc_core::airport::calculate_runway_taxi_route_with(
+        airport, &telemetry, runway, size, false,
+    )
+    .ok()?
+    .points;
+    points.pop()?;
+    (points.len() > 1).then_some(points)
+}
+
 fn departure_path(
     airport: &Airport,
     points: &[Point],
+    entry: Option<&[Point]>,
     runway: &str,
     stand: Waypoint,
     handling: &Handling,
     climb_speed: f64,
     climb_fpm: f64,
 ) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64)> {
-    let mut path = surface_waypoints(airport, points);
+    let mut combined = points.to_vec();
+    if let Some(entry) = entry {
+        for point in entry {
+            if combined
+                .last()
+                .is_none_or(|last| (last.east - point.east).hypot(last.north - point.north) > 1.0)
+            {
+                combined.push(*point);
+            }
+        }
+    }
+    let combined = phases::ground::round_taxi_path(airport, &combined, handling);
+    let mut path = surface_waypoints(airport, &combined);
     if path.is_empty() {
         return None;
     }
-    let last = path.last().copied();
-    let (_, threshold, far) = runway_ends(airport, runway, last)?;
-    if let Some(last) = last
+    let hold = points.last().copied();
+    let (_, threshold, far) = runway_ends(airport, runway, path.last().copied())?;
+    if entry.is_none()
+        && let Some(last) = path.last()
         && let Some((along, across, _, _)) =
             openatc_core::traffic::runway_position(airport, runway, last.latitude, last.longitude)
         && across.abs() < 80.0
@@ -2380,15 +2433,42 @@ fn departure_path(
         return None;
     }
     let _ = stand;
-    let taxi_end = cumulative_distances(&path).last().copied().unwrap_or(0.0);
+    let taxi_end = if entry.is_some() {
+        let hold = hold.map(|point| Waypoint {
+            latitude: airport.reference_latitude + point.north / 111_320.0,
+            longitude: airport.reference_longitude
+                + point.east
+                    / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01)),
+            altitude_feet: airport.elevation_feet,
+        });
+        let cumulative = cumulative_distances(&path);
+        hold.and_then(|hold| {
+            path.iter()
+                .zip(&cumulative)
+                .min_by(|(a, _), (b, _)| {
+                    openatc_core::arrival::distance_nm(
+                        [a.latitude, a.longitude],
+                        [hold.latitude, hold.longitude],
+                    )
+                    .total_cmp(&openatc_core::arrival::distance_nm(
+                        [b.latitude, b.longitude],
+                        [hold.latitude, hold.longitude],
+                    ))
+                })
+                .map(|(_, distance)| *distance)
+        })
+        .unwrap_or(0.0)
+    } else {
+        cumulative_distances(&path).last().copied().unwrap_or(0.0)
+    };
     let heading = openatc_core::arrival::bearing(
         [threshold.latitude, threshold.longitude],
         [far.latitude, far.longitude],
     );
-    let offset = |nm: f64, altitude: f64| {
+    let advance = |from: Waypoint, nm: f64, altitude: f64| {
         let radians = heading.to_radians();
-        let latitude = threshold.latitude + radians.cos() * nm * 1852.0 / 111_320.0;
-        let longitude = threshold.longitude
+        let latitude = from.latitude + radians.cos() * nm * 1852.0 / 111_320.0;
+        let longitude = from.longitude
             + radians.sin() * nm * 1852.0 / (111_320.0 * (latitude.to_radians().cos()).max(0.01));
         Waypoint {
             latitude,
@@ -2397,12 +2477,17 @@ fn departure_path(
         }
     };
     let rotation_nm = phases::takeoff::rotation_meters(handling, airport, runway) / 1_852.0;
-    let rotation = offset(rotation_nm, 0.0);
-    path.push(threshold);
+    let base = if entry.is_some() {
+        *path.last()?
+    } else {
+        path.push(threshold);
+        threshold
+    };
     let runway_start = cumulative_distances(&path)
         .last()
         .copied()
         .unwrap_or(taxi_end);
+    let rotation = advance(base, rotation_nm, 0.0);
     let rotation_index = path.len();
     path.push(rotation);
     // Climb away from the departure end at the aircraft's own gradient. A fixed
@@ -2411,8 +2496,9 @@ fn departure_path(
     let climb_knots = (climb_speed * 1.943_844).max(40.0);
     let feet_per_nm = (climb_fpm * 60.0 / climb_knots).max(100.0);
     for after_liftoff_nm in [2.0, 5.0, 10.0] {
-        path.push(offset(
-            rotation_nm + after_liftoff_nm,
+        path.push(advance(
+            rotation,
+            after_liftoff_nm,
             feet_per_nm * after_liftoff_nm,
         ));
     }
@@ -2711,10 +2797,30 @@ fn ambient_frame(aircraft: &AmbientAircraft) -> Option<GeneratedTraffic> {
     let latitude = start.latitude + (end.latitude - start.latitude) * fraction;
     let longitude = start.longitude + (end.longitude - start.longitude) * fraction;
     let altitude = start.altitude_feet + (end.altitude_feet - start.altitude_feet) * fraction;
-    let track = openatc_core::arrival::bearing(
-        [start.latitude, start.longitude],
-        [end.latitude, end.longitude],
+    let before = position_at(
+        &aircraft.points,
+        &aircraft.cumulative,
+        (aircraft.distance - (aircraft.profile.length / 2.0).max(5.0)).max(0.0),
     );
+    let after = position_at(
+        &aircraft.points,
+        &aircraft.cumulative,
+        (aircraft.distance + (aircraft.profile.length / 2.0).max(5.0)).min(
+            aircraft
+                .cumulative
+                .last()
+                .copied()
+                .unwrap_or(aircraft.distance),
+        ),
+    );
+    let track = if (before.0 - after.0).abs() > 1e-9 || (before.1 - after.1).abs() > 1e-9 {
+        openatc_core::arrival::bearing([before.0, before.1], [after.0, after.1])
+    } else {
+        openatc_core::arrival::bearing(
+            [start.latitude, start.longitude],
+            [end.latitude, end.longitude],
+        )
+    };
     let on_ground = match aircraft.kind {
         AmbientKind::Departure => aircraft.distance < aircraft.ground_end,
         AmbientKind::Arrival => aircraft.distance >= aircraft.ground_start,
@@ -3401,9 +3507,10 @@ mod phase_tests {
             altitude_feet: 0.0,
         };
         let handling = jet_handling();
-        let (path, _, ground_end, _, runway_start, runway_end) =
-            departure_path(&airport, &points, "09", stand, &handling, 82.0, 2_200.0)
-                .expect("departure path");
+        let (path, _, ground_end, _, runway_start, runway_end) = departure_path(
+            &airport, &points, None, "09", stand, &handling, 82.0, 2_200.0,
+        )
+        .expect("departure path");
         assert!(runway_start < ground_end);
         assert_eq!(runway_end, ground_end);
         assert!(
@@ -3437,6 +3544,7 @@ mod phase_tests {
         let (path, _, _, _, _, _) = departure_path(
             &airport,
             &points,
+            None,
             "09",
             stand,
             &handling,
@@ -4132,6 +4240,36 @@ mod phase_tests {
             1,
             &[behind],
         ));
+    }
+
+    #[test]
+    fn a_taxi_corner_heading_turns_through_the_corner() {
+        let mut aircraft = ambient(AmbientKind::Departure, 0.0, 0.0, 10_000.0);
+        aircraft.points = vec![
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.001,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.001,
+                longitude: 0.001,
+                altitude_feet: 0.0,
+            },
+        ];
+        aircraft.cumulative = cumulative_distances(&aircraft.points);
+        aircraft.distance = aircraft.cumulative[1];
+        let frame = ambient_frame(&aircraft).expect("frame");
+        assert!(
+            frame.target.track_degrees > 5.0 && frame.target.track_degrees < 85.0,
+            "corner heading {}",
+            frame.target.track_degrees
+        );
     }
 
     #[test]
