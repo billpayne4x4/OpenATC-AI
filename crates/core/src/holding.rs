@@ -174,6 +174,44 @@ pub fn blocked_for_crossing<'a>(
     None
 }
 
+/// A stopped aircraft on the runway blocks a line-up behind it.
+pub fn stationary_on_runway<'a>(
+    airport: &Airport,
+    runway: &str,
+    targets: impl Iterator<Item = &'a crate::state::TrafficTarget> + Clone,
+) -> bool {
+    let Some(frame) = runway_frame(airport, runway) else {
+        return true;
+    };
+    for target in targets {
+        if !valid(target)
+            || !target.on_ground
+            || target.ground_speed_knots.unwrap_or(0.0) > 20.0
+            || on_other_parallel_runway(airport, runway, target)
+            || target.runway_occupancy == Some(false)
+        {
+            continue;
+        }
+        let p = airport_point(airport, target.latitude, target.longitude);
+        let east = p.east - frame.start.east;
+        let north = p.north - frame.start.north;
+        let along = (east * frame.dx + north * frame.dn) / frame.length;
+        let across = (east * frame.dn - north * frame.dx).abs() / frame.length;
+        let (fore_aft, lateral) = crate::traffic::footprint(
+            &target.aircraft,
+            target.wingspan_meters,
+            target.track_degrees,
+            frame.heading,
+        );
+        if (-fore_aft - 10.0..=frame.length + fore_aft + 10.0).contains(&along)
+            && across < frame.runway.width / 2.0 + lateral + 10.0
+        {
+            return true;
+        }
+    }
+    false
+}
+
 fn valid(target: &crate::state::TrafficTarget) -> bool {
     [
         target.latitude,

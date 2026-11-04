@@ -475,7 +475,7 @@ impl TrafficManager {
             }
             match aircraft.kind {
                 AmbientKind::Departure => {
-                    if aircraft.cleared && aircraft.distance >= aircraft.hold_distance {
+                    if aircraft.cleared {
                         if aircraft.takeoff {
                             let separation_end = (aircraft.runway_start
                                 + SAME_RUNWAY_DEPARTURE_SEPARATION_METERS)
@@ -488,6 +488,8 @@ impl TrafficManager {
                                 line_up = true;
                             }
                         } else {
+                            // The line-up clearance reserves the slot before the aircraft
+                            // reaches the hold line.
                             line_up = true;
                         }
                     }
@@ -522,10 +524,7 @@ impl TrafficManager {
             }
             if aircraft.takeoff && aircraft.distance < aircraft.runway_end + 300.0 {
                 slots.departing.get_or_insert(aircraft.id);
-            } else if aircraft.cleared
-                && !aircraft.takeoff
-                && aircraft.distance >= aircraft.hold_distance
-            {
+            } else if aircraft.cleared && !aircraft.takeoff {
                 slots.line_up.get_or_insert(aircraft.id);
             }
         }
@@ -3214,6 +3213,12 @@ mod phase_tests {
             manager.runway_state_for("LFMN", "04R", Some(500.0), None, None),
             RunwayState::LineUp,
             "an ambient ahead of the player still owns the runway"
+        );
+        manager.aircraft[0].distance = 500.0;
+        assert_eq!(
+            manager.runway_state_for("LFMN", "04R", Some(100.0), None, None),
+            RunwayState::LineUp,
+            "a line-up clearance reserves the slot before the hold line"
         );
     }
 
