@@ -1,0 +1,218 @@
+name: Release Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g., 0.1.0 or 0.1.0-alpha.1)'
+        required: true
+        default: '0.1.0-alpha.1'
+      platform:
+        description: 'Platform to build'
+        type: choice
+        options: [all, linux-x64, windows-x64, macos-arm64, macos-intel]
+        default: all
+      product:
+        description: 'Product to build'
+        type: choice
+        options: [all, plugin, ai-server]
+        default: all
+      preflight_only:
+        description: 'Run preflight checks only (skip full build)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      preflight: ${{ steps.matrix.outputs.preflight }}
+      version: ${{ steps.matrix.outputs.version }}
+    steps:
+      - id: matrix
+        env:
+          INPUT_PLATFORM: ${{ inputs.platform || 'all' }}
+          INPUT_PRODUCT: ${{ inputs.product || 'all' }}
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          version="$INPUT_VERSION"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]] || { echo 'Invalid version format'; exit 1; }
+          
+          matrix='[]'
+          for platform in linux-x64 windows-x64 macos-arm64 macos-intel; do
+            # Keep Intel Mac available only for explicit requests
+            if [ "$platform" = macos-intel ] && [ "$INPUT_PLATFORM" != macos-intel ]; then continue; fi
+            [ "$INPUT_PLATFORM" = all ] || [ "$INPUT_PLATFORM" = "$platform" ] || continue
+            
+            case "$platform" in
+              linux-x64) runner=ubuntu-22.04 ;;
+              windows-x64) runner=windows-2022 ;;
+              macos-arm64) runner=macos-15 ;;
+              macos-intel) runner=macos-15-intel ;;
+            esac
+            
+            for product in plugin ai-server; do
+              [ "$INPUT_PRODUCT" = all ] || [ "$INPUT_PRODUCT" = "$product" ] || continue
+              build_runner="$runner"
+              if [ "$platform" = linux-x64 ] && [ "$product" = ai-server ]; then build_runner=ubuntu-24.04; fi
+              matrix=$(jq -c --arg platform "$platform" --arg product "$product" --arg runner "$build_runner" '. + [{platform:$platform,product:$product,runner:$runner}]' <<< "$matrix")
+            done
+          done
+          
+          [ "$matrix" != '[]' ] || { echo 'No build targets selected'; exit 1; }
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "preflight=$(jq -c 'unique_by(.platform) | map({platform,runner})' <<< "$matrix")" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  preflight:
+    needs: prepare
+    name: Preflight / ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.preflight) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Import Visual Studio build environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio C++ tools not found' }
+          & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          foreach ($name in @('Path', 'INCLUDE', 'LIB', 'LIBPATH', 'VSINSTALLDIR', 'VCINSTALLDIR', 'VCToolsInstallDir', 'VCToolsRedistDir', 'VCToolsVersion', 'VisualStudioVersion', 'WindowsSdkDir', 'WindowsSDKVersion', 'UniversalCRTSdkDir', 'UCRTVersion', 'VSCMD_ARG_HOST_ARCH', 'VSCMD_ARG_TGT_ARCH')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($value) { "$name=$value" >> $env:GITHUB_ENV }
+          }
+      
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: preflight-${{ matrix.platform }}
+      
+      - name: Locate Windows installer compiler
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $compiler = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe",
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+          if (!$compiler) { throw 'Inno Setup 6 was not found' }
+          "ISCC=$compiler" >> $env:GITHUB_ENV
+      
+      - name: Run preflight checks
+        run: cargo run --locked -p xtask -- release-preflight ${{ matrix.platform }}
+
+  build:
+    if: ${{ inputs.preflight_only != true }}
+    needs: [prepare, preflight]
+    name: Build / ${{ matrix.platform }} / ${{ matrix.product }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-${{ matrix.platform }}-${{ matrix.product }}
+      
+      - name: Import Visual Studio build environment
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio C++ tools not found' }
+          & "$vs\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          foreach ($name in @('Path', 'INCLUDE', 'LIB', 'LIBPATH', 'VSINSTALLDIR', 'VCINSTALLDIR', 'VCToolsInstallDir', 'VCToolsRedistDir', 'VCToolsVersion', 'VisualStudioVersion', 'WindowsSdkDir', 'WindowsSDKVersion', 'UniversalCRTSdkDir', 'UCRTVersion', 'VSCMD_ARG_HOST_ARCH', 'VSCMD_ARG_TGT_ARCH')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ($value) { "$name=$value" >> $env:GITHUB_ENV }
+          }
+      
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential clang libclang-dev cmake pkg-config
+      
+      - name: Find Apple SDK and libclang
+        if: runner.os == 'macOS'
+        run: |
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(dirname "$(xcrun --find clang)")/../lib" >> "$GITHUB_ENV"
+      
+      - name: Build plugin on Windows
+        if: runner.os == 'Windows' && matrix.product == 'plugin'
+        shell: pwsh
+        run: cargo build --locked --release -p openatc-plugin -p openatc-engine
+      
+      - name: Build plugin on Unix
+        if: runner.os != 'Windows' && matrix.product == 'plugin'
+        run: cargo build --locked --release -p openatc-plugin -p openatc-engine
+      
+      - name: Test shared code
+        run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http -p xtask --no-fail-fast
+      
+      - name: Build packaging tools
+        run: cargo build --locked --release -p xtask
+      
+      - name: Package release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo xtask release-package ${{ matrix.product }} ${{ matrix.platform }} "$env:RELEASE_VERSION"
+      
+      - name: Package release
+        if: runner.os != 'Windows'
+        run: cargo xtask release-package ${{ matrix.product }} ${{ matrix.platform }} "$RELEASE_VERSION"
+      
+      - name: Upload packages
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: packages-${{ matrix.platform }}-${{ matrix.product }}
+          path: packages/openatc-*
+          if-no-files-found: error
+      
+      - name: Collect build artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: cargo xtask collect-artifacts ${{ matrix.product }} build-artifacts
+      
+      - name: Collect build artifacts
+        if: runner.os != 'Windows'
+        run: cargo xtask collect-artifacts ${{ matrix.product }} build-artifacts
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: native-${{ matrix.platform }}-${{ matrix.product }}
+          path: build-artifacts/
+          if-no-files-found: error
+
+  summary:
+    if: always()
+    needs: [prepare, preflight, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check build status
+        run: |
+          echo "Release package workflow completed"
+          echo "Version: ${{ needs.prepare.outputs.version }}"
+          echo ""
+          echo "Download artifacts from the workflow run."
