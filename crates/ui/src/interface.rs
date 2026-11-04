@@ -32,6 +32,15 @@ pub(crate) fn on_tuned_frequency(
             .is_none_or(|frequency| state.telemetry.frequency(radio) == Some(frequency))
 }
 
+/// A handoff is read back when a crew or pilot transmission follows it, even
+/// if the instruction marker has not cleared yet.
+fn handoff_readback_spoken(state: &State, sequence: u32) -> bool {
+    state.transcript.iter().any(|entry| {
+        entry.sequence > sequence
+            && (entry.speaker == "COPILOT" || entry.speaker == state.plan.callsign)
+    })
+}
+
 /// True when the entry's station is tuned on the radio it names.
 pub(crate) fn entry_frequency_tuned(entry: &Transmission, state: &State) -> bool {
     entry.frequency.is_none_or(|frequency| {
@@ -1623,7 +1632,10 @@ impl Interface {
                 .iter()
                 .rev()
                 .find(|e| e.is_controller_instruction())
-                .is_some_and(|e| e.sequence == state.frequency_sequence && e.pilot_reply.is_empty())
+                .is_some_and(|e| {
+                    e.sequence == state.frequency_sequence
+                        && (e.pilot_reply.is_empty() || handoff_readback_spoken(&state, e.sequence))
+                })
             && let Some(_station) = self
                 .nearby_stations
                 .iter()
@@ -2880,6 +2892,37 @@ mod radio_busy_tests {
         interface.stop_chatter(openatc_core::state::Radio::Com1);
         assert!(interface.speech_queue.is_empty());
         assert!(interface.chatter_playing.is_none());
+    }
+}
+
+#[cfg(test)]
+mod checkin_gate_tests {
+    use super::*;
+
+    #[test]
+    fn a_spoken_handoff_readback_opens_the_checkin_gate() {
+        let mut state = State::default();
+        state.plan.callsign = "C-GTLT".into();
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "sequence": 85,
+                "position": "NICE Tower",
+                "text": "C-GTLT, contact NICE APPROACH on 120.160.",
+                "pilotReply": "Contact NICE APPROACH, 120.160, C-GTLT."
+            }))
+            .unwrap(),
+        );
+        assert!(!handoff_readback_spoken(&state, 85));
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "COPILOT",
+                "sequence": 86,
+                "text": "Contact NICE APPROACH, 120.160, C-GTLT."
+            }))
+            .unwrap(),
+        );
+        assert!(handoff_readback_spoken(&state, 85));
     }
 }
 
