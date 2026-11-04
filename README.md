@@ -1232,9 +1232,13 @@ off and the next may line up. The player is sequenced the same way, with line up
 wait followed by takeoff clearance as the runway and wake interval clear. Taxi, rotation, climb,
 approach and braking speeds come from each aircraft's handling and profile; light GA
 does not use jet speeds. Taxi targets follow a braking curve into each corner and
-accelerate out at the aircraft's handling rates. A shared motion controller limits
-every speed change, so seeds, corner exit and phase changes do not snap the model.
-The line-up from the hold keeps taxi speed until the final turn onto the runway.
+accelerate out at the aircraft's handling rates. Ground paths are rounded with the
+aircraft's turn radius and wheelbase before taxiing, and the runway entry follows the
+installed lead-in for both line-up and direct takeoff. Ambient headings also blend
+through a corner, so the model turns along the path instead of pivoting at a node. A
+shared motion controller limits every speed change, so seeds, corner exit and phase
+changes do not snap the model. The line-up from the hold keeps taxi speed until the
+final turn onto the runway.
 Ambient aircraft detect the player's position and yield
 rather than taxiing through. Followers on the same taxi route keep a speed-controlled
 gap to the aircraft ahead instead of stopping and starting in a queue. Surface
