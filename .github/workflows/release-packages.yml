@@ -175,6 +175,10 @@ jobs:
         if: runner.os != 'Windows' && matrix.product == 'plugin'
         run: cargo build --locked --release -p openatc-plugin -p openatc-engine
       
+      - name: Build ai-server binaries
+        if: matrix.product == 'ai-server'
+        run: cargo build --locked --release -p openatc-ai -p openatc-stt
+      
       - name: Test shared code
         run: cargo test --locked -p openatc-core -p openatc-settings -p openatc-platform -p openatc-http -p xtask --no-fail-fast
       
