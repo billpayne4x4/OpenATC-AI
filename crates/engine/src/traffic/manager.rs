@@ -268,6 +268,63 @@ fn ga_candidates(
     candidates
 }
 
+/// Military operator candidates for bases and military traffic.
+fn military_candidates(
+    profiles: &Profiles,
+    models: &Catalogue,
+    airport: &str,
+    runway_meters: f64,
+    seed: u64,
+    used: &BTreeSet<String>,
+    player: &str,
+) -> Vec<(u64, AmbientCandidate)> {
+    let mut candidates = Vec::new();
+    for (_id, airline) in &profiles.airlines {
+        if airline.category != Category::Military {
+            continue;
+        }
+        let area = airline.home_prefixes.is_empty()
+            || airline
+                .home_prefixes
+                .iter()
+                .any(|prefix| airport.starts_with(prefix));
+        if !area {
+            continue;
+        }
+        for (kind, fleet_weight) in &airline.fleet {
+            let Some(profile) = profiles.aircraft.get(kind) else {
+                continue;
+            };
+            // Rotorcraft operate from heliports/clear areas, not runways.
+            if profile.runway > 0.0 && runway_meters + 50.0 < profile.runway {
+                continue;
+            }
+            let Some(model) = find_model(models, kind, profile, airline, seed) else {
+                continue;
+            };
+            let Some(callsign) =
+                scheduled_callsign(airline, airport, seed.wrapping_add(*fleet_weight as u64))
+            else {
+                continue;
+            };
+            if used.contains(&callsign) || callsign.eq_ignore_ascii_case(player) {
+                continue;
+            }
+            candidates.push((
+                u64::from(*fleet_weight).max(1),
+                AmbientCandidate {
+                    callsign,
+                    aircraft: kind.clone(),
+                    profile: profile.clone(),
+                    model,
+                    wake_category: wake_category(profile),
+                },
+            ));
+        }
+    }
+    candidates
+}
+
 /// Choose an airline or GA aircraft that has an installed model and fits the runway.
 fn ambient_identity(
     profiles: &Profiles,
@@ -1580,11 +1637,17 @@ impl TrafficManager {
         let mix_total = u64::from(state.settings.airline_traffic)
             + u64::from(state.settings.regional_traffic)
             + u64::from(state.settings.cargo_traffic)
-            + u64::from(state.settings.ga_traffic);
+            + u64::from(state.settings.ga_traffic)
+            + u64::from(state.settings.military_traffic);
         let ga_percent = if mix_total == 0 {
             0
         } else {
             u64::from(state.settings.ga_traffic) * 100 / mix_total
+        };
+        let military_percent = if mix_total == 0 {
+            0
+        } else {
+            u64::from(state.settings.military_traffic) * 100 / mix_total
         };
         let mut used_nodes: BTreeSet<i64> = self
             .aircraft
@@ -1669,24 +1732,63 @@ impl TrafficManager {
                 self.last_error = "arrival slot waits for the player on final".to_owned();
                 continue;
             }
-            let ga = mix(state.traffic_seed ^ u64::from(self.next_id)) % 100 < ga_percent;
+            let roll = mix(state.traffic_seed ^ u64::from(self.next_id)) % 100;
+            let is_military = roll < military_percent;
+            let is_ga = !is_military && roll < military_percent + ga_percent;
             let identity = (0..8).find_map(|attempt| {
-                ambient_identity(
-                    &profiles,
-                    models,
-                    &airport.icao,
-                    runway_meters,
-                    ga,
-                    state
-                        .traffic_seed
-                        .wrapping_add(u64::from(self.next_id))
-                        .wrapping_add(attempt * 7919),
-                    &used_callsigns,
-                    &player,
-                    u64::from(state.settings.airline_traffic),
-                    u64::from(state.settings.regional_traffic),
-                    u64::from(state.settings.cargo_traffic),
-                )
+                let attempt_seed = state
+                    .traffic_seed
+                    .wrapping_add(u64::from(self.next_id))
+                    .wrapping_add(attempt * 7919);
+                let candidates: Vec<(u64, AmbientCandidate)> = if is_military {
+                    military_candidates(
+                        &profiles,
+                        models,
+                        &airport.icao,
+                        runway_meters,
+                        attempt_seed,
+                        &used_callsigns,
+                        &player,
+                    )
+                } else if is_ga {
+                    ga_candidates(
+                        &profiles,
+                        models,
+                        &airport.icao,
+                        runway_meters,
+                        attempt_seed,
+                        &used_callsigns,
+                        &player,
+                    )
+                } else {
+                    let Some(candidate) = ambient_identity(
+                        &profiles,
+                        models,
+                        &airport.icao,
+                        runway_meters,
+                        false,
+                        attempt_seed,
+                        &used_callsigns,
+                        &player,
+                        u64::from(state.settings.airline_traffic),
+                        u64::from(state.settings.regional_traffic),
+                        u64::from(state.settings.cargo_traffic),
+                    ) else {
+                        return None;
+                    };
+                    vec![(1, candidate)]
+                };
+                let Some((_weight, candidate)) = candidates.into_iter().next() else {
+                    return None;
+                };
+                // Rotorcraft operate from heliports/clear areas: skip the runway-length gate
+                // when the profile has no runway requirement.
+                if candidate.profile.runway != 0.0
+                    && runway_meters + 50.0 < candidate.profile.runway
+                {
+                    return None;
+                }
+                Some(candidate)
             });
             let Some(identity) = identity else {
                 self.rejected_model = self.rejected_model.saturating_add(1);

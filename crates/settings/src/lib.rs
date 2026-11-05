@@ -221,6 +221,8 @@ pub struct Settings {
     pub cargo_traffic: u8,
     /// Active private/GA budget.
     pub ga_traffic: u8,
+    /// Active military budget.
+    pub military_traffic: u8,
     /// Minimum generated aircraft moving on the ground when traffic is full.
     pub traffic_taxi_min: u8,
     /// Maximum generated aircraft moving on the ground when traffic is full.
@@ -527,6 +529,7 @@ impl Default for Settings {
             regional_traffic: 4,
             cargo_traffic: 2,
             ga_traffic: 5,
+            military_traffic: 0,
             traffic_taxi_min: 4,
             traffic_taxi_max: 6,
             traffic_circuit_jet_nm: 30.0,
@@ -754,6 +757,7 @@ impl Settings {
             self.regional_traffic,
             self.cargo_traffic,
             self.ga_traffic,
+            self.military_traffic,
         ]
         .into_iter()
         .map(u16::from)

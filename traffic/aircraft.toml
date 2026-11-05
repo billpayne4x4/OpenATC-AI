@@ -1014,3 +1014,255 @@ climb_fpm = 1400.0
 descent_fpm = 1500.0
 propeller = true
 rnav = true
+
+[aircraft.R22]
+spacing_speed = { minimum_knots = 70.0, maximum_knots = 95.0 }
+handling = "rotorcraft"
+fixed_gear = true
+cwt = "I"
+name = "Robinson R22"
+wingspan = 7.9
+length = 8.9
+wake = "L"
+approach_category = "A"
+runway = 0.0
+range_nm = 250
+cruise_knots = 95
+ceiling = 14000
+approach_knots = 55
+climb_fpm = 800
+descent_fpm = 500
+propeller = true
+rnav = false
+
+[aircraft.R44]
+spacing_speed = { minimum_knots = 75.0, maximum_knots = 105.0 }
+handling = "rotorcraft"
+fixed_gear = true
+cwt = "I"
+name = "Robinson R44"
+wingspan = 10.2
+length = 9.9
+wake = "L"
+approach_category = "A"
+runway = 0.0
+range_nm = 330
+cruise_knots = 105
+ceiling = 14000
+approach_knots = 60
+climb_fpm = 900
+descent_fpm = 600
+propeller = true
+rnav = false
+
+[aircraft.B206]
+spacing_speed = { minimum_knots = 90.0, maximum_knots = 115.0 }
+handling = "rotorcraft"
+fixed_gear = true
+cwt = "I"
+name = "Bell 206 JetRanger"
+wingspan = 10.2
+length = 9.9
+wake = "L"
+approach_category = "A"
+runway = 0.0
+range_nm = 370
+cruise_knots = 115
+ceiling = 20000
+approach_knots = 65
+climb_fpm = 1200
+descent_fpm = 800
+propeller = true
+rnav = false
+
+[aircraft.H60]
+spacing_speed = { minimum_knots = 115.0, maximum_knots = 145.0 }
+handling = "rotorcraft"
+fixed_gear = true
+cwt = "G"
+name = "Sikorsky UH-60 Black Hawk"
+wingspan = 16.4
+length = 19.8
+wake = "M"
+approach_category = "B"
+runway = 0.0
+range_nm = 1200
+cruise_knots = 145
+ceiling = 19000
+approach_knots = 75
+climb_fpm = 1500
+descent_fpm = 1000
+propeller = true
+rnav = true
+
+[aircraft.H47]
+spacing_speed = { minimum_knots = 125.0, maximum_knots = 155.0 }
+handling = "rotorcraft"
+fixed_gear = true
+cwt = "H"
+name = "Boeing CH-47 Chinook"
+wingspan = 18.3
+length = 30.1
+wake = "H"
+approach_category = "C"
+runway = 0.0
+range_nm = 400
+cruise_knots = 155
+ceiling = 20000
+approach_knots = 85
+climb_fpm = 1200
+descent_fpm = 900
+propeller = true
+rnav = true
+
+[aircraft.F16]
+spacing_speed = { minimum_knots = 200.0, maximum_knots = 250.0 }
+handling = "jet"
+cwt = "F"
+name = "General Dynamics F-16 Fighting Falcon"
+wingspan = 9.8
+length = 14.8
+wake = "M"
+approach_category = "C"
+runway = 2000
+range_nm = 1600
+cruise_knots = 430
+ceiling = 50000
+approach_knots = 150
+climb_fpm = 4000
+descent_fpm = 3000
+propeller = false
+rnav = true
+
+[aircraft.F18]
+spacing_speed = { minimum_knots = 200.0, maximum_knots = 250.0 }
+handling = "jet"
+cwt = "F"
+name = "McDonnell Douglas F/A-18 Hornet"
+wingspan = 11.4
+length = 17.1
+wake = "M"
+approach_category = "C"
+runway = 2200
+range_nm = 1200
+cruise_knots = 430
+ceiling = 50000
+approach_knots = 145
+climb_fpm = 4500
+descent_fpm = 3000
+propeller = false
+rnav = true
+
+[aircraft.F15]
+spacing_speed = { minimum_knots = 220.0, maximum_knots = 250.0 }
+handling = "jet"
+cwt = "H"
+name = "McDonnell Douglas F-15 Eagle"
+wingspan = 13.1
+length = 19.4
+wake = "H"
+approach_category = "C"
+runway = 2500
+range_nm = 1800
+cruise_knots = 460
+ceiling = 60000
+approach_knots = 155
+climb_fpm = 5000
+descent_fpm = 3500
+propeller = false
+rnav = true
+
+[aircraft.A10]
+spacing_speed = { minimum_knots = 180.0, maximum_knots = 250.0 }
+handling = "jet"
+cwt = "F"
+name = "Fairchild Republic A-10 Thunderbolt II"
+wingspan = 17.5
+length = 16.2
+wake = "M"
+approach_category = "B"
+runway = 2400
+range_nm = 750
+cruise_knots = 320
+ceiling = 50000
+approach_knots = 125
+climb_fpm = 3000
+descent_fpm = 2000
+propeller = false
+rnav = true
+
+[aircraft.C130]
+spacing_speed = { minimum_knots = 200.0, maximum_knots = 250.0 }
+handling = "turboprop"
+cwt = "H"
+name = "Lockheed C-130 Hercules"
+wingspan = 40.4
+length = 29.8
+wake = "H"
+approach_category = "C"
+runway = 2500
+range_nm = 2100
+cruise_knots = 300
+ceiling = 33000
+approach_knots = 130
+climb_fpm = 2500
+descent_fpm = 1500
+propeller = true
+rnav = true
+
+[aircraft.C17]
+spacing_speed = { minimum_knots = 220.0, maximum_knots = 250.0 }
+handling = "heavy_jet"
+cwt = "H"
+name = "Boeing C-17 Globemaster III"
+wingspan = 51.7
+length = 53.0
+wake = "H"
+approach_category = "C"
+runway = 3000
+range_nm = 4500
+cruise_knots = 450
+ceiling = 45000
+approach_knots = 140
+climb_fpm = 2500
+descent_fpm = 2000
+propeller = false
+rnav = true
+
+[aircraft.K135]
+spacing_speed = { minimum_knots = 220.0, maximum_knots = 250.0 }
+handling = "heavy_jet"
+cwt = "H"
+name = "Boeing KC-135 Stratotanker"
+wingspan = 39.9
+length = 41.5
+wake = "H"
+approach_category = "C"
+runway = 2800
+range_nm = 4000
+cruise_knots = 470
+ceiling = 50000
+approach_knots = 145
+climb_fpm = 3000
+descent_fpm = 2500
+propeller = false
+rnav = true
+
+[aircraft.T38]
+spacing_speed = { minimum_knots = 200.0, maximum_knots = 250.0 }
+handling = "jet"
+cwt = "F"
+name = "Northrop T-38 Talon"
+wingspan = 7.7
+length = 13.9
+wake = "L"
+approach_category = "B"
+runway = 1800
+range_nm = 1000
+cruise_knots = 400
+ceiling = 50000
+approach_knots = 130
+climb_fpm = 4000
+descent_fpm = 3000
+propeller = false
+rnav = true

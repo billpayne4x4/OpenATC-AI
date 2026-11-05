@@ -1847,6 +1847,7 @@ fn prepare_scene(
                     Category::Airline | Category::Regional => "airline",
                     Category::Cargo => "cargo",
                     Category::GeneralAviation => "general_aviation",
+                    Category::Military => "military",
                 }
                 .into(),
             };

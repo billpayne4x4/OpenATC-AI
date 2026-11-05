@@ -354,6 +354,24 @@ mod tests {
         assert!(ahead_conflict(0.0, 0.0, 90.0, 37.0, 3, &[other]));
     }
 
+    /// Extra separation buffer for rotorcraft on the ground due to rotor downwash.
+    /// Rotorcraft need more space than fixed-wing aircraft of similar size.
+    pub(crate) fn rotorcraft_downwash_buffer() -> f64 {
+        30.0
+    }
+
+    /// Lateral separation buffer for VFR pattern traffic.
+    /// VFR aircraft operate on a see-and-avoid basis and need larger buffers.
+    pub(crate) fn vfr_lateral_buffer_nm() -> f64 {
+        1.0
+    }
+
+    /// Vertical separation buffer between rotorcraft pattern (500 ft AGL) and
+    /// fixed-wing pattern (1000 ft AGL).
+    pub(crate) fn rotorcraft_pattern_vertical_buffer_feet() -> f64 {
+        500.0
+    }
+
     #[test]
     fn required_gap_uses_aircraft_lengths() {
         assert!(required_gap(37.0, 27.0) > 45.0);

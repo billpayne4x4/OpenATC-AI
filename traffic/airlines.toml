@@ -230,7 +230,7 @@ callsign = ""
 category = "general_aviation"
 home_prefixes = []
 serves = []
-fleet = { C150 = 15, C172 = 30, PA28 = 10, BE58 = 10, C208 = 8, PC12 = 8, B350 = 8, BE20 = 12, C421 = 12, C25C = 4, GLF6 = 2, H25B = 5, LJ45 = 5 }
+fleet = { C150 = 15, C172 = 30, PA28 = 10, BE58 = 10, C208 = 8, PC12 = 8, B350 = 8, BE20 = 12, C421 = 12, C25C = 4, GLF6 = 2, H25B = 5, LJ45 = 5, R22 = 8, R44 = 6, B206 = 4 }
 
 [airline.AFR]
 name = "Air France"
@@ -701,3 +701,30 @@ category = "airline"
 home_prefixes = ["EB"]
 serves = []
 fleet = { A320 = 60, A333 = 20, A20N = 20 }
+
+[airline.USF]
+name = "U.S. Air Force"
+operator = "USF"
+callsign = "Reach"
+category = "military"
+home_prefixes = ["K"]
+serves = []
+fleet = { F16 = 40, F15 = 25, A10 = 20, C130 = 30, C17 = 15, K135 = 20, T38 = 25, H60 = 20 }
+
+[airline.USN]
+name = "U.S. Navy"
+operator = "USN"
+callsign = "Navy"
+category = "military"
+home_prefixes = ["K"]
+serves = []
+fleet = { F18 = 45, C130 = 25, H60 = 30 }
+
+[airline.USM]
+name = "U.S. Marine Corps"
+operator = "USM"
+callsign = "Marine"
+category = "military"
+home_prefixes = ["K"]
+serves = []
+fleet = { F18 = 40, H47 = 20, H60 = 40 }

@@ -154,6 +154,13 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
         mix_changed = true;
     }
     ui.text_wrapped("General aviation share, including light aircraft, turboprops and business jets. Set to 0 to remove GA.");
+    let mut military = i32::from(interface.settings.military_traffic);
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##military-traffic", 0, 10, &mut military) {
+        interface.settings.military_traffic = military.clamp(0, 10) as u8;
+        mix_changed = true;
+    }
+    ui.text_wrapped("Military share, including tactical jets, transports and rotorcraft at military bases. Set to 0 to remove military traffic.");
     if mix_changed {
         interface.save_settings();
     }
