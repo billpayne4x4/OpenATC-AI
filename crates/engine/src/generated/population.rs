@@ -706,14 +706,14 @@ pub(super) fn merge(
                             })
             })
             .map(|airline| match airline.category {
-                Category::Airline => 0,
-                Category::Regional => 1,
-                Category::Cargo => 2,
-                Category::GeneralAviation => 3,
+                Category::Airline | Category::Regional => 0,
+                Category::Cargo => 1,
+                Category::GeneralAviation => 2,
+                Category::Military => 2,
             })
             // Private registrations do not match an airline profile. They are still planned
             // flights and must be counted as GA instead of being dropped from the cast.
-            .or(Some(3))
+            .or(Some(2))
     };
     let mut occupied = [0usize; 4];
     for frame in &runtime.frames {

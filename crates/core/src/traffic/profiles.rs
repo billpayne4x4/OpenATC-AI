@@ -32,6 +32,8 @@ pub enum Category {
     Cargo,
     /// Private and business IFR aircraft.
     GeneralAviation,
+    /// Military operators.
+    Military,
 }
 
 /// Nominal movement envelope for generated aircraft, not an aircraft flight manual.
@@ -470,7 +472,7 @@ impl Profiles {
                 || !"ABCDE".contains(a.approach_category)
                 || !bounded(a.wingspan, 5.0, 90.0)
                 || !bounded(a.length, 5.0, 90.0)
-                || !bounded(a.runway, 300.0, 5000.0)
+                || (a.runway != 0.0 && !bounded(a.runway, 300.0, 5000.0))
                 || !bounded(a.range_nm, 50.0, 12000.0)
                 || !bounded(a.cruise_knots, 70.0, 550.0)
                 || !bounded(a.ceiling, 5000.0, 60000.0)

@@ -18101,3 +18101,27 @@ say = ["{callsign}, vacate runway {runway}, contact {station} {frequency}.", "{c
 [flight_hold_short_traffic]
 slots = ["callsign", "runway"]
 say = ["{callsign}, hold short of runway {runway}, traffic holding in position.", "{callsign}, hold short runway {runway}, traffic lined up and waiting."]
+
+[rotorcraft_hover_taxi]
+slots = ["callsign", "from", "to", "caution"]
+say = ["{callsign}, hover-taxi from {from} to {to}, {caution}.", "{callsign}, hover taxi via {from} to {to}, {caution}."]
+
+[rotorcraft_air_taxi]
+slots = ["callsign", "route", "to", "altitude"]
+say = ["{callsign}, air-taxi via {route} to {to}, remain at or below {altitude} feet.", "{callsign}, air taxi direct {to} via {route}, below {altitude} feet."]
+
+[rotorcraft_takeoff_from]
+slots = ["callsign", "from", "direction", "route"]
+say = ["{callsign}, cleared for takeoff from {from}, make {direction} turn for {route}.", "{callsign}, Tower, cleared for takeoff {from}, {direction} turn for {route}."]
+
+[rotorcraft_takeoff_from_readback]
+slots = ["callsign", "from", "direction", "route"]
+say = ["Cleared for takeoff from {from}, {direction} turn for {route}, {callsign}."]
+
+[military_callsign_spell]
+slots = ["callsign"]
+say = ["{callsign}."]
+
+[military_callsign_spell_readback]
+slots = ["callsign"]
+say = ["{callsign}."]
