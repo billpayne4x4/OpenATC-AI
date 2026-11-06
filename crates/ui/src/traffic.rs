@@ -164,6 +164,71 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
     if mix_changed {
         interface.save_settings();
     }
+    widgets::section_title(ui, "TIME OF DAY & WEATHER VARIATIONS");
+    let mut tod_enabled = interface.settings.traffic_time_of_day_variations;
+    if ui.checkbox("Time-of-day GA/rotorcraft variation", &mut tod_enabled) {
+        interface.settings.traffic_time_of_day_variations = tod_enabled;
+        interface.save_settings();
+    }
+    ui.text_wrapped("Adjusts GA and rotorcraft traffic by simulator time of day. GA is more common during the day; rotorcraft (EMS, law enforcement, news) are relatively more common at night.");
+    let mut ga_day = (interface.settings.ga_day_multiplier * 1000.0) as i32;
+    let _ga_day_disabled = ui.begin_disabled(!interface.settings.traffic_time_of_day_variations);
+    ui.text_disabled("GA daytime multiplier");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##ga-day-mult", 1, 1000, &mut ga_day) {
+        interface.settings.ga_day_multiplier = (ga_day as f32 / 1000.0).clamp(0.01, 10.0);
+        interface.save_settings();
+    }
+    ui.text_wrapped("Multiplier applied to GA traffic share during daytime hours.");
+    let mut ga_night = (interface.settings.ga_night_multiplier * 1000.0) as i32;
+    ui.text_disabled("GA nighttime multiplier");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##ga-night-mult", 1, 1000, &mut ga_night) {
+        interface.settings.ga_night_multiplier = (ga_night as f32 / 1000.0).clamp(0.01, 10.0);
+        interface.save_settings();
+    }
+    ui.text_wrapped("Multiplier applied to GA traffic share during nighttime hours.");
+    let mut rc_day = (interface.settings.rotorcraft_day_multiplier * 1000.0) as i32;
+    ui.text_disabled("Rotorcraft daytime multiplier");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##rc-day-mult", 1, 1000, &mut rc_day) {
+        interface.settings.rotorcraft_day_multiplier = (rc_day as f32 / 1000.0).clamp(0.01, 10.0);
+        interface.save_settings();
+    }
+    ui.text_wrapped("Multiplier applied to rotorcraft traffic share during daytime hours.");
+    let mut rc_night = (interface.settings.rotorcraft_night_multiplier * 1000.0) as i32;
+    ui.text_disabled("Rotorcraft nighttime multiplier");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##rc-night-mult", 1, 1000, &mut rc_night) {
+        interface.settings.rotorcraft_night_multiplier = (rc_night as f32 / 1000.0).clamp(0.01, 10.0);
+        interface.save_settings();
+    }
+    ui.text_wrapped("Multiplier applied to rotorcraft traffic share during nighttime hours.");
+    drop(_ga_day_disabled);
+    let mut wx_enabled = interface.settings.traffic_weather_variations;
+    if ui.checkbox("Weather-based GA/rotorcraft variation", &mut wx_enabled) {
+        interface.settings.traffic_weather_variations = wx_enabled;
+        interface.save_settings();
+    }
+    ui.text_wrapped("Reduces GA and rotorcraft traffic when visibility is low or surface wind is strong.");
+    let mut wx_vis = interface.settings.weather_min_visibility_meters as i32;
+    let _wx_disabled = ui.begin_disabled(!interface.settings.traffic_weather_variations);
+    ui.text_disabled("Minimum visibility for full traffic (meters)");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##wx-vis-min", 0, 50000, &mut wx_vis) {
+        interface.settings.weather_min_visibility_meters = wx_vis.clamp(0, 50000) as f32;
+        interface.save_settings();
+    }
+    ui.text_wrapped("Below this visibility, GA and rotorcraft traffic is progressively reduced.");
+    let mut wx_wind = interface.settings.weather_max_wind_knots as i32;
+    ui.text_disabled("Maximum wind for full traffic (knots)");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##wx-wind-max", 0, 100, &mut wx_wind) {
+        interface.settings.weather_max_wind_knots = wx_wind.clamp(0, 100) as f32;
+        interface.save_settings();
+    }
+    ui.text_wrapped("Above this surface wind, GA and rotorcraft traffic is progressively reduced.");
+    drop(_wx_disabled);
     ui.checkbox(
         "Add local pattern traffic",
         &mut interface.settings.local_pattern_traffic,

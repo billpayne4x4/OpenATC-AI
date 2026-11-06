@@ -4,7 +4,7 @@
 //! runway queue. Complete flight planning and the SID/STAR/approach planners live in
 //! `generated`; this module owns the aircraft that are actually moving.
 
-use crate::traffic::{phase::TrafficPhase, phases, separation};
+use crate::traffic::{phase::TrafficPhase, phases, separation, time_of_day};
 use openatc_core::airport::Airport;
 use openatc_core::apply::{RunwaySequence, TakeoffDecision};
 use openatc_core::state::{GeneratedTraffic, Point, TakeoffState, TrafficDebug, TrafficTarget};
@@ -1649,6 +1649,27 @@ impl TrafficManager {
         } else {
             u64::from(state.settings.military_traffic) * 100 / mix_total
         };
+        // Time-of-day and weather-based GA traffic variation. GA is more common during the day
+        // and less common at night; poor visibility or strong wind further reduces it.
+        let time_of_day = state
+            .session
+            .telemetry
+            .simulation_seconds
+            .and_then(|seconds| time_of_day::classify(seconds));
+        let ga_multiplier = time_of_day
+            .map(|tod| time_of_day::ga_multiplier(tod, &state.settings))
+            .unwrap_or(1.0);
+        let weather = state.sim_weather.get(&airport.icao);
+        let visibility = weather
+            .and_then(|(sample, _)| sample["visibilityMeters"].as_f64());
+        let wind = weather.and_then(|(sample, _)| sample["windKnots"].as_f64());
+        let weather_multiplier = time_of_day::weather_multiplier(visibility, wind, &state.settings)
+            .unwrap_or(1.0);
+        let adjusted_ga_percent = if mix_total == 0 {
+            0
+        } else {
+            (ga_percent as f32 * ga_multiplier * weather_multiplier) as u64
+        };
         let mut used_nodes: BTreeSet<i64> = self
             .aircraft
             .iter()
@@ -1734,7 +1755,7 @@ impl TrafficManager {
             }
             let roll = mix(state.traffic_seed ^ u64::from(self.next_id)) % 100;
             let is_military = roll < military_percent;
-            let is_ga = !is_military && roll < military_percent + ga_percent;
+            let is_ga = !is_military && roll < military_percent + adjusted_ga_percent;
             let identity = (0..8).find_map(|attempt| {
                 let attempt_seed = state
                     .traffic_seed
@@ -1787,6 +1808,39 @@ impl TrafficManager {
                     && runway_meters + 50.0 < candidate.profile.runway
                 {
                     return None;
+                }
+                // Time-of-day and weather-based rotorcraft variation: rotorcraft are more
+                // common at night (EMS, law enforcement, news) and less common during the day.
+                // Poor weather also reduces rotorcraft traffic.
+                if candidate.profile.handling == Some(Kind::Rotorcraft) {
+                    let rc_multiplier = time_of_day
+                        .map(|tod| time_of_day::rotorcraft_multiplier(tod, &state.settings))
+                        .unwrap_or(1.0);
+                    let rc_roll = mix(
+                        state
+                            .traffic_seed
+                            .wrapping_add(u64::from(self.next_id))
+                            .wrapping_add(0x5EED_5EED),
+                    ) % 100;
+                    if rc_roll >= (rc_multiplier * 100.0) as u64 {
+                        // Rotorcraft rejected for this slot; fall through to airline traffic.
+                        if let Some(airline_candidate) = ambient_identity(
+                            &profiles,
+                            models,
+                            &airport.icao,
+                            runway_meters,
+                            false,
+                            attempt_seed,
+                            &used_callsigns,
+                            &player,
+                            u64::from(state.settings.airline_traffic),
+                            u64::from(state.settings.regional_traffic),
+                            u64::from(state.settings.cargo_traffic),
+                        ) {
+                            return Some(airline_candidate);
+                        }
+                        return None;
+                    }
                 }
                 Some(candidate)
             });

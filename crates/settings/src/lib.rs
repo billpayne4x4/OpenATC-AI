@@ -223,6 +223,22 @@ pub struct Settings {
     pub ga_traffic: u8,
     /// Active military budget.
     pub military_traffic: u8,
+    /// Enable time-of-day based GA and rotorcraft traffic variation.
+    pub traffic_time_of_day_variations: bool,
+    /// Enable weather-based GA and rotorcraft traffic variation.
+    pub traffic_weather_variations: bool,
+    /// GA traffic multiplier during daytime (roughly sunrise to sunset).
+    pub ga_day_multiplier: f32,
+    /// GA traffic multiplier during nighttime (roughly sunset to sunrise).
+    pub ga_night_multiplier: f32,
+    /// Rotorcraft traffic multiplier during daytime.
+    pub rotorcraft_day_multiplier: f32,
+    /// Rotorcraft traffic multiplier during nighttime.
+    pub rotorcraft_night_multiplier: f32,
+    /// Minimum visibility (meters) for full GA/rotorcraft traffic; below this, traffic is reduced.
+    pub weather_min_visibility_meters: f32,
+    /// Maximum surface wind (knots) for full GA/rotorcraft traffic; above this, traffic is reduced.
+    pub weather_max_wind_knots: f32,
     /// Minimum generated aircraft moving on the ground when traffic is full.
     pub traffic_taxi_min: u8,
     /// Maximum generated aircraft moving on the ground when traffic is full.
@@ -530,6 +546,14 @@ impl Default for Settings {
             cargo_traffic: 2,
             ga_traffic: 5,
             military_traffic: 0,
+            traffic_time_of_day_variations: false,
+            traffic_weather_variations: false,
+            ga_day_multiplier: 1.2,
+            ga_night_multiplier: 0.5,
+            rotorcraft_day_multiplier: 1.0,
+            rotorcraft_night_multiplier: 1.5,
+            weather_min_visibility_meters: 5000.0,
+            weather_max_wind_knots: 15.0,
             traffic_taxi_min: 4,
             traffic_taxi_max: 6,
             traffic_circuit_jet_nm: 30.0,
@@ -726,6 +750,32 @@ impl Settings {
             return Err(ValidationError::OutOfRange(
                 "taxi traffic target",
                 f32::from(self.traffic_taxi_max),
+            ));
+        }
+        if !(0.01..=10.0).contains(&self.ga_day_multiplier)
+            || !(0.01..=10.0).contains(&self.ga_night_multiplier)
+            || !(0.01..=10.0).contains(&self.rotorcraft_day_multiplier)
+            || !(0.01..=10.0).contains(&self.rotorcraft_night_multiplier)
+        {
+            return Err(ValidationError::OutOfRange(
+                "traffic time-of-day multiplier",
+                0.0,
+            ));
+        }
+        if !self.weather_min_visibility_meters.is_finite()
+            || !(0.0..=50000.0).contains(&self.weather_min_visibility_meters)
+        {
+            return Err(ValidationError::OutOfRange(
+                "weather minimum visibility",
+                self.weather_min_visibility_meters,
+            ));
+        }
+        if !self.weather_max_wind_knots.is_finite()
+            || !(0.0..=100.0).contains(&self.weather_max_wind_knots)
+        {
+            return Err(ValidationError::OutOfRange(
+                "weather maximum wind",
+                self.weather_max_wind_knots,
             ));
         }
         for (name, value) in [
