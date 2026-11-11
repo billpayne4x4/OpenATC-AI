@@ -2291,6 +2291,8 @@ pub fn tick(state: &mut EngineState) {
             super::flight::exchange(state).or_else(|| super::sequencing::exchange(state));
     }
 
+    player_move_up(state);
+    player_give_way(state);
     let Some(exchange) = state.generated.exchange.take() else {
         return;
     };
@@ -2299,10 +2301,260 @@ pub fn tick(state: &mut EngineState) {
     }
 }
 
+/// The ground station the player is tuned to, if any.
+fn player_ground_station(
+    state: &EngineState,
+) -> Option<(openatc_core::stations::Station, openatc_core::state::Radio)> {
+    state
+        .stations
+        .iter()
+        .filter(|station| {
+            station.service == "Ground"
+                || station.services.iter().any(|service| service == "Ground")
+        })
+        .find_map(|station| {
+            state
+                .session
+                .receiving_radio(station.khz)
+                .map(|radio| (station.clone(), radio))
+        })
+}
+
+/// Tell the player to give way to a moving generated aircraft on its right.
+fn player_give_way(state: &mut EngineState) {
+    let telemetry = &state.session.telemetry;
+    let moving = telemetry.on_ground && telemetry.ground_speed_knots > 1.0;
+    let track = telemetry
+        .ground_track_degrees
+        .unwrap_or(telemetry.heading_degrees);
+    let target = moving.then(|| {
+        state
+            .generated
+            .frames
+            .iter()
+            .filter(|frame| {
+                frame.target.on_ground && frame.target.ground_speed_knots.unwrap_or(0.0) > 1.0
+            })
+            .filter_map(|frame| {
+                let other = &frame.target;
+                crate::traffic::separation::right_conflict(
+                    telemetry.latitude,
+                    telemetry.longitude,
+                    track,
+                    other.latitude,
+                    other.longitude,
+                    other.track_degrees,
+                    other.id,
+                    None,
+                    false,
+                    100.0,
+                )
+                .then(|| {
+                    let gap = openatc_core::arrival::distance_nm(
+                        [telemetry.latitude, telemetry.longitude],
+                        [other.latitude, other.longitude],
+                    );
+                    (gap, other.id, other.callsign.clone())
+                })
+            })
+            .min_by(|left, right| left.0.total_cmp(&right.0))
+    });
+    let target = target.flatten();
+    if target.as_ref().map(|(_, id, _)| *id) == state.generated.player_yield {
+        return;
+    }
+    let Some((station, radio)) = player_ground_station(state) else {
+        if target.is_none() {
+            state.generated.player_yield = None;
+        }
+        return;
+    };
+    let callsign = state.session.plan.callsign.clone();
+    let text = match &target {
+        Some((_, _, other)) => say(
+            "player_give_way",
+            &[("callsign", callsign), ("other", other.clone())],
+        ),
+        None => say("player_give_way_clear", &[("callsign", callsign)]),
+    };
+    let tag = crate::flight::tag(state, &station);
+    openatc_core::apply::add_transmission(
+        &mut state.session,
+        "ATC",
+        &text,
+        &SpeechTag {
+            radio: Some(radio),
+            frequency: Some(station.khz),
+            ..tag
+        },
+    );
+    state.generated.player_yield = target.map(|(_, id, _)| id);
+}
+
+/// Ask the player to keep taxiing when generated traffic is waiting behind them.
+fn player_move_up(state: &mut EngineState) {
+    let now = Instant::now();
+    let stopped =
+        state.session.telemetry.on_ground && state.session.telemetry.ground_speed_knots < 1.0;
+    let blocked: Vec<u32> = state
+        .generated
+        .held
+        .iter()
+        .filter(|(_, blocker)| **blocker == 0)
+        .map(|(id, _)| *id)
+        .collect();
+    state
+        .generated
+        .player_hold_since
+        .retain(|id, _| blocked.contains(id));
+    for id in &blocked {
+        state.generated.player_hold_since.entry(*id).or_insert(now);
+    }
+    let waited = blocked.iter().any(|id| {
+        state
+            .generated
+            .player_hold_since
+            .get(id)
+            .is_some_and(|since| now.duration_since(*since) >= Duration::from_secs(20))
+    });
+    let due = state
+        .generated
+        .move_request_at
+        .is_none_or(|last| now.duration_since(last) >= Duration::from_secs(90));
+    if !(stopped && waited && due) {
+        return;
+    }
+    let Some((station, radio)) = player_ground_station(state) else {
+        return;
+    };
+    let text = say(
+        "ground_traffic_waiting",
+        &[("callsign", state.session.plan.callsign.clone())],
+    );
+    let tag = crate::flight::tag(state, &station);
+    openatc_core::apply::add_transmission(
+        &mut state.session,
+        "ATC",
+        &text,
+        &SpeechTag {
+            radio: Some(radio),
+            frequency: Some(station.khz),
+            ..tag
+        },
+    );
+    state.generated.move_request_at = Some(now);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use openatc_core::traffic::motion::{Route, Segment, Stage, Waypoint};
+
+    fn frame(id: u32, callsign: &str) -> GeneratedTraffic {
+        GeneratedTraffic {
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            target: TrafficTarget {
+                id,
+                callsign: callsign.into(),
+                ..Default::default()
+            },
+            model: Arc::new(openatc_core::traffic::csl::Model {
+                id: format!("test-{id}"),
+                objects: vec![],
+                vertical_offset: None,
+                matches: vec![],
+            }),
+            animation: Animation::default(),
+        }
+    }
+
+    #[test]
+    fn the_player_gives_way_to_a_moving_generated_aircraft_on_the_right() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 121_900;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.latitude = 0.0;
+        state.session.telemetry.longitude = 0.0;
+        state.session.telemetry.heading_degrees = 270.0;
+        state.session.telemetry.ground_track_degrees = Some(270.0);
+        state.session.telemetry.ground_speed_knots = 10.0;
+        state.stations = vec![Station {
+            service: "Ground".into(),
+            khz: 121_900,
+            ..Default::default()
+        }];
+        let mut other = frame(7, "QFA123");
+        other.target.on_ground = true;
+        other.target.latitude = 0.0005;
+        other.target.longitude = 0.0;
+        other.target.track_degrees = 180.0;
+        other.target.ground_speed_knots = Some(8.0);
+        state.generated.frames.push(other);
+        player_give_way(&mut state);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("give way to QFA123"))
+        );
+        assert_eq!(state.generated.player_yield, Some(7));
+        state.generated.frames[0].target.ground_speed_knots = Some(0.0);
+        player_give_way(&mut state);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("continue, clear of traffic"))
+        );
+        assert_eq!(state.generated.player_yield, None);
+    }
+
+    #[test]
+    fn a_generated_taxi_hold_asks_a_stopped_player_to_continue() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 121_900;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.ground_speed_knots = 0.0;
+        state.stations = vec![Station {
+            service: "Ground".into(),
+            khz: 121_900,
+            ..Default::default()
+        }];
+        state.generated.held.insert(2, 0);
+        state
+            .generated
+            .player_hold_since
+            .insert(2, Instant::now() - Duration::from_secs(30));
+        player_move_up(&mut state);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("traffic is waiting behind you"))
+        );
+        let asked = state.session.transcript.len();
+        player_move_up(&mut state);
+        assert_eq!(
+            state.session.transcript.len(),
+            asked,
+            "not asked again straight away"
+        );
+        state.session.telemetry.com1_khz = 118_700;
+        state.generated.move_request_at = None;
+        player_move_up(&mut state);
+        assert_eq!(
+            state.session.transcript.len(),
+            asked,
+            "silent off frequency"
+        );
+    }
 
     #[test]
     fn gate_departure_requests_ifr_before_pushback() {

@@ -95,6 +95,12 @@ pub struct Runtime {
     delivery_cleared: BTreeSet<u32>,
     /// A ground aircraft was told to hold and its blocking aircraft, so it can be released.
     held: BTreeMap<u32, u32>,
+    /// Generated surface aircraft held with the player as their blocker.
+    player_hold_since: BTreeMap<u32, Instant>,
+    /// Last time the player was asked to continue taxiing.
+    move_request_at: Option<Instant>,
+    /// Generated aircraft the player has been told to give way to.
+    player_yield: Option<u32>,
     /// A re-plan has already been requested for the current airborne phase.
     airborne_reseeded: bool,
     preparation_job: Option<u64>,
