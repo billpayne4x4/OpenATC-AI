@@ -1269,8 +1269,15 @@ rather than taxiing through. Followers on the same taxi route keep a speed-contr
 gap to the aircraft ahead instead of stopping and starting in a queue. Surface
 conflict warnings are limited to traffic crossing ahead: traffic behind, traffic
 ahead on the same route, traffic at the hold and runway-queue traffic are ignored.
-When joining a taxiway, traffic already established on it has right of way and the
-joining aircraft merges behind; a genuine crossing conflict still produces a hold. Departures are seeded along the
+At a junction, the aircraft with the other on its right gives way, as the ICAO Annex 2
+converging rule has it. Traffic going the same way on a parallel taxiway, or the opposite
+way, does not create a give-way. A stopped player is ignored for right-of-way, so parked
+aircraft beside the taxiway do not stop traffic; a player who stops on the route is still
+followed by the aircraft behind. When an ambient aircraft gives way, ATC says so on the
+frequency the player is receiving and says continue once it clears. If the player stays
+stopped on the route with traffic queued behind for 20 seconds, ATC asks the player to
+continue taxi, at most once every 90 seconds. Nothing is spoken on a frequency the player
+is not receiving. Departures are seeded along the
 surface route from the spawn node toward the hold, spread across the usable taxiway
 and spaced from the hold and from each other.
 A seed is rejected if it is inside the runway strip or within the runway-edge margin,

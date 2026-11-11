@@ -113,3 +113,11 @@ departure = [
   [[0, 0, 0], [0, 0, 0], [0, 0, 0], [120, 180, 120]],
   [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 ]
+
+[regions.mats.separation]
+enroute_lateral_nm = 5.0
+terminal_lateral_nm = 3.0
+vertical_below_fl290_feet = 1000.0
+vertical_fl290_and_above_feet = 2000.0
+status = "verified"
+source = "Airservices Australia, Separation standards (airservicesaustralia.com/about-us/our-services/how-air-traffic-control-works/separation-standards/)"

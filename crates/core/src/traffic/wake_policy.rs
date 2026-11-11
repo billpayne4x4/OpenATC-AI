@@ -63,6 +63,32 @@ pub struct Region {
     /// Rows are leader categories, columns follower categories,
     /// each cell `[full_length, intersection, opposite_direction]` seconds.
     pub departure: Vec<Vec<[u16; 3]>>,
+    /// Radar lateral and vertical minima for airports in this region.
+    #[serde(default)]
+    pub separation: Option<Separation>,
+}
+
+/// Radar minima for one region. Every value carries the source it was taken from, so a
+/// correction can point at the document it came from.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Separation {
+    /// Lateral minimum in en route airspace, nautical miles.
+    pub enroute_lateral_nm: f64,
+    /// Lateral minimum in terminal airspace, nautical miles.
+    pub terminal_lateral_nm: f64,
+    /// Vertical minimum below FL290, feet.
+    pub vertical_below_fl290_feet: f64,
+    /// Vertical minimum at FL290 and above, feet.
+    pub vertical_fl290_and_above_feet: f64,
+    #[serde(default)]
+    pub source: String,
+    /// `verified` when checked against the published text, `provisional` otherwise.
+    #[serde(default = "default_status")]
+    pub status: String,
+}
+
+fn default_status() -> String {
+    "provisional".into()
 }
 
 fn default_lua_w_seconds() -> u16 {
@@ -105,6 +131,22 @@ impl Policy {
         }
         if !file.regions.contains_key("icao") {
             return Err("Wake policy needs an `icao` fallback region".into());
+        }
+        for (key, region) in &file.regions {
+            let Some(separation) = &region.separation else {
+                continue;
+            };
+            let lateral = |value: f64| (3.0..=10.0).contains(&value);
+            let vertical = |value: f64| (1000.0..=5000.0).contains(&value);
+            if !lateral(separation.enroute_lateral_nm)
+                || !lateral(separation.terminal_lateral_nm)
+                || !vertical(separation.vertical_below_fl290_feet)
+                || !vertical(separation.vertical_fl290_and_above_feet)
+            {
+                return Err(format!(
+                    "Wake policy region {key} has separation outside 3-10 NM or 1000-5000 ft"
+                ));
+            }
         }
         Ok(Self {
             file,
@@ -161,6 +203,18 @@ impl Policy {
     #[must_use]
     pub fn runways(&self) -> RunwayRules {
         self.file.runways
+    }
+
+    /// Radar minima for an airport: its region's table, then the `icao` table. `None`
+    /// means neither defines one, so the caller keeps its own defaults.
+    #[must_use]
+    pub fn separation(&self, airport: &str) -> Option<&Separation> {
+        self.region(airport).separation.as_ref().or_else(|| {
+            self.file
+                .regions
+                .get("icao")
+                .and_then(|region| region.separation.as_ref())
+        })
     }
 
     #[must_use]
@@ -483,6 +537,27 @@ mod tests {
         folder.write("second.toml", &standard("icao"));
         let error = Policy::from_dir(&folder.0).expect_err("duplicate standard");
         assert!(error.contains("defined twice"), "{error}");
+    }
+
+    #[test]
+    fn separation_comes_from_the_region_then_the_icao_table() {
+        let policy =
+            Policy::parse(include_str!("../../../../traffic/wake.toml")).expect("bundled policy");
+        let australia = policy.separation("YSSY").expect("Australian radar minima");
+        assert_eq!(australia.terminal_lateral_nm, 3.0);
+        assert_eq!(australia.vertical_below_fl290_feet, 1000.0);
+        assert_eq!(australia.status, "verified");
+        assert!(
+            policy.separation("KLAX").is_none(),
+            "a region without a table, and no icao table, keeps the operations defaults"
+        );
+    }
+
+    #[test]
+    fn separation_outside_the_supported_range_is_rejected() {
+        let text = include_str!("../../../../traffic/wake.toml")
+            .replace("enroute_lateral_nm = 5.0", "enroute_lateral_nm = 1.0");
+        assert!(Policy::parse(&text).is_err());
     }
 
     #[test]

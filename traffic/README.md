@@ -2,6 +2,15 @@
 
 ## Wake and runway policy
 
+Radar minima live in each standard file as a `[separation]` table: `enroute_lateral_nm`,
+`terminal_lateral_nm`, `vertical_below_fl290_feet` and `vertical_fl290_and_above_feet`, with
+a `source` and a `status` of `verified` or `provisional`. A flight uses the more conservative
+values of its origin and destination. An airport whose region has no table falls back to the
+`icao` table, and then to the defaults in `operations.toml`. The en route lateral value and
+both vertical values apply to the generated airborne checks now. The terminal lateral value
+is stored for terminal sequencing, which is still being built. Correct a value by editing it
+and citing the document it came from in `source`.
+
 `wake.toml` is the editable wake-turbulence and runway-relationship policy. It contains FAA CWT, ICAO Doc 4444, EUROCONTROL RECAT-EU and Australian MATS tables, with leader/follower categories, departure intervals, arrival spacing, line-up-and-wait limits and parallel-runway thresholds. The **Wake separation** setting selects `auto`, `icao`, `recat_eu`, `faa_cwt` or `mats`; `auto` uses FAA CWT at US airports, MATS at Australian airports and ICAO elsewhere. Aircraft categories come from the simulator's reported wake category first, then the aircraft profile's `cwt` or `wake` field. Edit the tables and restart the engine to apply them.
 
 

@@ -69,6 +69,29 @@ pub(super) fn load(config: &Path) -> Result<Loaded, String> {
 mod tests {
     use super::*;
     #[test]
+    fn a_scene_takes_the_stricter_radar_minima_of_its_airports() {
+        use openatc_core::traffic::wake_policy::Separation;
+        let mats = Separation {
+            enroute_lateral_nm: 5.0,
+            terminal_lateral_nm: 3.0,
+            vertical_below_fl290_feet: 1000.0,
+            vertical_fl290_and_above_feet: 2000.0,
+            source: String::new(),
+            status: "verified".into(),
+        };
+        let bundled = include_str!("../../../../traffic/operations.toml");
+        let mut both = parse_operations(bundled).unwrap();
+        both.combine_separation([Some(mats.clone()), Some(mats.clone())]);
+        assert_eq!(both.airborne_terminal_separation_nm, 3.0);
+        assert_eq!(both.vertical_minimum(10_000.0), 1000.0);
+        assert_eq!(both.vertical_minimum(35_000.0), 2000.0);
+        let mut mixed = parse_operations(bundled).unwrap();
+        mixed.combine_separation([Some(mats), None]);
+        assert_eq!(mixed.airborne_terminal_separation_nm, 5.0);
+        assert_eq!(mixed.vertical_minimum(10_000.0), 2000.0);
+    }
+
+    #[test]
     fn bundled_channels_cover_gear_animation() {
         let directory =
             std::env::temp_dir().join(format!("openatc-channels-{}", std::process::id()));

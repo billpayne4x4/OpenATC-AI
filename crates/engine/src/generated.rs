@@ -680,6 +680,8 @@ struct Operations {
     holding_turn_rate_degrees_sec: f64,
     contingency_holding_maximum_ias: f64,
     airborne_separation_nm: f64,
+    airborne_terminal_separation_nm: f64,
+    airborne_separation_low_feet: f64,
     airborne_separation_feet: f64,
     airborne_prediction_seconds: f64,
     version: u32,
@@ -716,6 +718,55 @@ struct Operations {
     gate_connector_meters: f64,
     gate_connector_detour_meters: f64,
 }
+impl Operations {
+    /// Vertical minimum for a pair whose higher aircraft is at `altitude_feet`.
+    fn vertical_minimum(&self, altitude_feet: f64) -> f64 {
+        if altitude_feet < 29_000.0 {
+            self.airborne_separation_low_feet
+        } else {
+            self.airborne_separation_feet
+        }
+    }
+
+    /// Use the radar minima of the airports a flight joins. An airport without its own
+    /// table keeps these operation defaults, and the more conservative value wins.
+    fn apply_scene_separation(&mut self, airports: [&str; 2]) {
+        let found = airports.map(|icao| {
+            openatc_core::traffic::wake_policy::read(|policy| policy.separation(icao).cloned())
+        });
+        self.combine_separation(found);
+    }
+
+    fn combine_separation(
+        &mut self,
+        found: [Option<openatc_core::traffic::wake_policy::Separation>; 2],
+    ) {
+        let base = (
+            self.airborne_separation_nm,
+            self.airborne_terminal_separation_nm,
+            self.airborne_separation_low_feet,
+            self.airborne_separation_feet,
+        );
+        let values = found.map(|separation| {
+            separation.map_or(base, |separation| {
+                (
+                    separation.enroute_lateral_nm,
+                    separation.terminal_lateral_nm,
+                    separation.vertical_below_fl290_feet,
+                    separation.vertical_fl290_and_above_feet,
+                )
+            })
+        });
+        let (enroute, terminal, low, high) = values.into_iter().fold(values[0], |a, b| {
+            (a.0.max(b.0), a.1.max(b.1), a.2.max(b.2), a.3.max(b.3))
+        });
+        self.airborne_separation_nm = enroute;
+        self.airborne_terminal_separation_nm = terminal;
+        self.airborne_separation_low_feet = low;
+        self.airborne_separation_feet = high;
+    }
+}
+
 fn parse_operations(text: &str) -> Result<Operations, String> {
     if text.len() > 65536 {
         return Err("Generated operations policy exceeds 64 KiB".into());
@@ -761,6 +812,8 @@ fn parse_operations(text: &str) -> Result<Operations, String> {
         || !(0.5..=3.0).contains(&policy.holding_turn_rate_degrees_sec)
         || !(100.0..=200.0).contains(&policy.contingency_holding_maximum_ias)
         || !(3.0..=10.0).contains(&policy.airborne_separation_nm)
+        || !(3.0..=10.0).contains(&policy.airborne_terminal_separation_nm)
+        || !(1000.0..=5000.0).contains(&policy.airborne_separation_low_feet)
         || !(1000.0..=5000.0).contains(&policy.airborne_separation_feet)
         || !(60.0..=300.0).contains(&policy.airborne_prediction_seconds)
         || !(0.5..=5.0).contains(&policy.pushback_knots)
@@ -1416,7 +1469,8 @@ fn prepare_scene(
     for byte in origin.icao.bytes() {
         seed = seed.wrapping_mul(16_777_619) ^ u64::from(byte);
     }
-    let (handling, policy, channels) = policy::load(&input.config)?;
+    let (handling, mut policy, channels) = policy::load(&input.config)?;
+    policy.apply_scene_separation([input.origin.icao.as_str(), input.destination.icao.as_str()]);
     let mut world = openatc_core::traffic::motion::World::default();
     let mut movement = BTreeMap::new();
     let mut fixed_gear = BTreeSet::new();
@@ -3143,7 +3197,9 @@ impl Scene {
                         .any(|target| {
                             !target.on_ground
                                 && (point.altitude_feet - target.altitude_feet).abs()
-                                    < self.policy.airborne_separation_feet
+                                    < self.policy.vertical_minimum(
+                                        point.altitude_feet.max(target.altitude_feet),
+                                    )
                                 && openatc_core::arrival::distance_nm(
                                     [point.latitude, point.longitude],
                                     [target.latitude, target.longitude],

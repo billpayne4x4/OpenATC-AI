@@ -29,6 +29,10 @@ const RUNWAY_EDGE_MARGIN: f64 = 25.0;
 const SEED_SPACING: f64 = 150.0;
 /// Space kept between the last queued departure and the runway hold.
 const HOLD_QUEUE_MARGIN: f64 = 60.0;
+/// How long traffic may wait behind a stopped player before the player is asked to move.
+const MOVE_UP_AFTER: Duration = Duration::from_secs(20);
+/// Minimum gap between two requests for the player to keep taxiing.
+const MOVE_UP_REPEAT: Duration = Duration::from_secs(90);
 /// Deterministic mixture used for the random GA share and weighted operator draw.
 fn mix(mut value: u64) -> u64 {
     value = value.wrapping_add(0x9e37_79b9_7f4a_7c15);
@@ -402,6 +406,12 @@ struct AmbientAircraft {
     wake_delay: f64,
     last: Instant,
     frequency_khz: Option<i32>,
+    /// Aircraft or player this aircraft is giving way to at a junction.
+    yield_to: Option<u32>,
+    /// Whether the give-way call was heard, so a resume call is owed when the yield ends.
+    yield_announced: bool,
+    /// When the player began holding this aircraft on the taxiway.
+    player_hold_since: Option<Instant>,
 }
 
 /// Pick a stable density target for one airport and traffic-settings key.
@@ -437,6 +447,8 @@ pub struct TrafficManager {
     rejected_model: u32,
     last_error: String,
     announced: std::collections::BTreeSet<(u32, &'static str)>,
+    /// Last time the player was asked to continue taxiing.
+    move_request_at: Option<Instant>,
     movement_started: bool,
     active_airport: String,
     generation: u64,
@@ -932,7 +944,7 @@ impl TrafficManager {
                         {
                             return None;
                         }
-                        let (other_lat, other_lon, _) =
+                        let (other_lat, other_lon, other_heading) =
                             position_heading_at(&other.points, &other.cumulative, other.distance);
                         separation::right_conflict(
                             own_position.0,
@@ -940,6 +952,7 @@ impl TrafficManager {
                             own_position.2,
                             other_lat,
                             other_lon,
+                            other_heading,
                             other.id,
                             leader_id,
                             other.route == self.aircraft[index].route,
@@ -948,11 +961,15 @@ impl TrafficManager {
                         .then_some(other.id)
                     });
                 ambient.or_else(|| {
-                    // A joining ambient aircraft must also give way to the player
-                    // when the player is already on the taxiway to its right.
+                    // A joining ambient aircraft gives way to a moving player on its right.
+                    // A stopped player is not joining anything, so the aircraft carries on.
                     traffic
                         .iter()
-                        .find(|target| target.id == 0 && target.on_ground)
+                        .find(|target| {
+                            target.id == 0
+                                && target.on_ground
+                                && target.ground_speed_knots.unwrap_or(0.0) > 1.0
+                        })
                         .and_then(|player| {
                             let p = openatc_core::airport::airport_point(
                                 &airport,
@@ -968,6 +985,7 @@ impl TrafficManager {
                                 own_position.2,
                                 player.latitude,
                                 player.longitude,
+                                player.track_degrees,
                                 0,
                                 leader_id,
                                 false,
@@ -1115,6 +1133,9 @@ impl TrafficManager {
             } else {
                 None
             };
+            let held_by_player = physical_blocked
+                && overlap_stop.is_none()
+                && ahead.is_some_and(|leader| leader.id == 0);
             let own_progress = distance - self.aircraft[index].runway_start;
             let flight_leader = climb_leader(&self.aircraft, index);
             let blocked = runway_blocked
@@ -1127,6 +1148,12 @@ impl TrafficManager {
             aircraft.blocked = blocked;
             aircraft.blocker = blocker;
             aircraft.awaiting_clearance = hold_for_clearance;
+            aircraft.yield_to = right_blocker;
+            aircraft.player_hold_since = if held_by_player {
+                aircraft.player_hold_since.or(Some(now))
+            } else {
+                None
+            };
             let braking = aircraft.handling.braking_knots_sec.max(0.1) * KNOTS_TO_MPS;
             let acceleration = aircraft.handling.acceleration_knots_sec.max(0.1) * KNOTS_TO_MPS;
             let taxi = phases::ground::taxi_speed(
@@ -1290,6 +1317,7 @@ impl TrafficManager {
             );
             tower_tags.insert(key, tag);
         }
+        self.ground_calls(state);
         let mut calls: Vec<(
             openatc_core::state::Radio,
             i32,
@@ -1387,6 +1415,162 @@ impl TrafficManager {
                 last.background = true;
             }
         }
+    }
+
+    /// Give-way and move-up calls on the ground. Every call is spoken only on a frequency
+    /// the player is receiving, so a radio that is not tuned to the controller hears nothing.
+    fn ground_calls(&mut self, state: &mut crate::EngineState) {
+        let player = state.session.plan.callsign.clone();
+        let callsigns: std::collections::BTreeMap<u32, String> = self
+            .aircraft
+            .iter()
+            .map(|aircraft| (aircraft.id, aircraft.callsign.clone()))
+            .collect();
+        let mut calls: Vec<(
+            openatc_core::state::Radio,
+            i32,
+            String,
+            String,
+            String,
+            String,
+        )> = Vec::new();
+        for aircraft in &mut self.aircraft {
+            let heard = aircraft.frequency_khz.and_then(|frequency| {
+                state
+                    .session
+                    .receiving_radio(frequency)
+                    .map(|radio| (frequency, radio))
+            });
+            match (aircraft.yield_to, aircraft.yield_announced) {
+                (Some(other), false) => {
+                    let Some((frequency, radio)) = heard else {
+                        continue;
+                    };
+                    let other = if other == 0 {
+                        player.clone()
+                    } else if let Some(callsign) = callsigns.get(&other) {
+                        callsign.clone()
+                    } else {
+                        continue;
+                    };
+                    aircraft.yield_announced = true;
+                    let slots = [("callsign", aircraft.callsign.clone()), ("other", other)];
+                    calls.push((
+                        radio,
+                        frequency,
+                        openatc_core::dialogue::say("ambient_give_way", &slots),
+                        openatc_core::dialogue::say("ambient_give_way_readback", &slots),
+                        aircraft.airport.clone(),
+                        aircraft.callsign.clone(),
+                    ));
+                }
+                (None, true) => {
+                    aircraft.yield_announced = false;
+                    let Some((frequency, radio)) = heard else {
+                        continue;
+                    };
+                    let slots = [("callsign", aircraft.callsign.clone())];
+                    calls.push((
+                        radio,
+                        frequency,
+                        openatc_core::dialogue::say("ambient_resume", &slots),
+                        openatc_core::dialogue::say("ambient_resume_readback", &slots),
+                        aircraft.airport.clone(),
+                        aircraft.callsign.clone(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+        for (radio, frequency, text, pilot_reply, airport, callsign) in calls {
+            let station = state
+                .stations
+                .iter()
+                .find(|station| station.airport == airport && station.khz == frequency)
+                .cloned();
+            let atc_tag = station.map_or_else(
+                || openatc_core::state::SpeechTag {
+                    position: "Ground".into(),
+                    ..Default::default()
+                },
+                |station| crate::flight::tag(state, &station),
+            );
+            let pilot_voice = crate::traffic::pilot_voice_for_callsign(state, &callsign);
+            openatc_core::apply::add_transmission(
+                &mut state.session,
+                "ATC",
+                &text,
+                &openatc_core::state::SpeechTag {
+                    radio: Some(radio),
+                    frequency: Some(frequency),
+                    ..atc_tag
+                },
+            );
+            if let Some(last) = state.session.transcript.last_mut() {
+                last.background = true;
+                last.pilot_reply.clone_from(&pilot_reply);
+            }
+            openatc_core::apply::add_transmission(
+                &mut state.session,
+                &callsign,
+                &pilot_reply,
+                &openatc_core::state::SpeechTag {
+                    radio: Some(radio),
+                    frequency: Some(frequency),
+                    position: "Traffic".into(),
+                    voice: pilot_voice,
+                    ..Default::default()
+                },
+            );
+            if let Some(last) = state.session.transcript.last_mut() {
+                last.background = true;
+            }
+        }
+
+        let now = Instant::now();
+        let held = self.aircraft.iter().any(|aircraft| {
+            aircraft
+                .player_hold_since
+                .is_some_and(|since| now.duration_since(since) >= MOVE_UP_AFTER)
+        });
+        let stopped = state.session.telemetry.ground_speed_knots < 1.0;
+        let due = self
+            .move_request_at
+            .is_none_or(|last| now.duration_since(last) >= MOVE_UP_REPEAT);
+        if !(held && stopped && due) {
+            return;
+        }
+        let airport = self.active_airport.clone();
+        let Some((station, radio)) = state
+            .stations
+            .iter()
+            .filter(|station| {
+                station.airport == airport
+                    && (station.service == "Ground"
+                        || station.services.iter().any(|service| service == "Ground"))
+            })
+            .find_map(|station| {
+                state
+                    .session
+                    .receiving_radio(station.khz)
+                    .map(|radio| (station.clone(), radio))
+            })
+        else {
+            return;
+        };
+        let text = openatc_core::dialogue::say("ground_traffic_waiting", &[("callsign", player)]);
+        let tag = crate::flight::tag(state, &station);
+        openatc_core::apply::add_transmission(
+            &mut state.session,
+            "ATC",
+            &text,
+            &openatc_core::state::SpeechTag {
+                radio: Some(radio),
+                frequency: Some(station.khz),
+                ..tag
+            },
+        );
+        self.move_request_at = Some(now);
     }
 
     /// Republish the ambient frames even when traffic advancement stopped early.
@@ -1955,6 +2139,9 @@ impl TrafficManager {
                 blocked: false,
                 blocker: None,
                 awaiting_clearance: false,
+                yield_to: None,
+                yield_announced: false,
+                player_hold_since: None,
                 wake_delay: 0.0,
                 last: Instant::now(),
                 frequency_khz: frequency,
@@ -3187,6 +3374,9 @@ mod phase_tests {
             blocked: false,
             blocker: None,
             awaiting_clearance: false,
+            yield_to: None,
+            yield_announced: false,
+            player_hold_since: None,
             wake_delay: 0.0,
             last: Instant::now(),
             frequency_khz: None,
@@ -3902,8 +4092,10 @@ mod phase_tests {
         state.airport = Some(airport);
         state.session.telemetry.position_valid = true;
         state.session.telemetry.on_ground = true;
-        state.session.telemetry.latitude = 0.0008;
-        state.session.telemetry.longitude = 0.0002;
+        state.session.telemetry.latitude = 0.0006;
+        state.session.telemetry.longitude = 0.0005;
+        state.session.telemetry.heading_degrees = 270.0;
+        state.session.telemetry.ground_speed_knots = 10.0;
         state.session.telemetry.traffic = Some(Vec::new());
         let mut manager = TrafficManager {
             models: Some(Arc::new(Catalogue::default())),
@@ -3935,6 +4127,185 @@ mod phase_tests {
         manager.tick(&mut state);
         assert_eq!(manager.aircraft[0].blocker, Some(0));
         assert!(manager.aircraft[0].blocked);
+        assert_eq!(manager.aircraft[0].yield_to, Some(0));
+    }
+
+    #[test]
+    fn a_stopped_player_is_not_a_right_of_way_participant() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.0006;
+        state.session.telemetry.longitude = 0.0005;
+        state.session.telemetry.heading_degrees = 270.0;
+        state.session.telemetry.ground_speed_knots = 0.0;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut departure = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        departure.airport = "DEMO".into();
+        departure.runway = "09".into();
+        departure.hold_distance = 600.0;
+        departure.runway_start = 1_000.0;
+        departure.runway_end = 2_000.0;
+        departure.points = vec![
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.01,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+        ];
+        departure.cumulative = cumulative_distances(&departure.points);
+        departure.distance = 0.0;
+        departure.speed = 0.0;
+        manager.aircraft.push(departure);
+        manager.tick(&mut state);
+        assert_eq!(manager.aircraft[0].yield_to, None);
+    }
+
+    #[test]
+    fn the_held_player_is_recorded_while_traffic_waits_behind_on_the_route() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.01;
+        state.session.telemetry.longitude = 0.0005;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut departure = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        departure.airport = "DEMO".into();
+        departure.runway = "09".into();
+        departure.hold_distance = 600.0;
+        departure.runway_start = 1_000.0;
+        departure.runway_end = 2_000.0;
+        departure.points = vec![
+            Waypoint {
+                latitude: 0.01,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.01,
+                longitude: 0.01,
+                altitude_feet: 0.0,
+            },
+        ];
+        departure.cumulative = cumulative_distances(&departure.points);
+        departure.distance = 0.0;
+        departure.speed = 0.0;
+        manager.aircraft.push(departure);
+        manager.tick(&mut state);
+        assert!(manager.aircraft[0].player_hold_since.is_some());
+    }
+
+    #[test]
+    fn ground_calls_stay_silent_when_the_player_is_not_on_the_frequency() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 118_700;
+        let mut manager = TrafficManager::default();
+        let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        waiting.airport = "DEMO".into();
+        waiting.frequency_khz = Some(121_900);
+        waiting.yield_to = Some(0);
+        manager.aircraft.push(waiting);
+        let transcript = state.session.transcript.len();
+        manager.ground_calls(&mut state);
+        assert_eq!(state.session.transcript.len(), transcript);
+        assert!(!manager.aircraft[0].yield_announced);
+    }
+
+    #[test]
+    fn a_give_way_is_called_once_on_frequency_and_then_released() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 121_900;
+        let mut manager = TrafficManager::default();
+        let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        waiting.airport = "DEMO".into();
+        waiting.frequency_khz = Some(121_900);
+        waiting.yield_to = Some(0);
+        manager.aircraft.push(waiting);
+        manager.ground_calls(&mut state);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("give way to BIL1975"))
+        );
+        assert!(manager.aircraft[0].yield_announced);
+        manager.ground_calls(&mut state);
+        let calls = state
+            .session
+            .transcript
+            .iter()
+            .filter(|entry| entry.text.contains("give way to BIL1975"))
+            .count();
+        assert_eq!(calls, 1, "a give-way is announced once per yield");
+        manager.aircraft[0].yield_to = None;
+        manager.ground_calls(&mut state);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("continue"))
+        );
+        assert!(!manager.aircraft[0].yield_announced);
+    }
+
+    #[test]
+    fn a_held_player_is_asked_to_keep_taxiing_once() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 121_900;
+        state.session.telemetry.ground_speed_knots = 0.0;
+        state.stations = vec![openatc_core::stations::Station {
+            airport: "DEMO".into(),
+            service: "Ground".into(),
+            khz: 121_900,
+            ..Default::default()
+        }];
+        let mut manager = TrafficManager {
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        waiting.airport = "DEMO".into();
+        waiting.player_hold_since = Some(Instant::now() - Duration::from_secs(30));
+        manager.aircraft.push(waiting);
+        manager.ground_calls(&mut state);
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("traffic is waiting behind you"))
+        );
+        let asked = state.session.transcript.len();
+        manager.ground_calls(&mut state);
+        assert_eq!(
+            state.session.transcript.len(),
+            asked,
+            "not asked again straight away"
+        );
     }
 
     #[test]

@@ -42,8 +42,12 @@ enroute_segment_nm = 20.0
 airborne_sample_meters = 250.0
 airborne_detour_meters = 5000.0
 airborne_turn_rate_degrees_sec = 3.0
-# Conservative simulation minima; specialised regional reductions require separate policies.
+# Fallback radar minima, used when a wake standard has no [separation] table. The lateral
+# value applies en route; the terminal value applies inside terminal airspace. Vertical
+# minima apply below FL290 and at FL290 and above.
 airborne_separation_nm = 5.0
+airborne_terminal_separation_nm = 5.0
+airborne_separation_low_feet = 2000.0
 airborne_separation_feet = 2000.0
 airborne_prediction_seconds = 180.0
 

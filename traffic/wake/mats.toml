@@ -19,3 +19,13 @@ departure = [
   [[0, 0, 0], [0, 0, 0], [0, 0, 0], [120, 180, 120]],
   [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 ]
+
+# Radar minima. The Airservices page gives 5 NM en route, 3 NM in terminal airspace and
+# 1000 ft below FL290 with 2000 ft above. Check corrections against the MATS text.
+[separation]
+enroute_lateral_nm = 5.0
+terminal_lateral_nm = 3.0
+vertical_below_fl290_feet = 1000.0
+vertical_fl290_and_above_feet = 2000.0
+status = "verified"
+source = "Airservices Australia, Separation standards (airservicesaustralia.com/about-us/our-services/how-air-traffic-control-works/separation-standards/)"

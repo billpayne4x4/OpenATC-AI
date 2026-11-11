@@ -491,7 +491,8 @@ pub(super) fn forecast_clear(
                 path,
                 [old.position, other.position],
                 policy.airborne_separation_nm + 0.01,
-                policy.airborne_separation_feet,
+                policy
+                    .vertical_minimum(old.position.altitude_feet.max(other.position.altitude_feet)),
             ) {
                 Ok(false) => {}
                 Ok(true) => return false,
@@ -519,7 +520,7 @@ pub(super) fn forecast_clear(
                 }) || !parallel_other(target.latitude, target.longitude, target.track_degrees)
             })
         {
-            let vertical = policy.airborne_separation_feet
+            let vertical = policy.vertical_minimum(target.altitude_feet)
                 + if rate.is_none() {
                     15000.0 * time / 60.0
                 } else {
