@@ -857,6 +857,7 @@ fn prepare_fallback(
     if level > context.maximum_feet || level > high {
         return Err("Missed approach level conflicts with its published climb".into());
     }
+    let reported_level = weather.atmosphere.reported(level, false)?.round() as i32;
     let variation = weather.variation;
     let end = fixes
         .last_mut()
@@ -886,7 +887,7 @@ fn prepare_fallback(
     hold_leg.turn = "R".into();
     hold_leg.course = Some((course - variation).rem_euclid(360.0));
     hold_leg.altitude_description.clear();
-    hold_leg.altitude_one = Some(level.round() as i32);
+    hold_leg.altitude_one = Some(reported_level);
     hold_leg.altitude_one_is_flight_level = Some(false);
     hold_leg.altitude_two = None;
     hold_leg.altitude_two_is_flight_level = None;
@@ -906,7 +907,7 @@ fn prepare_fallback(
         &hold_leg,
         position,
         &holding::Clearance {
-            level_feet: weather.atmosphere.reported(level, false)?.round() as i32,
+            level_feet: reported_level,
             geometric_feet: level,
             indicated_knots: indicated,
             ground_knots: airspeed.ground_knots(level, course)?,
@@ -1578,6 +1579,148 @@ mod tests {
         assert_eq!(
             hold.points[0].altitude_feet,
             weather.atmosphere.geometric(3000.0, false).unwrap()
+        );
+    }
+
+    /// Uses the installed simulator data, so it is ignored by default. Run with
+    /// `cargo test -p openatc-engine -- --ignored sydney_climb`.
+    #[test]
+    #[ignore = "needs installed X-Plane navdata"]
+    fn sydney_climb_missed_approach_produces_a_fallback_hold() {
+        use openatc_core::airport::load_airport_from_simulator;
+        use std::path::Path;
+        let root = std::env::var("OPENATC_SIM_ROOT")
+            .unwrap_or_else(|_| "/home/bill/.local/share/Steam/steamapps/common/X-Plane 12".into());
+        let root_path = Path::new(&root);
+        if !root_path.join("Custom Data/CIFP/YSSY.dat").is_file() {
+            eprintln!("skipping: no YSSY CIFP under {}", root_path.display());
+            return;
+        }
+        let airport = load_airport_from_simulator(
+            &root,
+            "YSSY",
+            &|path| Path::new(path).is_file(),
+            &|path| std::fs::read_to_string(path).map_err(|error| error.to_string()),
+        )
+        .expect("YSSY airport");
+        let catalogue = Catalogue::load(root_path, "YSSY").expect("YSSY procedures");
+        let mut points = Points::requested(&[("YSSY", &catalogue)]);
+        points.load(root_path).expect("YSSY fixes");
+        let approach = catalogue.approach("I25", "").expect("ILS runway 25");
+        let map_leg = approach.landing.last().expect("missing-approach point");
+        let map_position = Points::runway(map_leg, &airport).expect("runway 25 threshold");
+        let weather = super::super::environment::Environment::from_sample(
+            &airport,
+            &(
+                serde_json::json!({
+                    "airport": "YSSY", "latitude": airport.reference_latitude,
+                    "longitude": airport.reference_longitude,
+                    "sampleAltitudeFeet": airport.elevation_feet,
+                    "pressureHpa": 1013.25, "temperatureC": 15.0,
+                    "magneticVariationDegrees": 12.0,
+                    "windDegrees": 0.0, "windKnots": 0.0
+                }),
+                Instant::now(),
+            ),
+        )
+        .expect("YSSY weather");
+        let heights = ["25", "07"]
+            .iter()
+            .filter_map(|name| {
+                airport.runways.iter().find_map(|runway| {
+                    (runway.first_name == *name || runway.second_name == *name).then(|| Threshold {
+                        runway: (*name).into(),
+                        elevation_feet: airport.elevation_feet,
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+        let surface = super::super::runway::Surface::new(&airport, "25", &heights, 2.0)
+            .expect("runway 25 surface");
+        let policy =
+            super::super::parse_operations(include_str!("../../../../traffic/operations.toml"))
+                .unwrap();
+        let handling = animation::builtin().unwrap();
+        let profiles = profiles::Profiles::builtin().unwrap();
+        let aircraft = profiles::aircraft("A320").expect("A320 profile");
+        let mora = Default::default();
+        let reserved = BTreeSet::new();
+        let planner = super::super::airborne::Planner {
+            regions: &Default::default(),
+            rotation: Waypoint {
+                latitude: airport.reference_latitude,
+                longitude: airport.reference_longitude,
+                altitude_feet: airport.elevation_feet,
+            },
+            origin: &airport,
+            destination: &airport,
+            points: &points,
+            mora: &mora,
+            departure_weather: &weather,
+            arrival_weather: &weather,
+            aircraft,
+            handling: &handling[&animation::Kind::Jet],
+            policy: &policy,
+            departure_surface: &surface,
+            arrival_surface: &surface,
+            observed: &[],
+            reserved: &reserved,
+            occupied_stand_cells: &BTreeSet::new(),
+            parking_exclusions: &BTreeSet::new(),
+            preference: &openatc_core::parking::TrafficPreference::default(),
+            allow_direct: false,
+        };
+        let variation = weather.variation;
+        let heading = map_leg
+            .course
+            .map_or(0.0, |course| (course + variation).rem_euclid(360.0));
+        let speed = trajectory::Airspeed {
+            indicated_knots: planner.aircraft.approach_knots,
+            atmosphere: weather.atmosphere,
+            wind_from: 0.0,
+            wind_knots: 0.0,
+        };
+        let map = Fix {
+            coordinate: map_position.coordinate,
+            arrival_heading: Some(heading),
+            minimum_feet: airport.elevation_feet,
+            maximum_feet: airport.elevation_feet,
+            preferred_feet: airport.elevation_feet,
+            ground_knots: speed.ground_knots(airport.elevation_feet, heading).unwrap(),
+            airspeed: Some(speed),
+            required_turn: None,
+            intercept: None,
+        };
+        let terminal = super::super::routing::Terminal {
+            arrival_manual: None,
+            direct: false,
+            enroute_from: [0.0, 0.0],
+            enroute_to: [0.0, 0.0],
+            enroute_minimum_feet: 1000,
+            departure_name: String::new(),
+            departure: vec![],
+            arrival_name: String::new(),
+            arrival_transition: String::new(),
+            arrival: vec![],
+            approach_name: "I25".into(),
+            approach_transition: String::new(),
+            approach: approach.landing.to_vec(),
+            missed: approach.missed.to_vec(),
+        };
+        let draft = prepare(&planner, &terminal, &map, 0.0).expect("fallback hold");
+        println!(
+            "hold={} level={:.0} climb_fpm={:.0}",
+            draft.holding_fix, draft.holding_feet, draft.climb_fpm
+        );
+        let route = draft.protect(|_, _| true).expect("path and hold geometry");
+        assert_eq!(route.segment(0).unwrap().stage, Stage::MissedApproach);
+        assert_eq!(
+            (0..512)
+                .map_while(|index| route.segment(index))
+                .last()
+                .unwrap()
+                .stage,
+            Stage::Holding
         );
     }
 }
