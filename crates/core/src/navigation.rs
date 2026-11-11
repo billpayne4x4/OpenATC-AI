@@ -264,6 +264,8 @@ pub fn load_constraints(plan: &mut FlightPlan, kind: &str, text: &str) {
                 Some(first.unwrap().max(second.unwrap())),
             ),
             "H" | "J" if first.is_some() && first == second => (first, first),
+            "H" if first.is_some() && second.is_some() && first >= second => (second, first),
+            "J" if first.is_some() && second.is_some() => (first, None),
             " " | "" => (first, first),
             _ => (None, None),
         };
@@ -925,7 +927,7 @@ mod tests {
         ));
     }
     #[test]
-    fn approach_equal_glideslope_fields_preserve_intercept_restrictions() {
+    fn approach_glideslope_fields_follow_the_published_reading() {
         let mut plan = FlightPlan {
             approach: "I35RY".into(),
             arrival_runway: "35R".into(),
@@ -960,12 +962,20 @@ mod tests {
             "APPCH",
             &text.replace("04000,04000", "04000,03000"),
         );
-        assert!(
-            uncertain
-                .fixes
-                .iter()
-                .all(|fix| fix.maximum_altitude_feet.is_none())
-        );
+        let glide = uncertain
+            .fixes
+            .iter()
+            .find(|fix| fix.identifier == "FI3RY")
+            .expect("glide-path fix");
+        assert_eq!(glide.minimum_altitude_feet, Some(3000));
+        assert_eq!(glide.maximum_altitude_feet, Some(4000));
+        let intercept = uncertain
+            .fixes
+            .iter()
+            .find(|fix| fix.identifier == "CI3RY")
+            .expect("glide-slope intercept fix");
+        assert_eq!(intercept.minimum_altitude_feet, Some(4000));
+        assert_eq!(intercept.maximum_altitude_feet, None);
     }
 
     #[test]

@@ -496,7 +496,7 @@ impl Default for Settings {
             auto_generated_traffic: true,
             traffic_rate: TrafficRate::EveryFrame,
             traffic_log: TrafficLog::Summary,
-            local_pattern_traffic: false,
+            local_pattern_traffic: true,
             start_first_flight_on_approach: false,
             airline_traffic: 8,
             regional_traffic: 4,

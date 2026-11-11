@@ -65,7 +65,9 @@ pub fn altitude_bounds(leg: &Leg, c: &Context<'_>) -> Result<(f64, f64), String>
             Some(one.unwrap().min(two.unwrap())),
             Some(one.unwrap().max(two.unwrap())),
         ),
-        "H" if one.is_some() && one == two => (one, one),
+        // H at a glide-path fix: the second altitude is the glide-path altitude at that
+        // fix (for example 1610 ft at 5 NM for a 3 degree path), the first is the ceiling.
+        "H" if one.is_some() && two.is_some() && one >= two => (two, one),
         // At the FACF, J's second altitude is a glide-slope intercept reference,
         // not an upper crossing limit. The first altitude remains the published minimum.
         "J" if one.is_some() && two.is_some() => (one, None),

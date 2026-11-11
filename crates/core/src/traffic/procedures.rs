@@ -28,7 +28,7 @@ pub struct Reference {
 }
 
 /// Published leg fields retained before resolving coordinates and flight geometry.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Leg {
     /// Recommended facility used for a course or bearing, distinct from the terminating fix.
     pub recommended: Option<Reference>,
@@ -102,6 +102,8 @@ impl Leg {
                 Some(first.unwrap().max(second.unwrap())),
             )),
             "H" | "J" if first.is_some() && first == second => Ok((first, first)),
+            "H" if first.is_some() && second.is_some() && first >= second => Ok((second, first)),
+            "J" if first.is_some() && second.is_some() => Ok((first, None)),
             other => Err(format!(
                 "{}: altitude descriptor {other} needs a dedicated vertical-path decoder",
                 self.identifier
@@ -494,6 +496,35 @@ impl Catalogue {
 
 #[cfg(test)]
 mod tests {
+    fn approach_leg(description: &str, one: i32, two: Option<i32>) -> Leg {
+        Leg {
+            altitude_description: description.into(),
+            altitude_one: Some(one),
+            altitude_two: two,
+            identifier: "PEGBA".into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_glide_path_fix_is_a_band_from_the_glide_altitude_up_to_the_ceiling() {
+        // YSSY PEGBA: 1610 ft is the 3 degree glide-path altitude at 5 NM, 3000 ft the ceiling.
+        let leg = approach_leg("H", 3000, Some(1610));
+        assert_eq!(leg.altitude_limits(), Ok((Some(1610), Some(3000))));
+        let equal = approach_leg("H", 3000, Some(3000));
+        assert_eq!(equal.altitude_limits(), Ok((Some(3000), Some(3000))));
+        let inverted = approach_leg("H", 1610, Some(3000));
+        assert!(inverted.altitude_limits().is_err());
+    }
+
+    #[test]
+    fn a_glide_slope_intercept_fix_keeps_the_first_altitude_as_its_minimum() {
+        let leg = approach_leg("J", 3000, Some(3000));
+        assert_eq!(leg.altitude_limits(), Ok((Some(3000), Some(3000))));
+        let band = approach_leg("J", 2000, Some(1610));
+        assert_eq!(band.altitude_limits(), Ok((Some(2000), None)));
+    }
+
     use super::*;
     #[test]
     fn arrival_uses_enroute_common_then_selected_runway() {

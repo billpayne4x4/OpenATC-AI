@@ -449,6 +449,8 @@ pub struct TrafficManager {
     announced: std::collections::BTreeSet<(u32, &'static str)>,
     /// Last time the player was asked to continue taxiing.
     move_request_at: Option<Instant>,
+    /// Traffic the player has been told to give way to, until the conflict clears.
+    player_yield: Option<u32>,
     movement_started: bool,
     active_airport: String,
     generation: u64,
@@ -1318,6 +1320,7 @@ impl TrafficManager {
             tower_tags.insert(key, tag);
         }
         self.ground_calls(state);
+        self.player_give_way(state, &traffic);
         let mut calls: Vec<(
             openatc_core::state::Radio,
             i32,
@@ -1540,22 +1543,7 @@ impl TrafficManager {
         if !(held && stopped && due) {
             return;
         }
-        let airport = self.active_airport.clone();
-        let Some((station, radio)) = state
-            .stations
-            .iter()
-            .filter(|station| {
-                station.airport == airport
-                    && (station.service == "Ground"
-                        || station.services.iter().any(|service| service == "Ground"))
-            })
-            .find_map(|station| {
-                state
-                    .session
-                    .receiving_radio(station.khz)
-                    .map(|radio| (station.clone(), radio))
-            })
-        else {
+        let Some((station, radio)) = self.tuned_ground_station(state) else {
             return;
         };
         let text = openatc_core::dialogue::say("ground_traffic_waiting", &[("callsign", player)]);
@@ -1571,6 +1559,109 @@ impl TrafficManager {
             },
         );
         self.move_request_at = Some(now);
+    }
+
+    /// The ground station of the active airport that the player is receiving, with its radio.
+    fn tuned_ground_station(
+        &self,
+        state: &crate::EngineState,
+    ) -> Option<(openatc_core::stations::Station, openatc_core::state::Radio)> {
+        state
+            .stations
+            .iter()
+            .filter(|station| {
+                station.airport == self.active_airport
+                    && (station.service == "Ground"
+                        || station.services.iter().any(|service| service == "Ground"))
+            })
+            .find_map(|station| {
+                state
+                    .session
+                    .receiving_radio(station.khz)
+                    .map(|radio| (station.clone(), radio))
+            })
+    }
+
+    /// The player gives way to moving traffic on its right at a junction. ATC says so once per
+    /// conflict on a ground frequency the player is receiving, and says continue when it clears.
+    fn player_give_way(&mut self, state: &mut crate::EngineState, traffic: &[TrafficTarget]) {
+        let player = traffic.iter().find(|target| {
+            target.id == 0 && target.on_ground && target.ground_speed_knots.unwrap_or(0.0) > 1.0
+        });
+        let mut nearest: Option<(f64, u32)> = None;
+        if let Some(player) = player {
+            for aircraft in &self.aircraft {
+                if aircraft.on_runway()
+                    || aircraft.airport != self.active_airport
+                    || aircraft.speed <= 0.5
+                {
+                    continue;
+                }
+                let (latitude, longitude, heading) =
+                    position_heading_at(&aircraft.points, &aircraft.cumulative, aircraft.distance);
+                if !separation::right_conflict(
+                    player.latitude,
+                    player.longitude,
+                    player.track_degrees,
+                    latitude,
+                    longitude,
+                    heading,
+                    aircraft.id,
+                    None,
+                    false,
+                    100.0,
+                ) {
+                    continue;
+                }
+                let gap = openatc_core::arrival::distance_nm(
+                    [player.latitude, player.longitude],
+                    [latitude, longitude],
+                ) * 1852.0;
+                if nearest.is_none_or(|(best, _)| gap < best) {
+                    nearest = Some((gap, aircraft.id));
+                }
+            }
+        }
+        let target = nearest.map(|(_, id)| id);
+        if target == self.player_yield {
+            return;
+        }
+        let Some((station, radio)) = self.tuned_ground_station(state) else {
+            if target.is_none() {
+                self.player_yield = None;
+            }
+            return;
+        };
+        let callsign = state.session.plan.callsign.clone();
+        let text = match target {
+            Some(id) => {
+                let other = self
+                    .aircraft
+                    .iter()
+                    .find(|aircraft| aircraft.id == id)
+                    .map_or_else(
+                        || "traffic".to_owned(),
+                        |aircraft| aircraft.callsign.clone(),
+                    );
+                openatc_core::dialogue::say(
+                    "player_give_way",
+                    &[("callsign", callsign), ("other", other)],
+                )
+            }
+            None => openatc_core::dialogue::say("player_give_way_clear", &[("callsign", callsign)]),
+        };
+        let tag = crate::flight::tag(state, &station);
+        openatc_core::apply::add_transmission(
+            &mut state.session,
+            "ATC",
+            &text,
+            &openatc_core::state::SpeechTag {
+                radio: Some(radio),
+                frequency: Some(station.khz),
+                ..tag
+            },
+        );
+        self.player_yield = target;
     }
 
     /// Republish the ambient frames even when traffic advancement stopped early.
@@ -4212,6 +4303,77 @@ mod phase_tests {
         manager.aircraft.push(departure);
         manager.tick(&mut state);
         assert!(manager.aircraft[0].player_hold_since.is_some());
+    }
+
+    #[test]
+    fn the_player_gives_way_to_crossing_traffic_on_its_right_until_it_clears() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 121_900;
+        state.stations = vec![openatc_core::stations::Station {
+            airport: "DEMO".into(),
+            service: "Ground".into(),
+            khz: 121_900,
+            ..Default::default()
+        }];
+        let mut manager = TrafficManager {
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut crossing = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        crossing.id = 7;
+        crossing.airport = "DEMO".into();
+        crossing.runway = "09".into();
+        crossing.runway_start = 1_000.0;
+        crossing.runway_end = 2_000.0;
+        crossing.points = vec![
+            Waypoint {
+                latitude: 0.0012,
+                longitude: 0.0005,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.0,
+                longitude: 0.0005,
+                altitude_feet: 0.0,
+            },
+        ];
+        crossing.cumulative = cumulative_distances(&crossing.points);
+        crossing.distance = 0.0;
+        crossing.speed = 5.0;
+        manager.aircraft.push(crossing);
+        let moving = TrafficTarget {
+            id: 0,
+            callsign: "BIL1975".into(),
+            latitude: 0.0006,
+            longitude: 0.0005,
+            track_degrees: 270.0,
+            on_ground: true,
+            ground_speed_knots: Some(10.0),
+            ..Default::default()
+        };
+        manager.player_give_way(&mut state, std::slice::from_ref(&moving));
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("give way to"))
+        );
+        assert_eq!(manager.player_yield, Some(7));
+        let stopped = TrafficTarget {
+            ground_speed_knots: Some(0.0),
+            ..moving
+        };
+        manager.player_give_way(&mut state, std::slice::from_ref(&stopped));
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("continue, clear of traffic"))
+        );
+        assert_eq!(manager.player_yield, None);
     }
 
     #[test]

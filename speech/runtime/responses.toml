@@ -18042,6 +18042,14 @@ say = ["{callsign}, {station}, roger."]
 slots = ["callsign", "destination", "route", "altitude", "squawk", "runway"]
 say = ["{callsign}, cleared to {destination} via {route}, climb {altitude} feet, squawk {squawk}, departure runway {runway}."]
 
+[player_give_way]
+slots = ["callsign", "other"]
+say = ["{callsign}, give way to {other}, traffic on your right."]
+
+[player_give_way_clear]
+slots = ["callsign"]
+say = ["{callsign}, continue, clear of traffic."]
+
 [ambient_give_way]
 slots = ["callsign", "other"]
 say = ["{callsign}, give way to {other}."]

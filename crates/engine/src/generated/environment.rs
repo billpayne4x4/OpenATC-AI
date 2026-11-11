@@ -18,6 +18,19 @@ const PLANNING_FIELDS: [&str; 8] = [
     "windKnots",
 ];
 
+/// Largest drift in each planning field that a prepared scene still accepts. Position is
+/// exact. The simulator's weather moves in small steps all the time, and a scene that took
+/// seconds to prepare should not be thrown away for a wind change of a few degrees.
+const PLANNING_TOLERANCE: [f64; 8] = [0.0, 0.0, 50.0, 1.5, 3.0, 0.5, 15.0, 4.0];
+
+fn planning_drift_within(index: usize, live: f64, expected: f64) -> bool {
+    if PLANNING_FIELDS[index] == "windDegrees" {
+        let difference = ((live - expected + 180.0).rem_euclid(360.0) - 180.0).abs();
+        return difference <= PLANNING_TOLERANCE[index];
+    }
+    (live - expected).abs() <= PLANNING_TOLERANCE[index]
+}
+
 #[derive(Clone)]
 pub(super) struct Environment {
     pub atmosphere: Atmosphere,
@@ -117,10 +130,13 @@ impl Environment {
                 samples.get(airport).is_some_and(|(sample, observed)| {
                     observed.elapsed() < Duration::from_secs(45)
                         && sample["airport"].as_str() == Some(airport.as_str())
-                        && PLANNING_FIELDS
-                            .iter()
-                            .zip(expected)
-                            .all(|(key, expected)| sample[*key].as_f64() == Some(*expected))
+                        && PLANNING_FIELDS.iter().enumerate().zip(expected).all(
+                            |((index, key), expected)| {
+                                sample[*key].as_f64().is_some_and(|live| {
+                                    planning_drift_within(index, live, *expected)
+                                })
+                            },
+                        )
                 })
             });
         }
@@ -132,7 +148,7 @@ impl Environment {
 mod tests {
     use super::*;
     #[test]
-    fn live_observations_revalidate_only_unchanged_planning_conditions() {
+    fn live_observations_revalidate_only_planning_drift_beyond_tolerance() {
         let airport = Airport {
             icao: "TEST".into(),
             reference_latitude: 43.0,
@@ -161,15 +177,41 @@ mod tests {
             .unwrap()
             .insert("TEST".into(), sample.clone());
         assert!(weather.fresh());
-        for field in PLANNING_FIELDS {
+        for (index, field) in PLANNING_FIELDS.iter().enumerate() {
             let mut changed = sample.clone();
-            changed.0[field] = serde_json::json!(changed.0[field].as_f64().unwrap() + 0.01);
+            let value = changed.0[field].as_f64().unwrap();
+            changed.0[field] = serde_json::json!(value + PLANNING_TOLERANCE[index] + 0.01);
             observations.write().unwrap().insert("TEST".into(), changed);
             assert!(
                 !weather.fresh(),
-                "Changed {field} must invalidate the planned trajectory"
+                "a change in {field} beyond its tolerance must invalidate the planned trajectory"
             );
         }
+        for (index, field) in PLANNING_FIELDS.iter().enumerate().skip(2) {
+            let mut drift = sample.clone();
+            let value = drift.0[field].as_f64().unwrap();
+            drift.0[field] = serde_json::json!(value + PLANNING_TOLERANCE[index] * 0.5);
+            observations.write().unwrap().insert("TEST".into(), drift);
+            assert!(
+                weather.fresh(),
+                "a drift in {field} inside its tolerance keeps the prepared scene"
+            );
+        }
+        let mut wrapped = sample.clone();
+        wrapped.0["windDegrees"] = serde_json::json!(227.0);
+        wrapped.0["windKnots"] = serde_json::json!(12.0);
+        observations.write().unwrap().insert("TEST".into(), wrapped);
+        assert!(weather.fresh(), "a 7 degree wind shift is inside tolerance");
+        let mut wrapped_far = sample.clone();
+        wrapped_far.0["windDegrees"] = serde_json::json!(20.0);
+        observations
+            .write()
+            .unwrap()
+            .insert("TEST".into(), wrapped_far);
+        assert!(
+            !weather.fresh(),
+            "a 160 degree wind shift is beyond tolerance"
+        );
         let mut stale = sample.clone();
         stale.1 = Instant::now().checked_sub(Duration::from_secs(46)).unwrap();
         observations.write().unwrap().insert("TEST".into(), stale);
