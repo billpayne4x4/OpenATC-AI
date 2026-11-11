@@ -525,27 +525,46 @@ fn displayed_fallback_hold_circle_is_a_reachable_clearance_limit() {
 
 #[test]
 fn selected_airport_retains_its_owning_scenery_path() {
-    let source = "/sim/Custom Scenery/Override/Earth nav data/apt.dat";
+    // Build the fixture with the platform's own path separators; the loader joins the
+    // root the same way, so a Windows run must not be given Unix-style keys.
+    let root = if cfg!(windows) { r"C:\sim" } else { "/sim" };
     let apt = "1 562 0 0 YMLT Launceston\n100 45.00 1 1 0.25 0 3 0 14R -41.5370582 147.2041027 0 61 2 0 0 0 32L -41.5520733 147.2169328 0 75 2 3 0 1\n";
+    let path = |parts: &[&str]| {
+        parts
+            .iter()
+            .fold(std::path::PathBuf::from(root), |base, part| base.join(part))
+            .to_string_lossy()
+            .into_owned()
+    };
+    let source = path(&["Custom Scenery", "Override", "Earth nav data", "apt.dat"]);
     let files = std::collections::BTreeMap::from([
         (
-            "/sim/Custom Scenery/scenery_packs.ini",
-            "SCENERY_PACK Custom Scenery/Override\n",
+            path(&["Custom Scenery", "scenery_packs.ini"]),
+            "SCENERY_PACK Custom Scenery/Override\n".to_owned(),
         ),
-        (source, apt),
+        (source.clone(), apt.to_owned()),
         (
-            "/sim/Global Scenery/Global Airports/Earth nav data/apt.dat",
-            apt,
+            path(&[
+                "Global Scenery",
+                "Global Airports",
+                "Earth nav data",
+                "apt.dat",
+            ]),
+            apt.to_owned(),
         ),
     ]);
-    let airport =
-        load_airport_from_simulator("/sim", "YMLT", &|path| files.contains_key(path), &|path| {
+    let airport = load_airport_from_simulator(
+        root,
+        "YMLT",
+        &|candidate| files.contains_key(candidate),
+        &|candidate| {
             files
-                .get(path)
-                .map(|text| (*text).to_owned())
+                .get(candidate)
+                .cloned()
                 .ok_or_else(|| "Missing test file".into())
-        })
-        .unwrap();
+        },
+    )
+    .unwrap();
     assert_eq!(airport.source, source);
 }
 
