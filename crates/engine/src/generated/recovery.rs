@@ -785,10 +785,7 @@ fn prepare_fallback(
         return Err("Amended missed level needs a published hold".into());
     }
     let missed = &terminal.missed;
-    let last = missed
-        .last()
-        .filter(|leg| matches!(leg.terminator.as_str(), "CA" | "DF" | "VM"))
-        .ok_or("Missed approach ends without a published hold or climb")?;
+    let last = missed.last().ok_or("Missed approach is missing")?;
     if missed.iter().any(|leg| leg.terminator == "HM") {
         return Err("Missed approach mixes a published hold with a climb".into());
     }
@@ -849,30 +846,50 @@ fn prepare_fallback(
             .geometric(planner.aircraft.ceiling, true)?,
         preferred_feet: start.altitude_feet,
     };
-    // A missed approach can change course between climb legs. The fallback climbs
-    // straight on the first course to the final missing level instead of forcing that
-    // turn, then holds at the end of the climb.
+    // The final level is the highest published level on the missed approach. A later
+    // leg without an altitude must not lower it.
+    let mut level_leg = last;
+    let mut level_low = start.altitude_feet;
+    let mut level_high = context.maximum_feet;
+    for leg in missed {
+        if leg.altitude_one.is_none() {
+            continue;
+        }
+        let (low, high) = resolved::altitude_bounds(leg, &context)?;
+        if low >= level_low {
+            level_low = low;
+            level_high = high;
+            level_leg = leg;
+        }
+    }
+    let level = level_low
+        .max(start.altitude_feet)
+        .max(holding_floor.unwrap_or(level_low));
+    if level > context.maximum_feet || level > level_high {
+        return Err("Missed approach level conflicts with its published climb".into());
+    }
+    // A missed approach can change course between climb legs. The fallback follows the
+    // first course to the final level instead of forcing that turn, then holds at the end.
     let mut path_legs = missed.to_vec();
-    if let Some(first) = missed.first().filter(|leg| leg.terminator == "CA") {
+    if let Some(first) = missed
+        .first()
+        .filter(|leg| matches!(leg.terminator.as_str(), "CA" | "DF"))
+    {
         let mut leg = first.clone();
         leg.altitude_description
-            .clone_from(&last.altitude_description);
-        leg.altitude_one = last.altitude_one;
-        leg.altitude_one_is_flight_level = last.altitude_one_is_flight_level;
+            .clone_from(&level_leg.altitude_description);
+        leg.altitude_one = level_leg.altitude_one;
+        leg.altitude_one_is_flight_level = level_leg.altitude_one_is_flight_level;
         leg.altitude_two = None;
         leg.altitude_two_is_flight_level = None;
-        leg.course = leg.course.or(last.course);
+        leg.course = leg.course.or(level_leg.course);
         path_legs = vec![leg];
     }
     let path_course = path_legs.first().and_then(|leg| leg.course);
-    let mut fixes = resolved::boundary_crossings(start, &path_legs, &context)?;
-    let (low, high) = resolved::altitude_bounds(last, &context)?;
-    let level = low
-        .max(start.altitude_feet)
-        .max(holding_floor.unwrap_or(low));
-    if level > context.maximum_feet || level > high {
-        return Err("Missed approach level conflicts with its published climb".into());
-    }
+    // The reusable decoder handles every computable leg class and reports a manual
+    // termination instead of rejecting it. The fallback's synthetic hold is the explicit
+    // amendment that continues past that point.
+    let (mut fixes, _manual) = resolved::amended_crossings(start, &path_legs, &context)?;
     let reported_level = weather.atmosphere.reported(level, false)?.round() as i32;
     let variation = weather.variation;
     let course = fixes
@@ -881,7 +898,8 @@ fn prepare_fallback(
             end.arrival_heading
                 .or_else(|| path_course.map(|course| (course + variation).rem_euclid(360.0)))
                 .or_else(|| {
-                    last.course
+                    level_leg
+                        .course
                         .map(|course| (course + variation).rem_euclid(360.0))
                 })
         })
@@ -925,16 +943,19 @@ fn prepare_fallback(
     end.minimum_feet = level;
     end.maximum_feet = level;
     end.preferred_feet = level;
-    let identifier = if last.terminator == "DF" && !last.identifier.is_empty() {
-        last.identifier.clone()
-    } else {
-        terminal
-            .approach
-            .last()
-            .filter(|leg| !leg.identifier.is_empty())
-            .map_or_else(|| "MA".into(), |leg| leg.identifier.clone())
-    };
-    let mut hold_leg = last.clone();
+    let identifier = path_legs
+        .last()
+        .filter(|leg| !leg.identifier.is_empty())
+        .map(|leg| leg.identifier.clone())
+        .or_else(|| {
+            terminal
+                .approach
+                .last()
+                .filter(|leg| !leg.identifier.is_empty())
+                .map(|leg| leg.identifier.clone())
+        })
+        .unwrap_or_else(|| "MA".into());
+    let mut hold_leg = path_legs.last().unwrap_or(last).clone();
     hold_leg.identifier.clone_from(&identifier);
     hold_leg.terminator = "HM".into();
     hold_leg.turn = "R".into();
@@ -1632,6 +1653,53 @@ mod tests {
         assert_eq!(
             hold.points[0].altitude_feet,
             weather.atmosphere.geometric(3000.0, false).unwrap()
+        );
+
+        // A later direct leg without an altitude must not lower the final level.
+        let mut direct = terminal.missed.last().unwrap().clone();
+        direct.identifier = "HOLD".into();
+        direct.terminator = "DF".into();
+        direct.altitude_description.clear();
+        direct.altitude_one = None;
+        direct.altitude_one_is_flight_level = None;
+        direct.altitude_two = None;
+        direct.altitude_two_is_flight_level = None;
+        direct.course = None;
+        let mut after_climb = climb.clone();
+        after_climb.missed.push(direct.clone());
+        let kept = prepare(&planner, &after_climb, &map, 0.0).expect("level after a direct leg");
+        assert!(
+            (kept.holding_feet - weather.atmosphere.geometric(3000.0, false).unwrap()).abs() < 1e-6
+        );
+
+        // A direct-to-fix first leg holds at that fix at the final published level.
+        let mut direct_first = terminal.clone();
+        direct_first.missed = vec![direct, climb.missed.last().unwrap().clone()];
+        let fixed = prepare(&planner, &direct_first, &map, 0.0).expect("direct first leg");
+        assert_eq!(fixed.holding_fix, "HOLD");
+        assert!(
+            (fixed.holding_feet - weather.atmosphere.geometric(3000.0, false).unwrap()).abs()
+                < 1e-6
+        );
+
+        // A missed approach that ends at a fix, with no hold, uses the same class decoder.
+        let mut fix_end = terminal.clone();
+        let mut cf = terminal.missed.last().unwrap().clone();
+        cf.terminator = "CF".into();
+        cf.identifier = "HOLD".into();
+        cf.altitude_description = "+".into();
+        cf.altitude_one = Some(3000);
+        cf.altitude_one_is_flight_level = Some(false);
+        cf.altitude_two = None;
+        cf.altitude_two_is_flight_level = None;
+        cf.course = Some(90.0);
+        cf.speed_knots = None;
+        fix_end.missed = vec![cf];
+        let at_fix = prepare(&planner, &fix_end, &map, 0.0).expect("fix-ending missed approach");
+        assert_eq!(at_fix.holding_fix, "HOLD");
+        assert!(
+            (at_fix.holding_feet - weather.atmosphere.geometric(3000.0, false).unwrap()).abs()
+                < 1e-6
         );
     }
 
