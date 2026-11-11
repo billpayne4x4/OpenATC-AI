@@ -163,7 +163,59 @@ pub fn load_index(root: &str) -> Result<Vec<Station>, String> {
             &std::fs::read_to_string(overrides).map_err(|e| e.to_string())?,
         )?;
     }
+    merge_shared_frequencies(&mut stations);
     Ok(stations)
+}
+
+/// Combine station entries that share an airport and frequency.
+///
+/// Published data can list the same transmitter twice, for example a Tower and a
+/// PRM monitor. Keeping both makes the tuned station depend on list order and can
+/// leave the controller role wrong.
+fn merge_shared_frequencies(stations: &mut Vec<Station>) {
+    let priority = |service: &str| match service {
+        "Tower" => 0,
+        "Approach" => 1,
+        "Departure" => 2,
+        "Ground" => 3,
+        "Clearance" | "Delivery" => 4,
+        "ATIS" => 5,
+        "Unicom" => 6,
+        _ => 7,
+    };
+    let mut merged: Vec<Station> = Vec::new();
+    for station in stations.drain(..) {
+        let Some(index) = merged.iter().position(|existing| {
+            existing.airport == station.airport && existing.khz == station.khz
+        }) else {
+            merged.push(station);
+            continue;
+        };
+        // ATIS and Unicom are distinct services even when they share a channel.
+        if ["ATIS", "Unicom"].contains(&station.service.as_str())
+            || ["ATIS", "Unicom"].contains(&merged[index].service.as_str())
+        {
+            merged.push(station);
+            continue;
+        }
+        let existing = &mut merged[index];
+        for service in
+            std::iter::once(station.service.clone()).chain(station.services.iter().cloned())
+        {
+            if !existing.services.contains(&service) {
+                existing.services.push(service);
+            }
+        }
+        if !existing.services.contains(&existing.service) {
+            existing.services.push(existing.service.clone());
+        }
+        if priority(&station.service) < priority(&existing.service) {
+            existing.service = station.service;
+            existing.name = station.name;
+            existing.airport_name = station.airport_name;
+        }
+    }
+    *stations = merged;
 }
 /// Convert a loaded airport (also used for deterministic fixtures).
 #[must_use]
@@ -937,6 +989,31 @@ mod path_tests {
             r"C:\X-Plane 12"
         );
         assert_eq!(simulator_root("C:").to_string_lossy(), "C:/");
+    }
+
+    #[test]
+    fn a_shared_frequency_keeps_one_station_with_both_services() {
+        let mut stations = vec![
+            Station {
+                airport: "YSSY".into(),
+                name: "PRM W (Monitor)".into(),
+                service: "Approach".into(),
+                khz: 119_450,
+                ..Default::default()
+            },
+            Station {
+                airport: "YSSY".into(),
+                name: "SYDNEY Tower".into(),
+                service: "Tower".into(),
+                khz: 119_450,
+                ..Default::default()
+            },
+        ];
+        merge_shared_frequencies(&mut stations);
+        assert_eq!(stations.len(), 1);
+        assert_eq!(stations[0].service, "Tower");
+        assert_eq!(stations[0].name, "SYDNEY Tower");
+        assert!(stations[0].services.contains(&"Approach".to_owned()));
     }
 
     #[test]

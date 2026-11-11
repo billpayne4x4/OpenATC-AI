@@ -941,9 +941,22 @@ fn descend(state: &mut EngineState, station: &Station) -> bool {
             && upper < c.altitude_feet
             && preceding_floor <= upper
             && distance.is_finite()
-            && distance <= state.vertical_policy.distance(c.altitude_feet, upper)
         {
-            let target = upper.max(fix.minimum_altitude_feet.unwrap_or(upper));
+            // Follow the planned vertical path where one is published. The
+            // maximum restriction is a limit, not the target.
+            let planned = fix.altitude_feet.round() as i32;
+            let target = if planned > 0 {
+                planned
+                    .max(fix.minimum_altitude_feet.unwrap_or(i32::MIN))
+                    .min(upper)
+            } else {
+                upper.max(fix.minimum_altitude_feet.unwrap_or(upper))
+            };
+            if distance > state.vertical_policy.distance(c.altitude_feet, target) {
+                preceding_floor =
+                    preceding_floor.max(fix.minimum_altitude_feet.unwrap_or(i32::MIN));
+                continue;
+            }
             // An at-or-below restriction already met at the aircraft's actual
             // altitude no longer limits the flight; keep looking ahead.
             if fix.minimum_altitude_feet != Some(upper)
@@ -953,15 +966,14 @@ fn descend(state: &mut EngineState, station: &Station) -> bool {
                     preceding_floor.max(fix.minimum_altitude_feet.unwrap_or(i32::MIN));
                 continue;
             }
-            selected = Some((fix, upper));
+            selected = Some((fix, target));
             break;
         }
         preceding_floor = preceding_floor.max(fix.minimum_altitude_feet.unwrap_or(i32::MIN));
     }
-    let Some((fix, upper)) = selected else {
+    let Some((fix, target)) = selected else {
         return destination_descent(state, station);
     };
-    let target = upper.max(fix.minimum_altitude_feet.unwrap_or(upper));
     let slots = [
         ("callsign", state.session.plan.callsign.clone()),
         (
@@ -1172,6 +1184,34 @@ mod tests {
             },
         )
     }
+    #[test]
+    fn descent_follows_the_planned_profile_below_the_published_maximum() {
+        let (mut state, station) = speed_fixture();
+        state.session.clearance.as_mut().unwrap().altitude_feet = 15000;
+        state.session.telemetry.altitude_feet = 15000.0;
+        state.session.telemetry.indicated_altitude_feet = Some(15000.0);
+        state.flow.monitor.next_fix = 1;
+        state.session.plan.fixes = vec![
+            openatc_core::state::RouteFix {
+                longitude: 0.0,
+                ..Default::default()
+            },
+            openatc_core::state::RouteFix {
+                identifier: "POMEL".into(),
+                longitude: 0.7,
+                altitude_feet: 9800.0,
+                maximum_altitude_feet: Some(14000),
+                minimum_altitude_feet: Some(9000),
+                ..Default::default()
+            },
+        ];
+        assert!(descend(&mut state, &station));
+        assert_eq!(
+            state.session.clearance.as_ref().unwrap().altitude_feet,
+            9800
+        );
+    }
+
     #[test]
     fn published_speed_notice_is_early_once_and_uses_ias() {
         let (mut state, station) = speed_fixture();
