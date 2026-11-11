@@ -81,6 +81,9 @@ fn evaluate(state: &EngineState, position: Option<&Pattern>) -> Decision {
         return Decision::Unknown;
     };
     let mut t = state.session.telemetry.clone();
+    // Holds see OpenATC's own traffic even when the simulator reports none. A landing
+    // still treats a missing simulator picture as unknown and holds conservatively.
+    t.traffic = Some(state.traffic_targets());
     if t.aircraft_icao.is_empty() {
         t.aircraft_icao.clone_from(&state.session.plan.aircraft);
     }
@@ -721,6 +724,17 @@ mod tests {
         assert!(result.accepted, "{}", result.message);
         acknowledge(s, request.clearance_sequence);
     }
+    #[test]
+    fn a_hold_decision_uses_openatc_traffic_when_the_simulator_reports_none() {
+        let (mut s, _) = scenario();
+        s.session.telemetry.traffic = None;
+        assert_ne!(
+            evaluate(&s, None),
+            Decision::Unknown,
+            "the hold assessment must have the combined traffic picture"
+        );
+    }
+
     #[test]
     fn delay_hold_readback_setting_pause_and_onward_fix_crossing() {
         let (mut s, station) = scenario();

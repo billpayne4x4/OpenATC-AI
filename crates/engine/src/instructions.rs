@@ -559,6 +559,36 @@ pub fn tick(state: &mut EngineState, station: &Station) {
                 openatc_core::arrival::bearing([a.latitude, a.longitude], [b.latitude, b.longitude])
             });
         let deviation = navigation::turn(course, track);
+        // A fly-by turn cuts the corner before its fix. The cross-track to the inbound
+        // chord and the track difference both look like a deviation, so skip the
+        // correction while the aircraft is inside the turn and already turning the
+        // cleared way. A turn the other way is still corrected.
+        let turn_at_fix = fixes.get(next + 1).map_or(0.0, |following| {
+            let inbound = openatc_core::arrival::bearing(
+                [fixes[next - 1].latitude, fixes[next - 1].longitude],
+                [fixes[next].latitude, fixes[next].longitude],
+            );
+            let outbound = openatc_core::arrival::bearing(
+                [fixes[next].latitude, fixes[next].longitude],
+                [following.latitude, following.longitude],
+            );
+            navigation::turn(inbound, outbound)
+        });
+        let turn_radius_nm = {
+            let speed = t.ground_speed_knots * 0.514_444;
+            (speed * speed / (9.80665 * 25.0_f64.to_radians().tan())) / 1852.0
+        };
+        let turning_as_cleared = turn_at_fix.abs() >= 20.0
+            && !fixes[next].fly_over
+            && t.ground_speed_knots > 0.0
+            && deviation.abs() >= 5.0
+            && (deviation < 0.0) == (turn_at_fix < 0.0)
+            && openatc_core::ops::distance_nm(
+                t.latitude,
+                t.longitude,
+                fixes[next].latitude,
+                fixes[next].longitude,
+            ) <= turn_radius_nm.max(1.0) * 1.5;
         if state
             .flow
             .monitor
@@ -571,7 +601,7 @@ pub fn tick(state: &mut EngineState, station: &Station) {
             return;
         }
         let turn = navigation::turn(t.heading_degrees, leg.bearing);
-        if turn.abs() > 5.0 {
+        if turn.abs() > 5.0 && !turning_as_cleared {
             let destination = [fixes[next].latitude, fixes[next].longitude];
             if state
                 .mora
@@ -1573,6 +1603,101 @@ mod tests {
             .join(" | ");
         assert!(text.contains("GM614"), "{text}");
         assert!(!text.contains("GM439"), "{text}");
+    }
+
+    fn turn_fixture(wrong_way: bool) -> (EngineState, Station) {
+        let mut state = crate::test_state();
+        state.settings.enforce_clearance_constraints = true;
+        state
+            .session
+            .on_event(openatc_core::aircraft::AircraftEvent::Cruise);
+        state.session.telemetry = openatc_core::state::Telemetry {
+            position_valid: true,
+            on_ground: false,
+            latitude: 0.015,
+            longitude: if wrong_way { -0.04 } else { 0.04 },
+            altitude_feet: 20000.0,
+            height_agl_feet: 20000.0,
+            indicated_altitude_feet: Some(20000.0),
+            ground_speed_knots: 280.0,
+            heading_degrees: if wrong_way { 0.0 } else { 45.0 },
+            magnetic_heading_degrees: Some(if wrong_way { 0.0 } else { 45.0 }),
+            ground_track_degrees: Some(if wrong_way { 0.0 } else { 45.0 }),
+            ..Default::default()
+        };
+        state.session.plan.cruise_feet = 20000;
+        state.session.plan.fixes = vec![
+            openatc_core::state::RouteFix {
+                longitude: 0.0,
+                ..Default::default()
+            },
+            openatc_core::state::RouteFix {
+                identifier: "TURNB".into(),
+                latitude: 0.02,
+                longitude: 0.0,
+                path_terminator: "TF".into(),
+                ..Default::default()
+            },
+            openatc_core::state::RouteFix {
+                identifier: "TURNC".into(),
+                latitude: 0.02,
+                longitude: 0.04,
+                path_terminator: "TF".into(),
+                ..Default::default()
+            },
+        ];
+        state.session.clearance = Some(openatc_core::state::Clearance {
+            altitude_feet: 20000,
+            acknowledged: true,
+            route: "ROUTE".into(),
+            ..Default::default()
+        });
+        state.flow.monitor.route = "ROUTE".into();
+        state.flow.monitor.next_fix = 1;
+        for latitude in -1..=1 {
+            for longitude in -1..=1 {
+                state.mora.0.insert((latitude, longitude), 1000);
+            }
+        }
+        let station = Station {
+            service: "Center".into(),
+            ..Default::default()
+        };
+        (state, station)
+    }
+
+    #[test]
+    fn a_fly_by_turn_is_not_reported_off_course() {
+        let (mut state, station) = turn_fixture(false);
+        tick(&mut state, &station);
+        let text = state
+            .session
+            .transcript
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert!(
+            !text.contains("TURNB"),
+            "the aircraft is turning as cleared, not off course: {text}"
+        );
+    }
+
+    #[test]
+    fn a_turn_the_wrong_way_is_still_corrected() {
+        let (mut state, station) = turn_fixture(true);
+        tick(&mut state, &station);
+        let text = state
+            .session
+            .transcript
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert!(
+            text.contains("TURNB"),
+            "turning away from the cleared turn is a real deviation: {text}"
+        );
     }
 
     #[test]

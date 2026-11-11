@@ -519,6 +519,17 @@ fn prepare_start(
         .missed
         .split_last()
         .ok_or("Missed approach is missing")?;
+    if published.terminator != "HM" {
+        return prepare_fallback(
+            planner,
+            terminal,
+            map,
+            minimum_feet,
+            holding_floor,
+            amendment,
+            late,
+        );
+    }
     if published.terminator != "HM"
         || prefix.is_empty()
         || prefix.iter().any(|leg| leg.terminator == "HM")
@@ -747,6 +758,189 @@ fn prepare_start(
     Ok(Draft {
         map: published_map,
         holding_fix: published.identifier.clone(),
+        holding_feet: level,
+        path,
+        hold,
+        entry,
+        climb_fpm: planner.aircraft.climb_fpm,
+        descent_fpm: planner.aircraft.descent_fpm,
+    })
+}
+
+/// Missed approaches that end in a climb, a direct-to-fix or a vector have no published
+/// hold. Fly the published path to its level, then hold at the end of it. The hold is an
+/// engine fallback, not a published procedure: right turns, one-minute legs, and the
+/// published level.
+#[allow(clippy::too_many_arguments)]
+fn prepare_fallback(
+    planner: &super::airborne::Planner<'_>,
+    terminal: &super::routing::Terminal,
+    map: &trajectory::Fix,
+    minimum_feet: f64,
+    holding_floor: Option<f64>,
+    amendment: Option<&super::flight::MissedInstruction>,
+    late: Option<Waypoint>,
+) -> Result<Draft, String> {
+    if amendment.is_some() {
+        return Err("Amended missed level needs a published hold".into());
+    }
+    let missed = &terminal.missed;
+    let last = missed
+        .last()
+        .filter(|leg| matches!(leg.terminator.as_str(), "CA" | "DF" | "VM"))
+        .ok_or("Missed approach ends without a published hold or climb")?;
+    if missed.iter().any(|leg| leg.terminator == "HM") {
+        return Err("Missed approach mixes a published hold with a climb".into());
+    }
+    let weather = planner.arrival_weather;
+    if !weather.fresh() {
+        return Err("Missed approach weather is stale".into());
+    }
+    let published_map = Waypoint {
+        latitude: map.coordinate[0],
+        longitude: map.coordinate[1],
+        altitude_feet: map.preferred_feet,
+    };
+    let start = if let Some(start) = late {
+        let local = openatc_core::airport::airport_point(
+            planner.destination,
+            start.latitude,
+            start.longitude,
+        );
+        let along = planner.arrival_surface.along(local);
+        let centre = planner.arrival_surface.point(along);
+        let height = planner.arrival_surface.height(local);
+        if [start.latitude, start.longitude, start.altitude_feet, along]
+            .iter()
+            .any(|value| !value.is_finite())
+            || along <= planner.arrival_surface.threshold
+            || along >= planner.arrival_surface.length
+            || (local.east - centre.east).hypot(local.north - centre.north) > 1.852
+            || start.altitude_feet < height - 1.0
+            || start.altitude_feet > published_map.altitude_feet + 1.0
+        {
+            return Err("Late missed approach start is outside its checked runway envelope".into());
+        }
+        start
+    } else {
+        published_map
+    };
+    let map_speed = map.airspeed.ok_or("Missed approach has no MAP airspeed")?;
+    if map_speed.atmosphere != weather.atmosphere
+        || (map_speed.wind_from - weather.wind_from).abs() > f64::EPSILON
+        || (map_speed.wind_knots - weather.wind_knots).abs() > f64::EPSILON
+    {
+        return Err("Missed approach weather does not match its MAP inputs".into());
+    }
+    let indicated = map_speed.indicated_knots;
+    let context = Context {
+        airport: planner.destination,
+        points: planner.points,
+        atmosphere: weather.atmosphere,
+        variation: weather.variation,
+        wind_from: weather.wind_from,
+        wind_knots: weather.wind_knots,
+        indicated_knots: indicated,
+        maximum_intercept_nm: planner.policy.terminal_intercept_limit_nm,
+        climb_fpm: planner.aircraft.climb_fpm,
+        minimum_feet,
+        maximum_feet: weather
+            .atmosphere
+            .geometric(planner.aircraft.ceiling, true)?,
+        preferred_feet: start.altitude_feet,
+    };
+    let mut fixes = resolved::boundary_crossings(start, missed, &context)?;
+    let (low, high) = resolved::altitude_bounds(last, &context)?;
+    let level = low
+        .max(start.altitude_feet)
+        .max(holding_floor.unwrap_or(low));
+    if level > context.maximum_feet || level > high {
+        return Err("Missed approach level conflicts with its published climb".into());
+    }
+    let variation = weather.variation;
+    let end = fixes
+        .last_mut()
+        .ok_or("Missed approach has no path to a hold point")?;
+    end.minimum_feet = level;
+    end.maximum_feet = level;
+    end.preferred_feet = level;
+    let course = end
+        .arrival_heading
+        .or_else(|| {
+            last.course
+                .map(|course| (course + variation).rem_euclid(360.0))
+        })
+        .ok_or("Missed approach has no inbound course")?;
+    let identifier = if last.terminator == "DF" && !last.identifier.is_empty() {
+        last.identifier.clone()
+    } else {
+        terminal
+            .approach
+            .last()
+            .filter(|leg| !leg.identifier.is_empty())
+            .map_or_else(|| "MA".into(), |leg| leg.identifier.clone())
+    };
+    let mut hold_leg = last.clone();
+    hold_leg.identifier.clone_from(&identifier);
+    hold_leg.terminator = "HM".into();
+    hold_leg.turn = "R".into();
+    hold_leg.course = Some((course - variation).rem_euclid(360.0));
+    hold_leg.altitude_description.clear();
+    hold_leg.altitude_one = Some(level.round() as i32);
+    hold_leg.altitude_one_is_flight_level = Some(false);
+    hold_leg.altitude_two = None;
+    hold_leg.altitude_two_is_flight_level = None;
+    hold_leg.speed_description = "-".into();
+    hold_leg.speed_knots = None;
+    hold_leg.distance_time = "T010".into();
+    let position = openatc_core::traffic::coordinates::Position {
+        coordinate: end.coordinate,
+        elevation_feet: None,
+        magnetic_variation_degrees: Some(variation),
+    };
+    let airspeed = trajectory::Airspeed {
+        indicated_knots: indicated,
+        ..map_speed
+    };
+    let pattern = holding::Pattern::published(
+        &hold_leg,
+        position,
+        &holding::Clearance {
+            level_feet: weather.atmosphere.reported(level, false)?.round() as i32,
+            geometric_feet: level,
+            indicated_knots: indicated,
+            ground_knots: airspeed.ground_knots(level, course)?,
+            bank_degrees: planner.handling.maximum_bank_degrees,
+            turn_rate_degrees_sec: planner.policy.holding_turn_rate_degrees_sec,
+        },
+    )?;
+    let incoming = end.arrival_heading.unwrap_or(course);
+    let entry = pattern.direct_entry(incoming)?;
+    let final_heading = if entry.is_some() { incoming } else { course };
+    let last_fix = fixes.last_mut().expect("checked missed path");
+    last_fix.arrival_heading = Some(final_heading);
+    last_fix.ground_knots = airspeed.ground_knots(level, final_heading)?;
+    let path = trajectory::draft(
+        start,
+        planner.arrival_surface.heading(),
+        &fixes,
+        final_heading,
+        &Envelope {
+            bank_degrees: planner.handling.maximum_bank_degrees,
+            turn_rate_degrees_sec: planner.policy.airborne_turn_rate_degrees_sec,
+            climb_fpm: planner.aircraft.climb_fpm,
+            descent_fpm: planner.aircraft.descent_fpm,
+            spacing_meters: planner.policy.airborne_sample_meters,
+            maximum_detour_meters: planner.policy.airborne_detour_meters,
+        },
+    )?;
+    let hold = pattern.draft()?;
+    if !weather.fresh() {
+        return Err("Missed approach weather expired during preparation".into());
+    }
+    Ok(Draft {
+        map: published_map,
+        holding_fix: identifier,
         holding_feet: level,
         path,
         hold,
@@ -1351,5 +1545,39 @@ mod tests {
         bad = terminal.clone();
         bad.missed.last_mut().unwrap().speed_knots = Some(planner.aircraft.approach_knots - 1.0);
         assert!(prepare(&planner, &bad, &map, 0.0).is_err());
+
+        // Sydney-style missed approach: a climb on course to its level, with no published
+        // hold. The fallback holds at the end of the climb.
+        let mut climb = terminal.clone();
+        let mut ca = terminal.missed.last().unwrap().clone();
+        ca.identifier.clear();
+        ca.terminator = "CA".into();
+        ca.altitude_description = "+".into();
+        ca.altitude_one = Some(3000);
+        ca.altitude_one_is_flight_level = Some(false);
+        ca.altitude_two = None;
+        ca.altitude_two_is_flight_level = None;
+        ca.course = Some(0.0);
+        ca.speed_description.clear();
+        ca.speed_knots = None;
+        climb.missed = vec![terminal.missed[0].clone(), ca];
+        let fallback = prepare(&planner, &climb, &map, 0.0).expect("fallback hold");
+        assert_eq!(fallback.holding_fix, "RW36");
+        assert!(
+            (fallback.holding_feet - weather.atmosphere.geometric(3000.0, false).unwrap()).abs()
+                < 1e-6
+        );
+        assert!(fallback.clone().protect(|_, _| false).is_err());
+        let route = fallback.clone().protect(|_, _| true).unwrap();
+        assert_eq!(route.segment(0).unwrap().stage, Stage::MissedApproach);
+        let hold = (0..512)
+            .map_while(|index| route.segment(index))
+            .last()
+            .unwrap();
+        assert_eq!(hold.stage, Stage::Holding);
+        assert_eq!(
+            hold.points[0].altitude_feet,
+            weather.atmosphere.geometric(3000.0, false).unwrap()
+        );
     }
 }

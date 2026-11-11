@@ -212,7 +212,7 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface, sta
         }
     }
     widgets::section_title(ui, "TRAFFIC SOURCE");
-    ui.text_wrapped("Airport traffic runs without a flight plan: taxiing aircraft, departures and arrivals around the loaded airport. Generated traffic adds planned flights around your route where the installed procedures allow them; destinations whose approaches end in a climb-out or vector are not yet supported, so Sydney currently produces no arrivals. Native X-Plane AI is optional; installing Bluebell models alone does not create flights.");
+    ui.text_wrapped("Airport traffic runs without a flight plan: taxiing aircraft, departures and arrivals around the loaded airport. Generated traffic adds planned flights around your route where the installed procedures allow them. A missed approach that ends in a climb-out or vector gets a fallback hold at the end of its published climb instead of a published hold. Native X-Plane AI is optional; installing Bluebell models alone does not create flights.");
     if let Some(reply) = interface.engine.take_reply("/traffic/models/index") {
         interface.traffic_notice = if reply.success {
             format!(
