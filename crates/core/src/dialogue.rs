@@ -564,31 +564,75 @@ mod speech_text_tests {
         assert_eq!(super::speech_text("Ready 👨‍✈️"), "Ready");
     }
 
-    /// Phrase keys written as string literals in the Rust sources, for example `say("ambient_hold_short", ...)`.
-    fn literal_keys(text: &str) -> Vec<String> {
-        let mut keys = Vec::new();
+    /// Arguments of every call to `marker` (which includes the opening parenthesis),
+    /// stopping at its matching close so a scan cannot run into the next function.
+    fn call_arguments<'a>(text: &'a str, marker: &str) -> Vec<&'a str> {
+        let mut found = Vec::new();
         let mut rest = text;
-        while let Some(index) = rest.find("say(") {
+        while let Some(index) = rest.find(marker) {
             let before = rest[..index].chars().next_back();
-            let after = &rest[index + 4..];
+            let after = &rest[index + marker.len()..];
             rest = after;
             if before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
                 continue;
             }
-            let trimmed = after.trim_start();
-            let Some(quoted) = trimmed.strip_prefix('"') else {
+            let mut depth = 1usize;
+            let mut in_string = false;
+            let mut escaped = false;
+            let mut end = None;
+            for (offset, c) in after.char_indices() {
+                if in_string {
+                    if escaped {
+                        escaped = false;
+                    } else if c == '\\' {
+                        escaped = true;
+                    } else if c == '"' {
+                        in_string = false;
+                    }
+                    continue;
+                }
+                match c {
+                    '"' => in_string = true,
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = Some(offset);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let Some(end) = end {
+                found.push(&after[..end]);
+            }
+        }
+        found
+    }
+
+    /// Phrase keys written as string literals in the Rust sources. `say` takes the key first;
+    /// the traffic `atc` helper takes it before the slot list.
+    fn literal_keys(text: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        for arguments in call_arguments(text, "say(") {
+            let trimmed = arguments.trim_start();
+            if !trimmed.starts_with('"') {
+                continue;
+            }
+            let quoted = &trimmed[1..];
+            if let Some(end) = quoted.find('"') {
+                keys.push(quoted[..end].to_owned());
+            }
+        }
+        for arguments in call_arguments(text, "atc(") {
+            let head = arguments.split("&[").next().unwrap_or(arguments);
+            let Some(start) = head.find('"') else {
                 continue;
             };
-            let Some(end) = quoted.find('"') else {
-                continue;
-            };
-            let key = &quoted[..end];
-            if !key.is_empty()
-                && key
-                    .chars()
-                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
-            {
-                keys.push(key.to_owned());
+            let quoted = &head[start + 1..];
+            if let Some(end) = quoted.find('"') {
+                keys.push(quoted[..end].to_owned());
             }
         }
         keys
@@ -617,6 +661,13 @@ mod speech_text_tests {
                     continue;
                 };
                 for key in literal_keys(&text) {
+                    if key.is_empty()
+                        || !key
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+                    {
+                        continue;
+                    }
                     scanned += 1;
                     if super::phrases(&key).is_empty() {
                         missing.push(format!("{}: {key}", path.display()));
