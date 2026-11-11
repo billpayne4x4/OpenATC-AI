@@ -1035,11 +1035,13 @@ impl TrafficManager {
             {
                 decision = openatc_core::apply::TakeoffDecision::LineUpAndWait;
             }
-            let behind_player = player_remaining.is_some_and(|player| {
-                own_runway == player_runway
-                    && self.aircraft[index].distance < self.aircraft[index].runway_start
-                    && (self.aircraft[index].runway_start - self.aircraft[index].distance)
-                        > player + 30.0
+            let behind_player = player_remaining.is_some_and(|threshold| {
+                departure_behind_player(
+                    &self.aircraft[index],
+                    [telemetry.latitude, telemetry.longitude],
+                    &player_runway,
+                    threshold,
+                )
             });
             let is_lead = queue_lead == Some(own_id) && !behind_player;
             if hold_for_clearance && is_lead {
@@ -2765,6 +2767,34 @@ impl TrafficManager {
     }
 }
 
+/// Whether an ambient departure is still behind the player in the runway queue.
+///
+/// Both are measured to the holding point. A straight line from the player to the
+/// threshold can put the player ahead of a jet already at the hold on a curved
+/// taxiway. Airports without a holding marker fall back to the runway start and
+/// the threshold distance.
+fn departure_behind_player(
+    aircraft: &AmbientAircraft,
+    player: [f64; 2],
+    player_runway: &str,
+    threshold_remaining: f64,
+) -> bool {
+    if aircraft.runway != player_runway || aircraft.distance >= aircraft.runway_start {
+        return false;
+    }
+    let (own_remaining, player_remaining) = match aircraft.hold {
+        Some(hold) => (
+            (aircraft.hold_distance - aircraft.distance).max(0.0),
+            openatc_core::arrival::distance_nm(player, hold) * 1852.0,
+        ),
+        None => (
+            aircraft.runway_start - aircraft.distance,
+            threshold_remaining,
+        ),
+    };
+    own_remaining > player_remaining + 30.0
+}
+
 /// First departure at the hold in arrival order.
 fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
     aircraft
@@ -4049,6 +4079,86 @@ mod phase_tests {
         next.distance = 600.0;
         next.hold_since = Some(later);
         assert_eq!(queue_leader(&[rolling, next]), Some(3));
+    }
+
+    #[test]
+    fn departures_are_ordered_by_distance_to_the_hold() {
+        let hold = [-35.319_982_6, 149.193_047_4];
+        let player = [-35.319_464_3, 149.192_489];
+        let mut leader = ambient(AmbientKind::Departure, 3250.4, 0.0, 5_000.0);
+        leader.runway = "35".into();
+        leader.hold_distance = 3_249.96;
+        leader.runway_start = 3_653.9;
+        leader.hold = Some(hold);
+        assert!(
+            !departure_behind_player(&leader, player, "35", 283.0),
+            "a jet at the hold is ahead even when the player is closer to the threshold"
+        );
+        assert!(!departure_behind_player(&leader, hold, "35", 0.0));
+        assert!(!departure_behind_player(&leader, player, "17", 283.0));
+        let mut behind = ambient(AmbientKind::Departure, 3049.96, 0.0, 5_000.0);
+        behind.runway = "35".into();
+        behind.hold_distance = 3_249.96;
+        behind.runway_start = 3_653.9;
+        behind.hold = Some(hold);
+        assert!(
+            departure_behind_player(&behind, hold, "35", 0.0),
+            "a jet still 200 m before the hold is behind a player at the hold"
+        );
+        behind.hold = None;
+        assert!(
+            departure_behind_player(&behind, hold, "35", 0.0),
+            "without a holding marker the runway start and threshold are compared"
+        );
+    }
+
+    #[test]
+    fn a_jet_at_the_hold_is_cleared_ahead_of_a_player_taxiing_toward_it() {
+        let mut state = crate::test_state();
+        state.airport = Some(openatc_core::airport::demo_airport());
+        state.session.phase = openatc_core::state::PhaseCode::Departure;
+        state.session.plan.runway = "09".into();
+        state.session.taxi_clearance.takeoff_state = openatc_core::state::TakeoffState::Held;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.0;
+        state.session.telemetry.longitude = -1_300.0 / 111_320.0;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let player_longitude = state.session.telemetry.longitude;
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            movement_started: true,
+            ..Default::default()
+        };
+        let mut jet = ambient(AmbientKind::Departure, 600.0, 0.0, 2_000.0);
+        jet.id = 1;
+        jet.airport = "DEMO".into();
+        jet.runway = "09".into();
+        jet.hold_distance = 600.0;
+        jet.distance = 600.0;
+        jet.runway_start = 1_000.0;
+        jet.runway_end = 2_000.0;
+        jet.hold = Some([0.0, player_longitude + 78.0 / 111_320.0]);
+        jet.hold_since = Some(Instant::now() - Duration::from_secs(30));
+        jet.cleared = false;
+        jet.takeoff = false;
+        manager.aircraft.push(jet);
+        manager.tick(&mut state);
+        let jet = manager
+            .aircraft
+            .iter()
+            .find(|aircraft| aircraft.id == 1)
+            .expect("the jet stays in the traffic set");
+        assert!(
+            jet.cleared,
+            "the jet at the hold leads the queue, so it is cleared before the player"
+        );
+        assert_eq!(
+            manager.runway_state_for("DEMO", "09", None, None, None),
+            RunwayState::LineUp,
+            "a cleared jet holds the runway for a player who asks next"
+        );
     }
 
     #[test]
