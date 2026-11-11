@@ -18030,6 +18030,18 @@ say = ["{callsign}, runway {runway}, cleared for takeoff."]
 slots = ["callsign", "runway"]
 say = ["Cleared for takeoff, runway {runway}, {callsign}."]
 
+[airborne_position_report]
+slots = ["station", "callsign", "altitude", "distance", "direction", "reference"]
+say = ["{station}, {callsign}, {altitude} feet, {distance} nautical miles {direction} of {reference}.", "{station}, {callsign}, level {altitude} feet, {distance} miles {direction} of {reference}."]
+
+[airborne_position_ack]
+slots = ["station", "callsign"]
+say = ["{callsign}, {station}, roger."]
+
+[generated_ifr_clearance]
+slots = ["callsign", "destination", "route", "altitude", "squawk", "runway"]
+say = ["{callsign}, cleared to {destination} via {route}, climb {altitude} feet, squawk {squawk}, departure runway {runway}."]
+
 [ambient_give_way]
 slots = ["callsign", "other"]
 say = ["{callsign}, give way to {other}."]

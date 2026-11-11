@@ -165,6 +165,9 @@ pub struct Runtime {
     /// Last crossing reissue per (aircraft, segment), so a blocked crossing cannot consume
     /// every controller exchange while it waits for traffic.
     reissued_crossings: BTreeMap<(u32, usize), Instant>,
+    /// Last en-route position report on any frequency, and each flight's last report.
+    last_airborne_report: Option<Instant>,
+    airborne_reported: BTreeMap<u32, Instant>,
     tower_notified: BTreeSet<u32>,
     tower_ready: BTreeSet<u32>,
     flights: BTreeMap<u32, Arc<flight::Prepared>>,

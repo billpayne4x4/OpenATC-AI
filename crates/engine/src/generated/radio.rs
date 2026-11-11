@@ -12,7 +12,7 @@ use super::{Airport, Arc, Duration, EngineState, Instant, cells, external_surfac
 use openatc_core::{
     apply::add_transmission,
     dialogue::say,
-    state::{SpeechTag, State},
+    state::{Radio, SpeechTag, State, TrafficTarget},
     stations::Station,
 };
 
@@ -251,8 +251,16 @@ fn apron_exchange(state: &mut EngineState, parked_only: bool) -> Option<Exchange
             ("dest", destination.clone()),
         ],
     );
-    let clearance = format!(
-        "{display}, cleared to {destination} via {route}, climb {altitude} feet, squawk {squawk}, departure runway {runway}."
+    let clearance = say(
+        "generated_ifr_clearance",
+        &[
+            ("callsign", display.clone()),
+            ("destination", destination.clone()),
+            ("route", route.clone()),
+            ("altitude", altitude.to_string()),
+            ("squawk", squawk.clone()),
+            ("runway", runway.clone()),
+        ],
     );
     let readback = say(
         "pilot_ifr_readback",
@@ -1541,8 +1549,191 @@ fn advance_exchange(state: &mut EngineState, mut exchange: Exchange) -> Option<E
     exchange.next += 1;
     return Some(exchange);
 }
+/// Sixteen-point compass name for a bearing, as a pilot would say it.
+fn compass_point(bearing: f64) -> &'static str {
+    const POINTS: [&str; 16] = [
+        "north",
+        "north-north-east",
+        "north-east",
+        "east-north-east",
+        "east",
+        "east-south-east",
+        "south-east",
+        "south-south-east",
+        "south",
+        "south-south-west",
+        "south-west",
+        "west-south-west",
+        "west",
+        "west-north-west",
+        "north-west",
+        "north-north-west",
+    ];
+    POINTS[((bearing.rem_euclid(360.0) / 22.5 + 0.5).floor() as usize) % 16]
+}
+
+/// The approach or centre station that carries a frequency, if there is one.
+fn en_route_station(
+    state: &EngineState,
+    frequency: i32,
+) -> Option<openatc_core::stations::Station> {
+    let en_route = |service: &str| matches!(service, "Approach" | "Center");
+    state
+        .stations
+        .iter()
+        .find(|station| {
+            station.khz == frequency
+                && (en_route(&station.service)
+                    || station.services.iter().any(|service| en_route(service)))
+        })
+        .cloned()
+}
+
+/// Position reports from airborne traffic on the frequency the player is receiving. The
+/// callsign and position come from the traffic list, so what is heard matches what is drawn.
+/// One report goes out at a time, paced by the congestion setting, and each flight reports
+/// again only after several minutes.
+fn airborne_reports(state: &mut EngineState, targets: &[TrafficTarget]) {
+    let telemetry = &state.session.telemetry;
+    if !state.settings.hear_traffic_radio
+        || !telemetry.radio_power
+        || telemetry.on_ground
+        || telemetry.paused
+        || !telemetry.position_valid
+    {
+        return;
+    }
+    let now = Instant::now();
+    let pace = if state.settings.congestion == openatc_settings::Congestion::Busy {
+        Duration::from_secs(25)
+    } else {
+        Duration::from_secs(90)
+    };
+    if state
+        .generated
+        .last_airborne_report
+        .is_some_and(|last| now.duration_since(last) < pace)
+    {
+        return;
+    }
+    let own = [telemetry.latitude, telemetry.longitude];
+    let mut nearest: Option<(f64, usize, Radio, openatc_core::stations::Station)> = None;
+    for (index, target) in targets.iter().enumerate() {
+        if target.on_ground || super::ctaf::is_local(target.id) {
+            continue;
+        }
+        let Some(frequency) = target.com1_khz else {
+            continue;
+        };
+        let Some(radio) = state.session.receiving_radio(frequency) else {
+            continue;
+        };
+        if state
+            .generated
+            .airborne_reported
+            .get(&target.id)
+            .is_some_and(|last| now.duration_since(*last) < Duration::from_secs(300))
+        {
+            continue;
+        }
+        let distance = openatc_core::arrival::distance_nm(own, [target.latitude, target.longitude]);
+        if !distance.is_finite() || distance > 60.0 {
+            continue;
+        }
+        if nearest.as_ref().is_some_and(|(best, ..)| distance >= *best) {
+            continue;
+        }
+        let Some(station) = en_route_station(state, frequency) else {
+            continue;
+        };
+        nearest = Some((distance, index, radio, station));
+    }
+    let Some((_, index, radio, station)) = nearest else {
+        return;
+    };
+    let target = &targets[index];
+    let from_station = openatc_core::arrival::distance_nm(
+        [station.latitude, station.longitude],
+        [target.latitude, target.longitude],
+    );
+    let bearing = openatc_core::arrival::bearing(
+        [station.latitude, station.longitude],
+        [target.latitude, target.longitude],
+    );
+    let callsign = state.generated.spoken_text(&target.callsign);
+    let altitude = (target.altitude_feet / 100.0).round() as i64 * 100;
+    let report = say(
+        "airborne_position_report",
+        &[
+            ("station", station.name.clone()),
+            ("callsign", callsign.clone()),
+            ("altitude", altitude.to_string()),
+            ("distance", format!("{from_station:.0}")),
+            ("direction", compass_point(bearing).into()),
+            ("reference", station.airport_name.clone()),
+        ],
+    );
+    let acknowledgement = say(
+        "airborne_position_ack",
+        &[
+            ("station", station.name.clone()),
+            ("callsign", callsign.clone()),
+        ],
+    );
+    let pilot_voice = crate::traffic::pilot_voice_for_callsign(state, &target.callsign);
+    let atc_tag = crate::flight::tag(state, &station);
+    let frequency = station.khz;
+    state.station_bus.transmit(
+        frequency,
+        crate::traffic_runtime::Transmission {
+            session: target.id,
+            speaker: callsign.clone(),
+            text: report,
+            controller: false,
+            tag: SpeechTag {
+                radio: Some(radio),
+                frequency: Some(frequency),
+                position: "Traffic".into(),
+                voice: pilot_voice,
+                ..Default::default()
+            },
+            due: now,
+        },
+    );
+    state.station_bus.transmit(
+        frequency,
+        crate::traffic_runtime::Transmission {
+            session: target.id,
+            speaker: "ATC".into(),
+            text: acknowledgement,
+            controller: true,
+            tag: SpeechTag {
+                radio: Some(radio),
+                frequency: Some(frequency),
+                ..atc_tag
+            },
+            due: now + Duration::from_secs(4),
+        },
+    );
+    let generated = &mut state.generated;
+    generated.last_airborne_report = Some(now);
+    generated.airborne_reported.insert(target.id, now);
+    if generated.airborne_reported.len() > 256 {
+        generated
+            .airborne_reported
+            .retain(|_, last| now.duration_since(*last) < Duration::from_secs(600));
+    }
+}
+
 pub fn tick(state: &mut EngineState) {
     deliver_station_transmissions(state, Duration::ZERO);
+    let targets: Vec<TrafficTarget> = state
+        .generated
+        .frames
+        .iter()
+        .map(|frame| frame.target.clone())
+        .collect();
+    airborne_reports(state, &targets);
     let sessions = state
         .generated
         .sessions
@@ -2484,6 +2675,84 @@ mod tests {
             openatc_core::stations::station_serves(&station, "clearance"),
             "the inferred Ground clearance duty must come from the shared capability map"
         );
+    }
+
+    #[test]
+    fn compass_points_follow_the_bearing() {
+        assert_eq!(compass_point(0.0), "north");
+        assert_eq!(compass_point(11.0), "north");
+        assert_eq!(compass_point(90.0), "east");
+        assert_eq!(compass_point(225.0), "south-west");
+        assert_eq!(compass_point(359.0), "north");
+        assert_eq!(compass_point(-90.0), "west");
+    }
+
+    #[test]
+    fn en_route_position_reports_are_spoken_once_on_a_tuned_frequency() {
+        let mut state = crate::test_state();
+        state.settings.hear_traffic_radio = true;
+        state.session.telemetry.radio_power = true;
+        state.session.telemetry.on_ground = false;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.latitude = -35.3;
+        state.session.telemetry.longitude = 149.2;
+        state.session.telemetry.com1_khz = 126_700;
+        state.stations = vec![Station {
+            name: "CANBERRA APPROACH".into(),
+            airport_name: "Canberra".into(),
+            service: "Approach".into(),
+            khz: 126_700,
+            latitude: -35.3,
+            longitude: 149.2,
+            ..Default::default()
+        }];
+        let target = TrafficTarget {
+            id: 42,
+            callsign: "VH-ENT".into(),
+            aircraft: "C150".into(),
+            com1_khz: Some(126_700),
+            latitude: -35.2,
+            longitude: 149.25,
+            altitude_feet: 5_500.0,
+            ..Default::default()
+        };
+        airborne_reports(&mut state, std::slice::from_ref(&target));
+        assert!(state.generated.airborne_reported.contains_key(&42));
+        let first = state.generated.last_airborne_report;
+        airborne_reports(&mut state, std::slice::from_ref(&target));
+        assert_eq!(
+            state.generated.last_airborne_report, first,
+            "a second report waits for the pace"
+        );
+    }
+
+    #[test]
+    fn en_route_position_reports_stay_silent_off_the_frequency() {
+        let mut state = crate::test_state();
+        state.settings.hear_traffic_radio = true;
+        state.session.telemetry.radio_power = true;
+        state.session.telemetry.on_ground = false;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.com1_khz = 118_700;
+        state.stations = vec![Station {
+            service: "Approach".into(),
+            khz: 126_700,
+            latitude: -35.3,
+            longitude: 149.2,
+            ..Default::default()
+        }];
+        let target = TrafficTarget {
+            id: 42,
+            callsign: "VH-ENT".into(),
+            com1_khz: Some(126_700),
+            latitude: -35.2,
+            longitude: 149.25,
+            altitude_feet: 5_500.0,
+            ..Default::default()
+        };
+        airborne_reports(&mut state, std::slice::from_ref(&target));
+        assert!(state.generated.airborne_reported.is_empty());
+        assert!(state.generated.last_airborne_report.is_none());
     }
 
     #[test]

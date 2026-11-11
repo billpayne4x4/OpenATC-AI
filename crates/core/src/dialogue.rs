@@ -563,4 +563,71 @@ mod speech_text_tests {
         );
         assert_eq!(super::speech_text("Ready 👨‍✈️"), "Ready");
     }
+
+    /// Phrase keys written as string literals in the Rust sources, for example `say("ambient_hold_short", ...)`.
+    fn literal_keys(text: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        let mut rest = text;
+        while let Some(index) = rest.find("say(") {
+            let before = rest[..index].chars().next_back();
+            let after = &rest[index + 4..];
+            rest = after;
+            if before.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_') {
+                continue;
+            }
+            let trimmed = after.trim_start();
+            let Some(quoted) = trimmed.strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = quoted.find('"') else {
+                continue;
+            };
+            let key = &quoted[..end];
+            if !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            {
+                keys.push(key.to_owned());
+            }
+        }
+        keys
+    }
+
+    #[test]
+    fn every_literal_phrase_key_in_the_sources_has_speech() {
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut missing = Vec::new();
+        let mut scanned = 0;
+        let mut pending = vec![manifest.join("src"), manifest.join("../engine/src")];
+        while let Some(directory) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|extension| extension != "rs") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                for key in literal_keys(&text) {
+                    scanned += 1;
+                    if super::phrases(&key).is_empty() {
+                        missing.push(format!("{}: {key}", path.display()));
+                    }
+                }
+            }
+        }
+        assert!(scanned > 100, "the scan found only {scanned} phrase keys");
+        assert!(
+            missing.is_empty(),
+            "phrase keys without speech: {missing:?}"
+        );
+    }
 }
