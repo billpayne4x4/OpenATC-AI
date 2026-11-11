@@ -116,8 +116,8 @@ fn wake_standard(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
     ui.text_wrapped("Auto uses FAA CWT at US airports, Australian MATS at Y airports, and ICAO elsewhere. The tables live in traffic/wake.toml and can be edited without rebuilding.");
 }
 
-pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
-    scenery_setup(ui, interface);
+pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface, state: &State) {
+    scenery_setup(ui, interface, Some(state));
     widgets::section_title(ui, "TRAFFIC MOTION");
     traffic_rate(ui, interface);
     wake_standard(ui, interface);
@@ -212,7 +212,7 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
         }
     }
     widgets::section_title(ui, "TRAFFIC SOURCE");
-    ui.text_wrapped("OpenATC generated traffic uses complete flight plans only. Prepare a flight from a gate, holding point or approach; there is no plan-less preview layer. Native X-Plane AI is optional; installing Bluebell models alone does not create flights.");
+    ui.text_wrapped("Airport traffic runs without a flight plan: taxiing aircraft, departures and arrivals around the loaded airport. Generated traffic adds complete planned flights around your route and destination STAR. Native X-Plane AI is optional; installing Bluebell models alone does not create flights.");
     if let Some(reply) = interface.engine.take_reply("/traffic/models/index") {
         interface.traffic_notice = if reply.success {
             format!(
@@ -685,7 +685,11 @@ fn model_installer(ui: &imgui::Ui, interface: &mut crate::interface::Interface) 
 }
 
 /// Worker progress is polled only while this page is visible. No files or database on the UI thread.
-pub(crate) fn scenery_setup(ui: &imgui::Ui, interface: &mut crate::interface::Interface) {
+pub(crate) fn scenery_setup(
+    ui: &imgui::Ui,
+    interface: &mut crate::interface::Interface,
+    state: Option<&State>,
+) {
     widgets::section_title(ui, "TRAFFIC SETUP");
     if let Some(reply) = interface.engine.take_reply("/traffic/scenery/status") {
         interface.scenery_pending = false;
@@ -719,12 +723,26 @@ pub(crate) fn scenery_setup(ui: &imgui::Ui, interface: &mut crate::interface::In
         return;
     }
     let status = &interface.scenery_status;
-    ui.text_wrapped(
-        status["traffic"]
-            .as_str()
-            .filter(|text| !text.is_empty())
-            .unwrap_or("Waiting for simulator position and airport data"),
-    );
+    let no_plan = state
+        .is_some_and(|state| state.plan.departure.is_empty() || state.plan.destination.is_empty());
+    if no_plan {
+        ui.text_wrapped(format!(
+            "Airport traffic, no flight plan — {} aircraft around you.",
+            state.map_or(0, |state| state.generated_traffic.len())
+        ));
+        if state.is_some_and(|state| state.generated_traffic.is_empty()) {
+            ui.text_wrapped(
+                "No aircraft are visible yet. Check that the local airport loaded and that Bluebell models are installed below.",
+            );
+        }
+    } else {
+        ui.text_wrapped(
+            status["traffic"]
+                .as_str()
+                .filter(|text| !text.is_empty())
+                .unwrap_or("Waiting for simulator position and airport data"),
+        );
+    }
     let cache = &status["cache"];
     ui.text_wrapped(cache["phase"].as_str().filter(|text| !text.is_empty()).unwrap_or("Scenery is indexed on demand. The first visit takes longer; later visits reuse unchanged scenery."));
     if let Some(tile) = cache["currentTile"]

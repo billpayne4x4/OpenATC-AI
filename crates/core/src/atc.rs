@@ -79,15 +79,31 @@ fn controllers(text: &str) -> Vec<Controller> {
 pub fn extend_index(root: &str, stations: &mut Vec<Station>) -> Result<(), String> {
     let mut paths: Vec<String> = scenery_paths(root)
         .into_iter()
-        .filter(|p| !p.contains("/Global Scenery/") && !p.contains("/Resources/default scenery/"))
-        .map(|p| p.replace("/apt.dat", "/atc.dat"))
+        .filter(|p| !p.contains("Global Scenery") && !p.contains("default scenery"))
+        .map(|p| {
+            Path::new(&p)
+                .with_file_name("atc.dat")
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
-    let custom = format!("{root}/Custom Data/1200 atc data/Earth nav data/atc.dat");
-    paths.push(if Path::new(&custom).is_file() {
-        custom
-    } else {
-        format!("{root}/Resources/default scenery/1200 atc data/Earth nav data/atc.dat")
-    });
+    let root = crate::stations::simulator_root(root);
+    let custom = root
+        .join("Custom Data")
+        .join("1200 atc data")
+        .join("Earth nav data")
+        .join("atc.dat");
+    let fallback = root
+        .join("Resources")
+        .join("default scenery")
+        .join("1200 atc data")
+        .join("Earth nav data")
+        .join("atc.dat");
+    paths.push(
+        if custom.is_file() { custom } else { fallback }
+            .to_string_lossy()
+            .into_owned(),
+    );
     let mut seen = BTreeSet::new();
     for path in paths {
         if !Path::new(&path).is_file() {

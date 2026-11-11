@@ -371,17 +371,43 @@ pub(super) fn endpoints(
             .total_cmp(&right.1)
             .then_with(|| left.0.cmp(&right.0))
     });
-    let mut endpoints = candidates
+    let tower_count = stations
+        .iter()
+        .filter(|station| {
+            station.service == "Tower" || station.services.iter().any(|service| service == "Tower")
+        })
+        .count();
+    let mut first_error = None;
+    let endpoints: Vec<_> = candidates
         .into_iter()
         .take(policy.network_candidate_limit)
         .filter_map(|(id, _)| {
-            let airport = airport(root, &id).ok()?;
-            let runway = longest_runway(&airport)?;
-            (!airport.parking.is_empty()).then_some((airport, runway))
-        });
-    let (origin, departure) = endpoints
-        .next()
-        .ok_or("No installed controlled traffic airport near the aircraft")?;
+            let airport = match airport(root, &id) {
+                Ok(airport) => airport,
+                Err(error) => {
+                    first_error.get_or_insert(format!("{id}: {error}"));
+                    return None;
+                }
+            };
+            let Some(runway) = longest_runway(&airport) else {
+                first_error.get_or_insert(format!("{id}: no usable runway"));
+                return None;
+            };
+            if airport.parking.is_empty() {
+                first_error.get_or_insert(format!("{id}: no parking positions"));
+                return None;
+            }
+            Some((airport, runway))
+        })
+        .collect();
+    let mut endpoints = endpoints.into_iter();
+    let (origin, departure) = endpoints.next().ok_or_else(|| {
+        let detail = first_error.map_or_else(String::new, |error| format!("; first: {error}"));
+        format!(
+            "No installed controlled traffic airport near the aircraft ({} stations, {tower_count} tower{detail})",
+            stations.len()
+        )
+    })?;
     let (destination, arrival) = endpoints
         .next()
         .ok_or("No second installed controlled traffic airport near the aircraft")?;

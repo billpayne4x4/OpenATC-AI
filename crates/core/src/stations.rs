@@ -36,31 +36,60 @@ pub struct Station {
     /// Within the simulated reception envelope.
     pub receivable: bool,
 }
+/// Normalise a simulator root for filesystem joins.
+///
+/// Windows folder fields often arrive with a trailing separator, and some pickers
+/// return an extended-length prefix. Both break plain string concatenation.
+#[must_use]
+pub fn simulator_root(root: &str) -> std::path::PathBuf {
+    let mut text = root.trim().trim_end_matches(['/', '\\']).to_owned();
+    #[cfg(windows)]
+    {
+        if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+            text = format!(r"\\{rest}");
+        } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+            text = rest.to_owned();
+        }
+    }
+    if text.ends_with(':') {
+        text.push('/');
+    }
+    std::path::PathBuf::from(text)
+}
+
 /// Preserve enabled scenery priority, then use global/default airport data.
 #[must_use]
 pub fn scenery_paths(root: &str) -> Vec<String> {
+    let root = simulator_root(root);
+    let apt = |base: std::path::PathBuf| {
+        base.join("Earth nav data")
+            .join("apt.dat")
+            .to_string_lossy()
+            .into_owned()
+    };
     let mut paths = Vec::new();
-    if let Ok(text) = std::fs::read_to_string(format!("{root}/Custom Scenery/scenery_packs.ini")) {
+    if let Ok(text) = std::fs::read_to_string(root.join("Custom Scenery").join("scenery_packs.ini"))
+    {
+        let text = text.trim_start_matches('\u{feff}');
         for line in text.lines() {
             if let Some(relative) = line.strip_prefix("SCENERY_PACK ") {
                 let relative = relative.trim();
                 let base = if relative == "*GLOBAL_AIRPORTS*" {
-                    format!("{root}/Global Scenery/Global Airports")
+                    root.join("Global Scenery").join("Global Airports")
                 } else if Path::new(relative).is_relative() {
-                    format!("{root}/{relative}")
+                    root.join(relative)
                 } else {
-                    relative.to_owned()
+                    std::path::PathBuf::from(relative)
                 };
-                paths.push(format!("{base}/Earth nav data/apt.dat"));
+                paths.push(apt(base));
             }
         }
     }
-    paths.push(format!(
-        "{root}/Global Scenery/Global Airports/Earth nav data/apt.dat"
-    ));
-    paths.push(format!(
-        "{root}/Resources/default scenery/default apt dat/Earth nav data/apt.dat"
-    ));
+    paths.push(apt(root.join("Global Scenery").join("Global Airports")));
+    paths.push(apt(root
+        .join("Resources")
+        .join("default scenery")
+        .join("default apt dat")));
     let mut seen = BTreeSet::new();
     paths.retain(|path| seen.insert(path.clone()));
     paths
@@ -119,8 +148,15 @@ pub fn load_index(root: &str) -> Result<Vec<Station>, String> {
     }
     super::atc::extend_index(root, &mut stations)?;
     assign_airport_capabilities(&mut stations);
-    let overrides = std::env::var("OPENATC_RADIO_STATIONS_FILE")
-        .unwrap_or_else(|_| format!("{root}/Resources/plugins/OpenATC/radio-stations.toml"));
+    let overrides = std::env::var("OPENATC_RADIO_STATIONS_FILE").unwrap_or_else(|_| {
+        simulator_root(root)
+            .join("Resources")
+            .join("plugins")
+            .join("OpenATC")
+            .join("radio-stations.toml")
+            .to_string_lossy()
+            .into_owned()
+    });
     if Path::new(&overrides).is_file() {
         apply_combined(
             &mut stations,
@@ -883,5 +919,47 @@ mod station_selection_tests {
         let stations = [station("Tower", 118_700, 0.0)];
         assert!(station_for_intent(&stations, "TEST", "taxi", None, [0.0, 0.0]).is_none());
         assert!(station_for_intent(&stations, "TEST", "clearance", None, [0.0, 0.0]).is_none());
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[test]
+    fn simulator_root_drops_trailing_separators_and_keeps_drive_roots() {
+        assert_eq!(
+            simulator_root("C:/X-Plane 12/").to_string_lossy(),
+            "C:/X-Plane 12"
+        );
+        assert_eq!(
+            simulator_root(r"C:\X-Plane 12\\").to_string_lossy(),
+            r"C:\X-Plane 12"
+        );
+        assert_eq!(simulator_root("C:").to_string_lossy(), "C:/");
+    }
+
+    #[test]
+    fn scenery_paths_ignore_a_byte_order_mark_and_a_trailing_root_separator() {
+        let root =
+            std::env::temp_dir().join(format!("openatc-scenery-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let pack = root.join("Custom Scenery").join("TestPack");
+        std::fs::create_dir_all(pack.join("Earth nav data")).unwrap();
+        std::fs::write(pack.join("Earth nav data").join("apt.dat"), "I\n").unwrap();
+        std::fs::write(
+            root.join("Custom Scenery").join("scenery_packs.ini"),
+            "\u{feff}SCENERY_PACK Custom Scenery/TestPack\n",
+        )
+        .unwrap();
+        let root_text = format!("{}/", root.to_string_lossy());
+        let paths = scenery_paths(&root_text);
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.contains("TestPack") && path.ends_with("apt.dat")),
+            "{paths:?}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

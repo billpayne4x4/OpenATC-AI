@@ -2137,7 +2137,7 @@ pub fn settings_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             audio_tab(ui, interface);
         }
         if interface.settings_section == 8 {
-            crate::traffic::settings(ui, interface);
+            crate::traffic::settings(ui, interface, state);
         }
         if interface.settings_section == 9 {
             realism_tab(ui, interface);

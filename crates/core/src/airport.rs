@@ -1678,31 +1678,42 @@ pub fn load_airport_from_simulator(
             &[],
         ));
     }
+    let root = crate::stations::simulator_root(root);
+    let apt = |base: std::path::PathBuf| {
+        base.join("Earth nav data")
+            .join("apt.dat")
+            .to_string_lossy()
+            .into_owned()
+    };
     let mut paths = Vec::new();
-    let packs = format!("{root}/Custom Scenery/scenery_packs.ini");
+    let packs = root
+        .join("Custom Scenery")
+        .join("scenery_packs.ini")
+        .to_string_lossy()
+        .into_owned();
     if exists(&packs)
         && let Ok(text) = read(&packs)
     {
+        let text = text.trim_start_matches('\u{feff}');
         for line in text.lines() {
             if let Some(relative) = line.strip_prefix("SCENERY_PACK ") {
                 let relative = relative.trim();
                 let base = if relative == "*GLOBAL_AIRPORTS*" {
-                    format!("{root}/Global Scenery/Global Airports")
+                    root.join("Global Scenery").join("Global Airports")
                 } else if std::path::Path::new(relative).is_relative() {
-                    format!("{root}/{relative}")
+                    root.join(relative)
                 } else {
-                    relative.to_owned()
+                    std::path::PathBuf::from(relative)
                 };
-                paths.push(format!("{base}/Earth nav data/apt.dat"));
+                paths.push(apt(base));
             }
         }
     }
-    paths.push(format!(
-        "{root}/Global Scenery/Global Airports/Earth nav data/apt.dat"
-    ));
-    paths.push(format!(
-        "{root}/Resources/default scenery/default apt dat/Earth nav data/apt.dat"
-    ));
+    paths.push(apt(root.join("Global Scenery").join("Global Airports")));
+    paths.push(apt(root
+        .join("Resources")
+        .join("default scenery")
+        .join("default apt dat")));
     let mut airport = None;
     for path in &paths {
         if !exists(path) {
@@ -1726,22 +1737,36 @@ pub fn load_airport_from_simulator(
     }
     let mut airport = airport
         .ok_or_else(|| crate::dialogue::say("airport_not_found_in_enabled_scenery_or", &[]))?;
-    let custom = format!("{root}/Custom Data/earth_nav.dat");
+    let path_text = |path: std::path::PathBuf| path.to_string_lossy().into_owned();
+    let custom = path_text(root.join("Custom Data").join("earth_nav.dat"));
     let navdata = if exists(&custom) {
         custom
     } else {
-        format!("{root}/Resources/default data/earth_nav.dat")
+        path_text(
+            root.join("Resources")
+                .join("default data")
+                .join("earth_nav.dat"),
+        )
     };
     if exists(&navdata)
         && let Ok(text) = read(&navdata)
     {
         load_navaids(&mut airport, &text);
     }
-    let custom_cifp = format!("{root}/Custom Data/CIFP/{icao}.dat");
+    let custom_cifp = path_text(
+        root.join("Custom Data")
+            .join("CIFP")
+            .join(format!("{icao}.dat")),
+    );
     let cifp = if exists(&custom_cifp) {
         custom_cifp
     } else {
-        format!("{root}/Resources/default data/CIFP/{icao}.dat")
+        path_text(
+            root.join("Resources")
+                .join("default data")
+                .join("CIFP")
+                .join(format!("{icao}.dat")),
+        )
     };
     if exists(&cifp)
         && let Ok(text) = read(&cifp)

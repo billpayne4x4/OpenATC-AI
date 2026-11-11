@@ -153,7 +153,7 @@ pub(crate) fn overlay(ui: &imgui::Ui, interface: &mut Interface) {
         interface.setup_overlay = false;
     }
     ui.spacing();
-    crate::traffic::scenery_setup(ui, interface);
+    crate::traffic::scenery_setup(ui, interface, None);
 }
 
 #[cfg(test)]

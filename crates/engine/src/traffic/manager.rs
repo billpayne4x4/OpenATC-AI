@@ -706,9 +706,13 @@ impl TrafficManager {
         let target = self.density_target;
         let now = Instant::now();
         let missing = target.saturating_sub(self.aircraft.len());
+        // Keep the airport alive while the player is on the ground, including during
+        // taxi. Spawns stop on the takeoff roll so nothing appears beside a rolling
+        // aircraft.
+        let airport_active = telemetry.on_ground && telemetry.ground_speed_knots < 40.0;
         if missing > 0
             && !away
-            && !self.movement_started
+            && airport_active
             && self
                 .last_spawn
                 .is_none_or(|at| at.elapsed() >= Duration::from_secs(4))
