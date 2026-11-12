@@ -856,7 +856,14 @@ impl TrafficManager {
                                 AmbientKind::Departure => aircraft.hold_distance - along,
                                 AmbientKind::Arrival => -along,
                             };
-                            (remaining, aircraft.id)
+                            // A departure already cleared onto the runway owns the merge.
+                            // Comparing only distance can let an uncleared aircraft hold it.
+                            let priority = match aircraft.kind {
+                                AmbientKind::Departure if aircraft.takeoff => 0,
+                                AmbientKind::Departure if aircraft.cleared => 1,
+                                _ => 2,
+                            };
+                            (priority, remaining, aircraft.id)
                         };
                         if key(&self.aircraft[index], distance) > key(other, other.distance) {
                             (Some(other_id), None)
@@ -4499,6 +4506,51 @@ mod phase_tests {
                 .any(|entry| entry.text.contains("continue, clear of traffic"))
         );
         assert_eq!(manager.player_yield, None);
+    }
+
+    #[test]
+    fn a_cleared_departure_wins_an_overlap_with_an_uncleared_one() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.1;
+        state.session.telemetry.longitude = 0.1;
+        state.session.telemetry.traffic = Some(Vec::new());
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut cleared = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        cleared.id = 10;
+        cleared.airport = "DEMO".into();
+        cleared.runway = "09".into();
+        cleared.hold_distance = 600.0;
+        cleared.runway_start = 1_000.0;
+        cleared.runway_end = 2_000.0;
+        cleared.cleared = true;
+        let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        waiting.id = 11;
+        waiting.airport = "DEMO".into();
+        waiting.runway = "09".into();
+        waiting.hold_distance = 540.0;
+        waiting.runway_start = 1_000.0;
+        waiting.runway_end = 2_000.0;
+        waiting.cleared = false;
+        manager.aircraft = vec![cleared, waiting];
+        manager.tick(&mut state);
+        assert_ne!(
+            manager.aircraft[0].blocker,
+            Some(11),
+            "the uncleared aircraft must not block the one cleared onto the runway"
+        );
+        assert_eq!(
+            manager.aircraft[1].blocker,
+            Some(10),
+            "the uncleared aircraft waits for the cleared one"
+        );
     }
 
     #[test]
