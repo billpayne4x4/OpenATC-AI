@@ -42,6 +42,13 @@ fn main() {
         std::process::exit(1);
     }
 }
+/// A unique value for this build run, so the compiled build stamp refreshes.
+fn build_force() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or_else(|_| "0".into(), |elapsed| elapsed.as_secs().to_string())
+}
+
 fn dispatch() -> Result {
     let args: Vec<_> = std::env::args().skip(1).collect();
     let arg = |n: usize| -> Result<&str> {
@@ -78,15 +85,18 @@ fn dispatch() -> Result {
         }
         "build" => {
             let root = repo();
-            run(Command::new("cargo").current_dir(&root).args([
-                "build",
-                "--locked",
-                "--release",
-                "-p",
-                "openatc-plugin",
-                "-p",
-                "openatc-engine",
-            ]))?;
+            run(Command::new("cargo")
+                .current_dir(&root)
+                .env("OPENATC_BUILD_FORCE", build_force())
+                .args([
+                    "build",
+                    "--locked",
+                    "--release",
+                    "-p",
+                    "openatc-plugin",
+                    "-p",
+                    "openatc-engine",
+                ]))?;
             run(Command::new("cargo").current_dir(&root).args([
                 "test",
                 "--locked",

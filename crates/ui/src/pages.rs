@@ -2172,7 +2172,7 @@ fn settings_about(ui: &imgui::Ui, interface: &mut Interface) {
         }
     ));
     ui.text_wrapped(
-        "The plugin version is compiled into this interface. The engine and AI server versions come from the running processes, so they show whether an older build is still active.",
+        "The plugin version is compiled into this interface. The engine and AI server versions come from the running processes, so they show whether an older build is still active. Plugin and engine build stamps refresh on each installation.",
     );
     if ui.button("Refresh versions") {
         interface

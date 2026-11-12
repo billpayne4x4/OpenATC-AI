@@ -1,9 +1,17 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
-    let seconds = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
+    // A build run from xtask supplies a unique value so the stamp refreshes even
+    // when Cargo can reuse the rest of the build-script output.
+    println!("cargo:rerun-if-env-changed=OPENATC_BUILD_FORCE");
+    let forced = std::env::var("OPENATC_BUILD_FORCE")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok());
+    let seconds = forced.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs())
+    });
     let days = i64::try_from(seconds / 86_400).unwrap_or(0);
     let remainder = seconds % 86_400;
     let (year, month, day) = civil_from_days(days);

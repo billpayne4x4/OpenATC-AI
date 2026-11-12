@@ -58,6 +58,7 @@ pub(crate) fn install_plugin(sim: &Path, backup: bool) -> Result {
     let status = Command::new(cargo)
         .args(["build", "--locked", "--release"])
         .current_dir(&root)
+        .env("OPENATC_BUILD_FORCE", crate::build_force())
         .status()?;
     if !status.success() {
         return Err("Release build failed; nothing installed".into());

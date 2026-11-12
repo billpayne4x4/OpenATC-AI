@@ -42,6 +42,9 @@ pub struct FlightFlow {
     warning: openatc_core::compliance::WarningCount,
     clearance_sequence: u32,
     last_correction: Option<std::time::Instant>,
+    /// When the player first reached the departure hold for the current route.
+    pub(crate) takeoff_hold_since: Option<std::time::Instant>,
+    takeoff_hold_route: u32,
 }
 
 pub fn station_key(station: &Station) -> String {
@@ -1093,6 +1096,48 @@ pub fn takeoff_wording(
     }
 }
 
+/// Record when the player first reaches the departure hold. The runway queue compares
+/// this with each ambient departure's hold time, so the first aircraft at the hold goes
+/// first regardless of which taxiway or hold line it used.
+pub(crate) fn observe_takeoff_hold(state: &mut EngineState) {
+    let route = &state.session.taxi_clearance;
+    let Some(airport) = state.airport.as_ref() else {
+        state.flow.takeoff_hold_since = None;
+        return;
+    };
+    if state.session.phase != PhaseCode::Taxi
+        || !route.approved
+        || route.pending_readback
+        || !matches!(
+            route.takeoff_state,
+            TakeoffState::Held | TakeoffState::LineUpAndWait
+        )
+        || !state.session.telemetry.on_ground
+        || state.session.telemetry.paused
+        || !state.session.telemetry.position_valid
+    {
+        state.flow.takeoff_hold_since = None;
+        return;
+    }
+    let Some(end) = route.holding_marker_point.as_ref().or(route.points.last()) else {
+        state.flow.takeoff_hold_since = None;
+        return;
+    };
+    let here = openatc_core::airport::airport_point(
+        airport,
+        state.session.telemetry.latitude,
+        state.session.telemetry.longitude,
+    );
+    if (here.east - end.east).hypot(here.north - end.north) > 20.0 {
+        state.flow.takeoff_hold_since = None;
+        return;
+    }
+    if state.flow.takeoff_hold_route != route.sequence || state.flow.takeoff_hold_since.is_none() {
+        state.flow.takeoff_hold_route = route.sequence;
+        state.flow.takeoff_hold_since = Some(std::time::Instant::now());
+    }
+}
+
 /// Progress a held or lined-up departure without another ready call.
 pub(crate) fn takeoff_tick(state: &mut EngineState) {
     if state.session.demo
@@ -1143,10 +1188,12 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
     }
     // An ambient departure still waiting at the hold is ahead of the player; do not
     // clear the player to line up past it.
-    if state
-        .ambient
-        .departure_ahead_of_player(&airport, &runway, &state.session.telemetry)
-    {
+    if state.ambient.departure_ahead_of_player(
+        &airport,
+        &runway,
+        &state.session.telemetry,
+        state.flow.takeoff_hold_since,
+    ) {
         return;
     }
     let sequence = crate::routes::runway_sequence(state, &airport, &runway);
@@ -3786,5 +3833,34 @@ mod sequencing_tests {
             );
             assert!(!reply.contains("cleared for takeoff"), "{reply}");
         }
+    }
+}
+
+#[cfg(test)]
+mod hold_tests {
+    use super::*;
+
+    #[test]
+    fn the_player_hold_time_starts_at_the_hold_and_clears_away() {
+        let mut state = crate::test_state();
+        let airport = openatc_core::airport::demo_airport();
+        state.session.phase = PhaseCode::Taxi;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = airport.reference_latitude;
+        state.session.telemetry.longitude = airport.reference_longitude;
+        state.session.taxi_clearance = openatc_core::state::TaxiClearance {
+            approved: true,
+            takeoff_state: TakeoffState::Held,
+            points: vec![openatc_core::state::Point::default()],
+            sequence: 3,
+            ..Default::default()
+        };
+        state.airport = Some(airport);
+        observe_takeoff_hold(&mut state);
+        assert!(state.flow.takeoff_hold_since.is_some());
+        state.session.telemetry.latitude += 0.01;
+        observe_takeoff_hold(&mut state);
+        assert!(state.flow.takeoff_hold_since.is_none());
     }
 }

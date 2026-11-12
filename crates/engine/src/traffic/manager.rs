@@ -449,6 +449,8 @@ pub struct TrafficManager {
     announced: std::collections::BTreeSet<(u32, &'static str)>,
     /// Last time the player was asked to continue taxiing.
     move_request_at: Option<Instant>,
+    /// When the player reached the departure hold for the current route.
+    player_hold_since: Option<Instant>,
     /// Traffic the player has been told to give way to, until the conflict clears.
     player_yield: Option<u32>,
     movement_started: bool,
@@ -609,6 +611,7 @@ impl TrafficManager {
         let Some(models) = self.models.clone() else {
             return;
         };
+        self.player_hold_since = state.flow.takeoff_hold_since;
         let telemetry = &state.session.telemetry;
         let own = telemetry
             .position_valid
@@ -898,7 +901,7 @@ impl TrafficManager {
             let own_runway = self.aircraft[index].runway.clone();
             let own_airport = self.aircraft[index].airport.clone();
             let own_id = self.aircraft[index].id;
-            let queue_lead = queue_leader(&self.aircraft);
+            let queue_lead = queue_leader(&self.aircraft, self.player_hold_since);
             if self.aircraft[index].on_runway() {
                 state.airports.claim(&own_airport, &own_runway, own_id);
             } else {
@@ -3052,6 +3055,7 @@ impl TrafficManager {
         airport: &Airport,
         runway: &str,
         telemetry: &openatc_core::state::Telemetry,
+        player_hold: Option<Instant>,
     ) -> bool {
         if !telemetry.on_ground
             || !telemetry.position_valid
@@ -3070,7 +3074,15 @@ impl TrafficManager {
                 && aircraft.hold.is_some_and(|hold| {
                     let player_to_hold = openatc_core::arrival::distance_nm(player, hold) * 1852.0;
                     let own_to_hold = (aircraft.hold_distance - aircraft.distance).max(0.0);
-                    own_to_hold <= player_to_hold + 15.0
+                    let ahead_by_position = own_to_hold <= player_to_hold + 15.0;
+                    // The first aircraft at its hold goes first. If the player was already
+                    // there, an ambient aircraft that arrived later does not jump ahead.
+                    let ahead_by_time = match (player_hold, aircraft.hold_since) {
+                        (None, _) => true,
+                        (Some(_), None) => false,
+                        (Some(player), Some(ambient)) => ambient < player,
+                    };
+                    ahead_by_position && ahead_by_time
                 })
         })
     }
@@ -3104,9 +3116,10 @@ fn departure_behind_player(
     own_remaining > player_remaining + 30.0
 }
 
-/// First departure at the hold in arrival order.
-fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
-    aircraft
+/// First departure at the hold in arrival order. The player is part of the same queue:
+/// if the player reached the hold first, no ambient aircraft is the runway leader.
+fn queue_leader(aircraft: &[AmbientAircraft], player_hold: Option<Instant>) -> Option<u32> {
+    let leader = aircraft
         .iter()
         .filter(|aircraft| {
             aircraft.kind == AmbientKind::Departure
@@ -3117,8 +3130,12 @@ fn queue_leader(aircraft: &[AmbientAircraft]) -> Option<u32> {
             left.hold_since
                 .cmp(&right.hold_since)
                 .then(left.id.cmp(&right.id))
-        })
-        .map(|aircraft| aircraft.id)
+        })?;
+    match (player_hold, leader.hold_since) {
+        (Some(player), Some(ambient)) if player < ambient => None,
+        (Some(_), None) => None,
+        _ => Some(leader.id),
+    }
 }
 
 fn ambient_frame(aircraft: &AmbientAircraft) -> Option<GeneratedTraffic> {
@@ -4599,6 +4616,28 @@ mod phase_tests {
     }
 
     #[test]
+    fn the_player_at_the_hold_first_is_not_displaced_by_an_ambient_leader() {
+        let now = Instant::now();
+        let mut ambient = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        ambient.id = 9;
+        ambient.hold_distance = 600.0;
+        ambient.distance = 600.0;
+        ambient.hold_since = Some(now - Duration::from_secs(30));
+        let aircraft = vec![ambient];
+        assert_eq!(queue_leader(&aircraft, None), Some(9));
+        assert_eq!(
+            queue_leader(&aircraft, Some(now - Duration::from_secs(60))),
+            None,
+            "the player was at the hold first"
+        );
+        assert_eq!(
+            queue_leader(&aircraft, Some(now - Duration::from_secs(10))),
+            Some(9),
+            "the ambient aircraft was at the hold first"
+        );
+    }
+
+    #[test]
     fn the_departure_queue_is_first_in_first_out() {
         let earlier = Instant::now() - Duration::from_secs(30);
         let later = Instant::now() - Duration::from_secs(10);
@@ -4614,7 +4653,7 @@ mod phase_tests {
         second.distance = 600.0;
         second.cleared = false;
         second.hold_since = Some(later);
-        assert_eq!(queue_leader(&[first, second]), Some(9));
+        assert_eq!(queue_leader(&[first, second], None), Some(9));
         let mut cleared = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
         cleared.id = 9;
         cleared.hold_distance = 600.0;
@@ -4627,7 +4666,7 @@ mod phase_tests {
         next.cleared = false;
         next.hold_since = Some(later);
         assert_eq!(
-            queue_leader(&[cleared, next]),
+            queue_leader(&[cleared, next], None),
             Some(9),
             "a lined-up aircraft remains the queue leader until it starts to roll"
         );
@@ -4642,7 +4681,7 @@ mod phase_tests {
         next.hold_distance = 600.0;
         next.distance = 600.0;
         next.hold_since = Some(later);
-        assert_eq!(queue_leader(&[rolling, next]), Some(3));
+        assert_eq!(queue_leader(&[rolling, next], None), Some(3));
     }
 
     #[test]
@@ -4695,27 +4734,47 @@ mod phase_tests {
             ..Default::default()
         };
         assert!(
-            manager.departure_ahead_of_player(&airport, "09", &player),
+            manager.departure_ahead_of_player(&airport, "09", &player, None),
             "a jet at the hold is ahead of a player 27 m before it"
         );
-        assert!(!manager.departure_ahead_of_player(&airport, "27", &player));
+        assert!(!manager.departure_ahead_of_player(&airport, "27", &player, None));
         let on_runway = openatc_core::state::Telemetry {
             latitude: 0.0,
             ..player.clone()
         };
         assert!(
-            !manager.departure_ahead_of_player(&airport, "09", &on_runway),
+            !manager.departure_ahead_of_player(&airport, "09", &on_runway, None),
             "a player already on the runway is ahead of the hold"
         );
         manager.aircraft[0].distance = 550.0;
         assert!(
-            !manager.departure_ahead_of_player(&airport, "09", &player),
+            !manager.departure_ahead_of_player(&airport, "09", &player, None),
             "a jet 50 m behind the hold is not ahead of a player at the hold"
         );
         manager.aircraft[0].distance = 600.0;
+        let now = Instant::now();
+        manager.aircraft[0].hold_since = Some(now - Duration::from_secs(30));
+        assert!(
+            !manager.departure_ahead_of_player(
+                &airport,
+                "09",
+                &player,
+                Some(now - Duration::from_secs(60)),
+            ),
+            "a player at the hold first does not yield to a later arrival"
+        );
+        assert!(
+            manager.departure_ahead_of_player(
+                &airport,
+                "09",
+                &player,
+                Some(now - Duration::from_secs(10)),
+            ),
+            "an ambient aircraft at the hold first is ahead"
+        );
         manager.aircraft[0].cleared = true;
         assert!(
-            !manager.departure_ahead_of_player(&airport, "09", &player),
+            !manager.departure_ahead_of_player(&airport, "09", &player, None),
             "a cleared aircraft is handled by the runway state"
         );
     }

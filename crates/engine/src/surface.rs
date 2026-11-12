@@ -181,6 +181,7 @@ pub async fn post_telemetry(
         }
         state.session.demo = false;
         super::generated::step(&mut state);
+        super::flight::observe_takeoff_hold(&mut state);
         let mut ambient = std::mem::take(&mut state.ambient);
         ambient.tick(&mut state);
         state.ambient = ambient;
