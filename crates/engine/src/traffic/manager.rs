@@ -2348,29 +2348,6 @@ impl AmbientAircraft {
     }
 }
 
-fn hold_line_distance(airport: &Airport, point: Point) -> f64 {
-    let mut best = f64::INFINITY;
-    for line in &airport.taxi_hold_lines {
-        let a = line[0];
-        let b = line[1];
-        let dx = b.east - a.east;
-        let dn = b.north - a.north;
-        let length = dx.hypot(dn);
-        if length < 0.5 {
-            continue;
-        }
-        let along = (((point.east - a.east) * dx + (point.north - a.north) * dn) / length)
-            .clamp(0.0, length);
-        let projected = Point {
-            east: a.east + dx / length * along,
-            north: a.north + dn / length * along,
-            height: point.height,
-        };
-        best = best.min((point.east - projected.east).hypot(point.north - projected.north));
-    }
-    best
-}
-
 /// Safe departure queue positions along the surface route, spaced from the hold.
 ///
 /// Returns fewer positions when the taxiway is too short for the requested fleet;
@@ -2461,6 +2438,20 @@ fn plan_taxi(
         .map(|node| (node.id, node.point))
         .collect();
     let start_point = nodes.get(&start).copied().unwrap_or(threshold);
+    if arrival.is_none() {
+        let cos = (airport.reference_latitude.to_radians().cos()).max(0.01);
+        let telemetry = openatc_core::state::Telemetry {
+            latitude: airport.reference_latitude + start_point.north / 111_320.0,
+            longitude: airport.reference_longitude + start_point.east / (111_320.0 * cos),
+            position_valid: true,
+            on_ground: true,
+            ..Default::default()
+        };
+        let route =
+            openatc_core::airport::calculate_taxi_route(airport, &telemetry, runway, false, size)
+                .ok()?;
+        return Some((route.points, route.via));
+    }
     let target = airport
         .nodes
         .iter()
@@ -2493,29 +2484,16 @@ fn plan_taxi(
         })
         .min_by(|left, right| {
             let key = |node: &openatc_core::airport::TaxiNode| {
-                if arrival.is_some() {
-                    let latitude = airport.reference_latitude + node.point.north / 111_320.0;
-                    let longitude = airport.reference_longitude
-                        + node.point.east
-                            / (111_320.0
-                                * (airport.reference_latitude.to_radians().cos()).max(0.01));
-                    let along = openatc_core::traffic::runway_position(
-                        airport, runway, latitude, longitude,
-                    )
-                    .map_or(f64::INFINITY, |(along, _, _, _)| along);
-                    let stand = (node.point.east - start_point.east)
-                        .hypot(node.point.north - start_point.north);
-                    (along, stand)
-                } else {
-                    let hold = hold_line_distance(airport, node.point) <= 40.0;
-                    let distance = (node.point.east - threshold.east)
-                        .hypot(node.point.north - threshold.north);
-                    if hold {
-                        (distance, 0.0)
-                    } else {
-                        (distance + 1_000_000.0, 0.0)
-                    }
-                }
+                let latitude = airport.reference_latitude + node.point.north / 111_320.0;
+                let longitude = airport.reference_longitude
+                    + node.point.east
+                        / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
+                let along =
+                    openatc_core::traffic::runway_position(airport, runway, latitude, longitude)
+                        .map_or(f64::INFINITY, |(along, _, _, _)| along);
+                let stand = (node.point.east - start_point.east)
+                    .hypot(node.point.north - start_point.north);
+                (along, stand)
             };
             key(left)
                 .partial_cmp(&key(right))
@@ -4506,6 +4484,32 @@ mod phase_tests {
                 .any(|entry| entry.text.contains("continue, clear of traffic"))
         );
         assert_eq!(manager.player_yield, None);
+    }
+
+    #[test]
+    fn ambient_departures_use_the_player_taxi_planner() {
+        let airport = openatc_core::airport::demo_airport();
+        let cos = (airport.reference_latitude.to_radians().cos()).max(0.01);
+        let planned = airport.nodes.iter().find_map(|node| {
+            let telemetry = openatc_core::state::Telemetry {
+                latitude: airport.reference_latitude + node.point.north / 111_320.0,
+                longitude: airport.reference_longitude + node.point.east / (111_320.0 * cos),
+                position_valid: true,
+                on_ground: true,
+                ..Default::default()
+            };
+            openatc_core::airport::calculate_taxi_route(&airport, &telemetry, "09", false, 'C')
+                .ok()
+                .filter(|route| route.points.len() > 1)
+                .map(|route| (node.id, route))
+        });
+        let Some((start, player)) = planned else {
+            return;
+        };
+        let (points, via) = plan_taxi(&airport, start, "09", 'C', None)
+            .expect("the ambient route uses the same planner");
+        assert_eq!(points, player.points);
+        assert_eq!(via, player.via);
     }
 
     #[test]
