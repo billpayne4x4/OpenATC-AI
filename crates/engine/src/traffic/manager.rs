@@ -519,10 +519,12 @@ impl TrafficManager {
         }
         if landing {
             RunwayState::Landing
+        } else if line_up {
+            // A line-up clearance owns the slot even while an earlier departure is
+            // still inside the separation window. The rolling state must not hide it.
+            RunwayState::LineUp
         } else if rolling {
             RunwayState::Rolling
-        } else if line_up {
-            RunwayState::LineUp
         } else {
             RunwayState::Clear
         }
@@ -3688,6 +3690,44 @@ mod phase_tests {
             manager.runway_state_for("LFMN", "04R", Some(100.0), None, None),
             RunwayState::LineUp,
             "a line-up clearance reserves the slot before the hold line"
+        );
+    }
+
+    #[test]
+    fn a_rolling_departure_does_not_hide_a_lined_up_aircraft() {
+        let mut manager = TrafficManager::default();
+        let mut rolling = ambient(AmbientKind::Departure, 1_200.0, 0.0, 3_000.0);
+        rolling.id = 1;
+        rolling.airport = "LFMN".into();
+        rolling.runway = "04R".into();
+        rolling.distance = 1_200.0;
+        rolling.runway_start = 1_000.0;
+        rolling.runway_end = 2_500.0;
+        rolling.ground_end = 3_000.0;
+        rolling.cleared = true;
+        rolling.takeoff = true;
+        let mut lined_up = ambient(AmbientKind::Departure, 1_000.0, 0.0, 3_000.0);
+        lined_up.id = 2;
+        lined_up.airport = "LFMN".into();
+        lined_up.runway = "04R".into();
+        lined_up.hold_distance = 600.0;
+        lined_up.distance = 1_000.0;
+        lined_up.runway_start = 1_000.0;
+        lined_up.runway_end = 2_500.0;
+        lined_up.ground_end = 3_000.0;
+        lined_up.cleared = true;
+        lined_up.takeoff = false;
+        manager.aircraft = vec![rolling, lined_up];
+        assert_eq!(
+            manager.runway_state("LFMN", "04R"),
+            RunwayState::LineUp,
+            "the lined-up aircraft keeps the next departure at the hold"
+        );
+        manager.aircraft.pop();
+        assert_eq!(
+            manager.runway_state("LFMN", "04R"),
+            RunwayState::Rolling,
+            "a rolling departure alone still allows the next aircraft to line up"
         );
     }
 
