@@ -613,6 +613,15 @@ impl TrafficManager {
         let Some(models) = self.models.clone() else {
             return;
         };
+        if state.session.telemetry.paused {
+            // Keep the published poses where they are and reset the movement clock so
+            // the first frame after unpausing does not apply the whole pause as dt.
+            let now = Instant::now();
+            for aircraft in &mut self.aircraft {
+                aircraft.last = now;
+            }
+            return;
+        }
         self.player_hold_since = state.flow.takeoff_hold_since;
         let telemetry = &state.session.telemetry;
         let own = telemetry
@@ -1425,6 +1434,47 @@ impl TrafficManager {
         }
     }
 
+    /// Station for a taxi instruction to an ambient aircraft. Ground owns taxiing
+    /// traffic even after the aircraft has switched to Tower for its departure call.
+    /// A Tower-only field falls back to the aircraft's own channel.
+    fn ground_call_station(
+        &self,
+        state: &crate::EngineState,
+        airport: &str,
+        frequency: Option<i32>,
+    ) -> Option<(openatc_core::stations::Station, openatc_core::state::Radio)> {
+        if airport != self.active_airport {
+            return None;
+        }
+        let ground = state.stations.iter().find(|station| {
+            station.airport == airport
+                && (station.service == "Ground"
+                    || station.services.iter().any(|service| service == "Ground"))
+        });
+        if let Some(station) = ground {
+            return state
+                .session
+                .receiving_radio(station.khz)
+                .map(|radio| (station.clone(), radio));
+        }
+        let frequency = frequency?;
+        state
+            .stations
+            .iter()
+            .find(|station| {
+                station.airport == airport
+                    && station.khz == frequency
+                    && (station.service == "Tower"
+                        || station.services.iter().any(|service| service == "Tower"))
+            })
+            .and_then(|station| {
+                state
+                    .session
+                    .receiving_radio(station.khz)
+                    .map(|radio| (station.clone(), radio))
+            })
+    }
+
     /// Give-way and move-up calls on the ground. Every call is spoken only on a frequency
     /// the player is receiving, so a radio that is not tuned to the controller hears nothing.
     fn ground_calls(&mut self, state: &mut crate::EngineState) {
@@ -1434,24 +1484,24 @@ impl TrafficManager {
             .iter()
             .map(|aircraft| (aircraft.id, aircraft.callsign.clone()))
             .collect();
+        let stations: Vec<_> = self
+            .aircraft
+            .iter()
+            .map(|aircraft| {
+                self.ground_call_station(state, &aircraft.airport, aircraft.frequency_khz)
+            })
+            .collect();
         let mut calls: Vec<(
             openatc_core::state::Radio,
-            i32,
-            String,
+            openatc_core::stations::Station,
             String,
             String,
             String,
         )> = Vec::new();
-        for aircraft in &mut self.aircraft {
-            let heard = aircraft.frequency_khz.and_then(|frequency| {
-                state
-                    .session
-                    .receiving_radio(frequency)
-                    .map(|radio| (frequency, radio))
-            });
+        for (aircraft, heard) in self.aircraft.iter_mut().zip(stations) {
             match (aircraft.yield_to, aircraft.yield_announced) {
                 (Some(other), false) => {
-                    let Some((frequency, radio)) = heard else {
+                    let Some((station, radio)) = heard else {
                         continue;
                     };
                     let other = if other == 0 {
@@ -1465,44 +1515,31 @@ impl TrafficManager {
                     let slots = [("callsign", aircraft.callsign.clone()), ("other", other)];
                     calls.push((
                         radio,
-                        frequency,
+                        station,
                         openatc_core::dialogue::say("ambient_give_way", &slots),
                         openatc_core::dialogue::say("ambient_give_way_readback", &slots),
-                        aircraft.airport.clone(),
                         aircraft.callsign.clone(),
                     ));
                 }
                 (None, true) => {
                     aircraft.yield_announced = false;
-                    let Some((frequency, radio)) = heard else {
+                    let Some((station, radio)) = heard else {
                         continue;
                     };
                     let slots = [("callsign", aircraft.callsign.clone())];
                     calls.push((
                         radio,
-                        frequency,
+                        station,
                         openatc_core::dialogue::say("ambient_resume", &slots),
                         openatc_core::dialogue::say("ambient_resume_readback", &slots),
-                        aircraft.airport.clone(),
                         aircraft.callsign.clone(),
                     ));
                 }
                 _ => {}
             }
         }
-        for (radio, frequency, text, pilot_reply, airport, callsign) in calls {
-            let station = state
-                .stations
-                .iter()
-                .find(|station| station.airport == airport && station.khz == frequency)
-                .cloned();
-            let atc_tag = station.map_or_else(
-                || openatc_core::state::SpeechTag {
-                    position: "Ground".into(),
-                    ..Default::default()
-                },
-                |station| crate::flight::tag(state, &station),
-            );
+        for (radio, station, text, pilot_reply, callsign) in calls {
+            let atc_tag = crate::flight::tag(state, &station);
             let pilot_voice = crate::traffic::pilot_voice_for_callsign(state, &callsign);
             openatc_core::apply::add_transmission(
                 &mut state.session,
@@ -1510,7 +1547,7 @@ impl TrafficManager {
                 &text,
                 &openatc_core::state::SpeechTag {
                     radio: Some(radio),
-                    frequency: Some(frequency),
+                    frequency: Some(station.khz),
                     ..atc_tag
                 },
             );
@@ -1524,7 +1561,7 @@ impl TrafficManager {
                 &pilot_reply,
                 &openatc_core::state::SpeechTag {
                     radio: Some(radio),
-                    frequency: Some(frequency),
+                    frequency: Some(station.khz),
                     position: "Traffic".into(),
                     voice: pilot_voice,
                     ..Default::default()
@@ -4465,14 +4502,59 @@ mod phase_tests {
     }
 
     #[test]
+    fn ambient_traffic_freezes_while_the_simulator_is_paused() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport);
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.paused = true;
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            ..Default::default()
+        };
+        let mut departure = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        departure.airport = "DEMO".into();
+        departure.runway = "09".into();
+        departure.distance = 100.0;
+        departure.speed = 5.0;
+        manager.aircraft.push(departure);
+        let before = manager.aircraft[0].distance;
+        manager.tick(&mut state);
+        assert_eq!(
+            manager.aircraft[0].distance, before,
+            "a pause must not advance ambient traffic"
+        );
+    }
+
+    #[test]
     fn ground_calls_stay_silent_when_the_player_is_not_on_the_frequency() {
         let mut state = crate::test_state();
         state.session.plan.callsign = "BIL1975".into();
         state.session.telemetry.com1_khz = 118_700;
-        let mut manager = TrafficManager::default();
+        state.stations = vec![
+            openatc_core::stations::Station {
+                airport: "DEMO".into(),
+                name: "DEMO Ground".into(),
+                service: "Ground".into(),
+                khz: 121_900,
+                ..Default::default()
+            },
+            openatc_core::stations::Station {
+                airport: "DEMO".into(),
+                name: "DEMO Tower".into(),
+                service: "Tower".into(),
+                khz: 118_700,
+                ..Default::default()
+            },
+        ];
+        let mut manager = TrafficManager {
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
         let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
         waiting.airport = "DEMO".into();
-        waiting.frequency_khz = Some(121_900);
+        waiting.frequency_khz = Some(118_700);
         waiting.yield_to = Some(0);
         manager.aircraft.push(waiting);
         let transcript = state.session.transcript.len();
@@ -4486,20 +4568,40 @@ mod phase_tests {
         let mut state = crate::test_state();
         state.session.plan.callsign = "BIL1975".into();
         state.session.telemetry.com1_khz = 121_900;
-        let mut manager = TrafficManager::default();
+        state.stations = vec![
+            openatc_core::stations::Station {
+                airport: "DEMO".into(),
+                name: "DEMO Ground".into(),
+                service: "Ground".into(),
+                khz: 121_900,
+                ..Default::default()
+            },
+            openatc_core::stations::Station {
+                airport: "DEMO".into(),
+                name: "DEMO Tower".into(),
+                service: "Tower".into(),
+                khz: 118_700,
+                ..Default::default()
+            },
+        ];
+        let mut manager = TrafficManager {
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
         let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
         waiting.airport = "DEMO".into();
-        waiting.frequency_khz = Some(121_900);
+        waiting.frequency_khz = Some(118_700);
         waiting.yield_to = Some(0);
         manager.aircraft.push(waiting);
         manager.ground_calls(&mut state);
-        assert!(
-            state
-                .session
-                .transcript
-                .iter()
-                .any(|entry| entry.text.contains("give way to BIL1975"))
-        );
+        let call = state
+            .session
+            .transcript
+            .iter()
+            .find(|entry| entry.text.contains("give way to BIL1975"))
+            .expect("the give-way is spoken");
+        assert_eq!(call.frequency, Some(121_900));
+        assert_eq!(call.position, "DEMO Ground");
         assert!(manager.aircraft[0].yield_announced);
         manager.ground_calls(&mut state);
         let calls = state
@@ -4519,6 +4621,47 @@ mod phase_tests {
                 .any(|entry| entry.text.contains("continue"))
         );
         assert!(!manager.aircraft[0].yield_announced);
+    }
+
+    #[test]
+    fn a_tower_only_field_uses_the_tower_channel_and_skips_the_multicast_entry() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 118_700;
+        state.stations = vec![
+            openatc_core::stations::Station {
+                airport: "DEMO".into(),
+                name: "DEMO MULT".into(),
+                service: "Unicom".into(),
+                khz: 118_700,
+                ..Default::default()
+            },
+            openatc_core::stations::Station {
+                airport: "DEMO".into(),
+                name: "DEMO Tower".into(),
+                service: "Tower".into(),
+                khz: 118_700,
+                ..Default::default()
+            },
+        ];
+        let mut manager = TrafficManager {
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        waiting.airport = "DEMO".into();
+        waiting.frequency_khz = Some(118_700);
+        waiting.yield_to = Some(0);
+        manager.aircraft.push(waiting);
+        manager.ground_calls(&mut state);
+        let call = state
+            .session
+            .transcript
+            .iter()
+            .find(|entry| entry.text.contains("give way to BIL1975"))
+            .expect("the give-way is spoken");
+        assert_eq!(call.frequency, Some(118_700));
+        assert_eq!(call.position, "DEMO Tower");
     }
 
     #[test]
