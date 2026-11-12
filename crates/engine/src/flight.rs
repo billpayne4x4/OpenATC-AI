@@ -1141,6 +1141,14 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
     if !crate::traffic::departure_ready(state) {
         return;
     }
+    // An ambient departure still waiting at the hold is ahead of the player; do not
+    // clear the player to line up past it.
+    if state
+        .ambient
+        .departure_ahead_of_player(&airport, &runway, &state.session.telemetry)
+    {
+        return;
+    }
     let sequence = crate::routes::runway_sequence(state, &airport, &runway);
     let targets = state.traffic_targets();
     if state.session.departure_wake_seconds <= 0.0 {

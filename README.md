@@ -1278,8 +1278,9 @@ At a junction, the aircraft with the other on its right gives way, as the ICAO A
 converging rule has it. Traffic going the same way on a parallel taxiway, or the opposite
 way, does not create a give-way. A stopped player is ignored for right-of-way, so parked
 aircraft beside the taxiway do not stop traffic; a player who stops on the route is still
-followed by the aircraft behind. When an ambient or generated aircraft gives way, ATC says so
-on the frequency the player is receiving and says continue once it clears. A moving player also
+followed by the aircraft behind. An ambient departure still waiting at the hold ahead of the player keeps the player
+holding short, so the player cannot line up past it. When an ambient or generated aircraft
+gives way, ATC says so on the frequency the player is receiving and says continue once it clears. A moving player also
 gives way to a generated aircraft on its right. Generated flights hold when they cannot reserve
 a taxi route past the player, and the same move-up call follows. If
 the player stays stopped on the route with traffic queued behind for 20 seconds, ATC asks the

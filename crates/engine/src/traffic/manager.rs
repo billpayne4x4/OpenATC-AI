@@ -3043,6 +3043,37 @@ impl TrafficManager {
                 && (other.distance - other.runway_start) - own_progress < 3.0 * 1_852.0
         })
     }
+
+    /// A departure waiting at the hold ahead of the player. The player must hold short rather
+    /// than line up past it. A player already on the runway is ahead, so it does not block.
+    #[must_use]
+    pub(crate) fn departure_ahead_of_player(
+        &self,
+        airport: &Airport,
+        runway: &str,
+        telemetry: &openatc_core::state::Telemetry,
+    ) -> bool {
+        if !telemetry.on_ground
+            || !telemetry.position_valid
+            || openatc_core::airport::aircraft_on_named_runway(airport, runway, telemetry)
+        {
+            return false;
+        }
+        let player = [telemetry.latitude, telemetry.longitude];
+        self.aircraft.iter().any(|aircraft| {
+            aircraft.kind == AmbientKind::Departure
+                && aircraft.airport == airport.icao
+                && aircraft.runway == runway
+                && !aircraft.cleared
+                && !aircraft.takeoff
+                && aircraft.distance >= aircraft.hold_distance - 60.0
+                && aircraft.hold.is_some_and(|hold| {
+                    let player_to_hold = openatc_core::arrival::distance_nm(player, hold) * 1852.0;
+                    let own_to_hold = (aircraft.hold_distance - aircraft.distance).max(0.0);
+                    own_to_hold <= player_to_hold + 15.0
+                })
+        })
+    }
 }
 
 /// Whether an ambient departure is still behind the player in the runway queue.
@@ -4642,6 +4673,50 @@ mod phase_tests {
         assert!(
             departure_behind_player(&behind, hold, "35", 0.0),
             "without a holding marker the runway start and threshold are compared"
+        );
+    }
+
+    #[test]
+    fn an_ambient_at_the_hold_ahead_of_the_player_blocks_the_player() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut manager = TrafficManager::default();
+        let mut jet = ambient(AmbientKind::Departure, 600.0, 0.0, 2_000.0);
+        jet.airport.clone_from(&airport.icao);
+        jet.runway = "09".into();
+        jet.hold_distance = 600.0;
+        jet.hold = Some([0.003, 0.0]);
+        jet.cleared = false;
+        manager.aircraft.push(jet);
+        let player = openatc_core::state::Telemetry {
+            position_valid: true,
+            on_ground: true,
+            latitude: 0.003 - 27.0 / 111_320.0,
+            longitude: 0.0,
+            ..Default::default()
+        };
+        assert!(
+            manager.departure_ahead_of_player(&airport, "09", &player),
+            "a jet at the hold is ahead of a player 27 m before it"
+        );
+        assert!(!manager.departure_ahead_of_player(&airport, "27", &player));
+        let on_runway = openatc_core::state::Telemetry {
+            latitude: 0.0,
+            ..player.clone()
+        };
+        assert!(
+            !manager.departure_ahead_of_player(&airport, "09", &on_runway),
+            "a player already on the runway is ahead of the hold"
+        );
+        manager.aircraft[0].distance = 550.0;
+        assert!(
+            !manager.departure_ahead_of_player(&airport, "09", &player),
+            "a jet 50 m behind the hold is not ahead of a player at the hold"
+        );
+        manager.aircraft[0].distance = 600.0;
+        manager.aircraft[0].cleared = true;
+        assert!(
+            !manager.departure_ahead_of_player(&airport, "09", &player),
+            "a cleared aircraft is handled by the runway state"
         );
     }
 
