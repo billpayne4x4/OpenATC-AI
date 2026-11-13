@@ -524,6 +524,214 @@ pub fn within_runway(airport: &Airport, point: &Point) -> bool {
 }
 
 /// Resolve the route target: a parking stand point or a runway end.
+/// One taxiway exit from a runway, ordered by rollout distance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArrivalExit {
+    /// Point where the turn-off leaves the runway centreline.
+    pub point: Point,
+    /// Taxiway carrying the exit.
+    pub taxiway: String,
+    /// Side of the landing direction.
+    pub side: &'static str,
+    /// Distance from the landing threshold in metres.
+    pub along: f64,
+    /// Off-runway graph node at the exit.
+    pub node: i64,
+    /// Conservative maximum turn-off speed for the exit geometry.
+    pub maximum_knots: f64,
+    /// True when this exit is also the departure entry for the runway.
+    pub entry: bool,
+}
+
+/// List usable taxiway exits for a runway, ordered by rollout distance.
+///
+/// The exit geometry is taken from the taxi graph, and the departure entry is
+/// marked so callers can keep landing traffic off the entry taxiway.
+#[must_use]
+pub fn arrival_exits(airport: &Airport, runway: &str, size: char) -> Vec<ArrivalExit> {
+    let Some(runway_data) = airport
+        .runways
+        .iter()
+        .find(|candidate| candidate.first_name == runway || candidate.second_name == runway)
+    else {
+        return Vec::new();
+    };
+    let (start, end) = if runway_data.first_name == runway {
+        (runway_data.first, runway_data.second)
+    } else {
+        (runway_data.second, runway_data.first)
+    };
+    let (east, north) = (end.east - start.east, end.north - start.north);
+    let length = east.hypot(north);
+    if length < 1.0 {
+        return Vec::new();
+    }
+    let (along_east, along_north) = (east / length, north / length);
+    let (left_east, left_north) = (-along_north, along_east);
+    let entry = departure_hold(airport, runway);
+    let node = |id: i64| airport.nodes.iter().find(|node| node.id == id);
+    let place = |point: Point| {
+        let offset_east = point.east - start.east;
+        let offset_north = point.north - start.north;
+        (
+            offset_east * along_east + offset_north * along_north,
+            offset_east * left_east + offset_north * left_north,
+        )
+    };
+    let mut exits: Vec<ArrivalExit> = Vec::new();
+    for edge in &airport.edges {
+        if edge.runway || edge.size < size {
+            continue;
+        }
+        let (Some(first), Some(second)) = (node(edge.first), node(edge.second)) else {
+            continue;
+        };
+        let (first_along, first_across) = place(first.point);
+        let (second_along, second_across) = place(second.point);
+        let on_runway = |along: f64, across: f64| {
+            along >= -20.0 && along <= length + 20.0 && across.abs() < 30.0
+        };
+        let off_runway = |along: f64, across: f64| {
+            along >= -20.0 && along <= length + 40.0 && across.abs() >= 30.0
+        };
+        let (along, across, node) = if on_runway(first_along, first_across)
+            && off_runway(second_along, second_across)
+        {
+            (second_along, second_across, second.id)
+        } else if on_runway(second_along, second_across) && off_runway(first_along, first_across) {
+            (first_along, first_across, first.id)
+        } else {
+            continue;
+        };
+        if exits
+            .iter()
+            .any(|exit| exit.node == node && (exit.along - along).abs() < 1.0)
+        {
+            continue;
+        }
+        let runway_direction = [along_east, along_north];
+        let exit_direction = if node == first.id {
+            [
+                first.point.east - second.point.east,
+                first.point.north - second.point.north,
+            ]
+        } else {
+            [
+                second.point.east - first.point.east,
+                second.point.north - first.point.north,
+            ]
+        };
+        let exit_length = exit_direction[0].hypot(exit_direction[1]).max(1.0);
+        let dot = (runway_direction[0] * exit_direction[0]
+            + runway_direction[1] * exit_direction[1])
+            / exit_length;
+        let angle = dot.clamp(-1.0, 1.0).acos().to_degrees();
+        // Provisional geometry limits until airport-published rapid-exit speeds exist.
+        let maximum_knots = if angle <= 15.0 {
+            60.0
+        } else if angle <= 35.0 {
+            45.0
+        } else if angle <= 60.0 {
+            30.0
+        } else if angle <= 90.0 {
+            20.0
+        } else {
+            10.0
+        };
+        let entry_match = entry
+            .as_ref()
+            .is_some_and(|hold| hold.taxiway == edge.name || hold.nodes.contains(&node));
+        exits.push(ArrivalExit {
+            point: Point {
+                east: start.east + along_east * along,
+                north: start.north + along_north * along,
+                height: start.height,
+            },
+            taxiway: edge.name.clone(),
+            side: if across > 0.0 { "left" } else { "right" },
+            along,
+            node,
+            maximum_knots,
+            entry: entry_match,
+        });
+    }
+    exits.sort_by(|left, right| left.along.total_cmp(&right.along));
+    exits
+}
+
+/// Published hold line that guards a departure runway entry.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DepartureHold {
+    /// A point on the hold line.
+    pub point: Point,
+    /// Taxiway carrying the hold line.
+    pub taxiway: String,
+    /// Graph nodes at the ends of the taxiway edge carrying the line.
+    pub nodes: [i64; 2],
+}
+
+/// Find the published hold line that guards the named runway's departure entry.
+///
+/// The line must sit on a non-runway taxiway edge and be reasonably close to the
+/// threshold. The nearest such line wins; a line on a distant exit loop is ignored.
+#[must_use]
+pub fn departure_hold(airport: &Airport, runway: &str) -> Option<DepartureHold> {
+    let runway_data = airport
+        .runways
+        .iter()
+        .find(|candidate| candidate.first_name == runway || candidate.second_name == runway)?;
+    let threshold = if runway_data.first_name == runway {
+        runway_data.first
+    } else {
+        runway_data.second
+    };
+    let nodes: BTreeMap<i64, Point> = airport
+        .nodes
+        .iter()
+        .map(|node| (node.id, node.point))
+        .collect();
+    let mut best: Option<(f64, DepartureHold)> = None;
+    for line in &airport.taxi_hold_lines {
+        let midpoint = Point {
+            east: (line[0].east + line[1].east) / 2.0,
+            north: (line[0].north + line[1].north) / 2.0,
+            height: line[0].height,
+        };
+        let distance = flat_distance(&midpoint, &threshold);
+        if distance > 800.0 {
+            continue;
+        }
+        let mut edge_best: Option<(f64, &TaxiEdge)> = None;
+        for edge in &airport.edges {
+            if edge.runway {
+                continue;
+            }
+            let (Some(first), Some(second)) = (nodes.get(&edge.first), nodes.get(&edge.second))
+            else {
+                continue;
+            };
+            let gap = segment_distance(midpoint, *first, *second);
+            if gap <= 45.0 && edge_best.as_ref().is_none_or(|(current, _)| gap < *current) {
+                edge_best = Some((gap, edge));
+            }
+        }
+        let Some((_, edge)) = edge_best else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(current, _)| distance < *current) {
+            best = Some((
+                distance,
+                DepartureHold {
+                    point: midpoint,
+                    taxiway: edge.name.clone(),
+                    nodes: [edge.first, edge.second],
+                },
+            ));
+        }
+    }
+    best.map(|(_, hold)| hold)
+}
+
 fn route_target(airport: &Airport, destination: &str, to_parking: bool) -> Result<Point, String> {
     if to_parking {
         return airport
@@ -532,6 +740,9 @@ fn route_target(airport: &Airport, destination: &str, to_parking: bool) -> Resul
             .find(|stand| stand.name == destination)
             .map(|stand| stand.point)
             .ok_or_else(|| crate::dialogue::say("taxi_arrival_stand_missing", &[]));
+    }
+    if let Some(hold) = departure_hold(airport, destination) {
+        return Ok(hold.point);
     }
     let mut found = None;
     for runway in &airport.runways {
@@ -3001,5 +3212,105 @@ mod apt_parser_tests {
         let airport = load_airport(text, "TEST").unwrap();
         assert_eq!(airport.edges.len(), 1);
         assert_eq!(airport.edges[0].active_runways, "17L,35R 17L,35R");
+    }
+}
+
+#[cfg(test)]
+mod arrival_exit_tests {
+    use super::*;
+
+    fn exit_airport() -> Airport {
+        let point = |east, north| Point {
+            east,
+            north,
+            height: 0.0,
+        };
+        Airport {
+            icao: "TEST".into(),
+            runways: vec![Runway {
+                first_name: "09".into(),
+                second_name: "27".into(),
+                first: point(0.0, 0.0),
+                second: point(2_000.0, 0.0),
+                width: 45.0,
+                ..Default::default()
+            }],
+            nodes: vec![
+                TaxiNode {
+                    id: 1,
+                    point: point(0.0, 0.0),
+                },
+                TaxiNode {
+                    id: 2,
+                    point: point(700.0, 0.0),
+                },
+                TaxiNode {
+                    id: 3,
+                    point: point(700.0, 80.0),
+                },
+                TaxiNode {
+                    id: 4,
+                    point: point(1_100.0, 0.0),
+                },
+                TaxiNode {
+                    id: 5,
+                    point: point(1_300.0, 80.0),
+                },
+                TaxiNode {
+                    id: 6,
+                    point: point(1_500.0, 0.0),
+                },
+                TaxiNode {
+                    id: 7,
+                    point: point(1_500.0, 80.0),
+                },
+            ],
+            edges: vec![
+                TaxiEdge {
+                    first: 1,
+                    second: 2,
+                    name: "09".into(),
+                    runway: true,
+                    size: 'E',
+                    ..Default::default()
+                },
+                TaxiEdge {
+                    first: 2,
+                    second: 3,
+                    name: "N1".into(),
+                    size: 'E',
+                    ..Default::default()
+                },
+                TaxiEdge {
+                    first: 4,
+                    second: 5,
+                    name: "N2".into(),
+                    size: 'E',
+                    ..Default::default()
+                },
+                TaxiEdge {
+                    first: 6,
+                    second: 7,
+                    name: "N3".into(),
+                    size: 'E',
+                    ..Default::default()
+                },
+            ],
+            taxi_hold_lines: vec![[point(680.0, 70.0), point(720.0, 70.0)]],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_departure_hold_is_marked_as_an_arrival_entry() {
+        let airport = exit_airport();
+        let hold = departure_hold(&airport, "09").expect("the published hold");
+        assert_eq!(hold.taxiway, "N1");
+        let exits = arrival_exits(&airport, "09", 'E');
+        let n1 = exits.iter().find(|exit| exit.taxiway == "N1").expect("N1");
+        let n2 = exits.iter().find(|exit| exit.taxiway == "N2").expect("N2");
+        assert!(n1.entry, "the departure hold must not be an arrival exit");
+        assert!(!n2.entry);
+        assert!(n2.maximum_knots >= 45.0, "the angled exit is faster");
     }
 }

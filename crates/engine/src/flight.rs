@@ -289,69 +289,71 @@ pub fn urgent(state: &mut EngineState) -> bool {
 }
 
 /// First usable runway exit, named taxiway and side relative to the landing direction.
+///
+/// Uses the same exit rule as ambient arrivals: the departure entry is excluded,
+/// an exit above the safe turn-off speed is skipped, and a stopped queue moves the
+/// exit to the next one.
 fn runway_exit(state: &EngineState, runway_name: &str) -> Option<(&'static str, String)> {
     let airport = state
         .arrival_airport
         .as_ref()
         .or(state.airport.as_ref())
         .filter(|airport| airport.icao == state.session.plan.destination)?;
-    let runway = airport
-        .runways
-        .iter()
-        .find(|runway| runway.first_name == runway_name || runway.second_name == runway_name)?;
-    let (start, end) = if runway.first_name == runway_name {
-        (runway.first, runway.second)
+    let telemetry = &state.session.telemetry;
+    let (along, _, _, _) = openatc_core::traffic::runway_position(
+        airport,
+        runway_name,
+        telemetry.latitude,
+        telemetry.longitude,
+    )?;
+    let code = if telemetry.aircraft_icao.is_empty() {
+        &state.session.plan.aircraft
     } else {
-        (runway.second, runway.first)
+        &telemetry.aircraft_icao
     };
-    let (east, north) = (end.east - start.east, end.north - start.north);
-    let length = east.hypot(north);
-    if length < 1.0 {
+    let size = openatc_core::traffic::profiles::aircraft(code)
+        .map_or('C', openatc_core::traffic::profiles::Aircraft::parking_size);
+    let targets = state.traffic_targets();
+    let plan = crate::traffic::manager::choose_arrival_exit(
+        airport,
+        runway_name,
+        size,
+        &targets,
+        along,
+        telemetry.ground_speed_knots,
+        0.0,
+        0,
+    )?;
+    if plan.chosen.taxiway.trim().is_empty() {
         return None;
     }
-    let (along_east, along_north) = (east / length, north / length);
-    // The left-hand side of the landing direction in the local east and north plane.
-    let (left_east, left_north) = (-along_north, along_east);
-    let node = |id: i64| airport.nodes.iter().find(|node| node.id == id);
-    let place = |node: &openatc_core::airport::TaxiNode| {
-        let offset_east = node.point.east - start.east;
-        let offset_north = node.point.north - start.north;
-        (
-            offset_east * along_east + offset_north * along_north,
-            offset_east * left_east + offset_north * left_north,
-        )
+    Some((plan.chosen.side, plan.chosen.taxiway))
+}
+
+/// True when the shared exit rule can find a safe exit for this arrival.
+///
+/// An airport with no published exits at all is left to the old landing behaviour;
+/// missing graph data must not force a go-around.
+fn arrival_exit_available(
+    state: &EngineState,
+    airport: &openatc_core::airport::Airport,
+    runway: &str,
+) -> bool {
+    let telemetry = &state.session.telemetry;
+    let code = if telemetry.aircraft_icao.is_empty() {
+        &state.session.plan.aircraft
+    } else {
+        &telemetry.aircraft_icao
     };
-    let mut best: Option<(f64, f64, String)> = None;
-    for edge in &airport.edges {
-        if edge.runway || edge.name.trim().is_empty() {
-            continue;
-        }
-        let (Some(first), Some(second)) = (node(edge.first), node(edge.second)) else {
-            continue;
-        };
-        let (first_along, first_across) = place(first);
-        let (second_along, second_across) = place(second);
-        let on_runway = |along: f64, across: f64| {
-            along >= -20.0 && along <= length + 20.0 && across.abs() < 30.0
-        };
-        let off_runway = |along: f64, across: f64| {
-            along >= -20.0 && along <= length + 40.0 && across.abs() >= 30.0
-        };
-        let (along, across) = if on_runway(first_along, first_across)
-            && off_runway(second_along, second_across)
-        {
-            (second_along, second_across)
-        } else if on_runway(second_along, second_across) && off_runway(first_along, first_across) {
-            (first_along, first_across)
-        } else {
-            continue;
-        };
-        if best.as_ref().is_none_or(|(current, _, _)| along < *current) {
-            best = Some((along, across, edge.name.clone()));
-        }
+    let size = openatc_core::traffic::profiles::aircraft(code)
+        .map_or('C', openatc_core::traffic::profiles::Aircraft::parking_size);
+    let exits = openatc_core::airport::arrival_exits(airport, runway, size);
+    if exits.is_empty() {
+        return true;
     }
-    let (_, across, taxiway) = best?;
-    Some((if across > 0.0 { "left" } else { "right" }, taxiway))
+    let targets = state.traffic_targets();
+    crate::traffic::manager::choose_arrival_exit(airport, runway, size, &targets, 0.0, 20.0, 0.0, 0)
+        .is_some()
 }
 
 /// Reserve an unoccupied published stand for the arrival and retain it for taxi-in.
@@ -933,6 +935,18 @@ pub fn request(
             &say(
                 "arrival_report_final",
                 &[("callsign", callsign), ("runway", runway)],
+            ),
+        ));
+    }
+    if !arrival_exit_available(state, &airport, &runway) {
+        return Some(respond(
+            state,
+            request,
+            tag,
+            false,
+            &say(
+                "arrival_go_around_unconfirmed",
+                &[("callsign", callsign.clone())],
             ),
         ));
     }
@@ -3407,6 +3421,7 @@ mod ownership_tests {
         use openatc_core::state::Point;
 
         let mut state = crate::test_state();
+        state.session.plan.aircraft = "C172".into();
         let mut airport = openatc_core::airport::demo_airport();
         airport.icao = "LFRX".into();
         airport.runways = vec![Runway {

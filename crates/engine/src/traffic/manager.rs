@@ -2052,12 +2052,33 @@ impl TrafficManager {
                 + node.point.east
                     / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
             let minimum_rollout = phases::landing::minimum_rollout(&identity.profile, &handling);
+            let targets = state.traffic_targets();
+            let arrival_exit = (kind == AmbientKind::Arrival)
+                .then(|| {
+                    choose_arrival_exit(
+                        airport,
+                        route_runway,
+                        size,
+                        &targets,
+                        0.0,
+                        25.0,
+                        minimum_rollout,
+                        u32::MAX,
+                    )
+                })
+                .flatten();
+            if kind == AmbientKind::Arrival && arrival_exit.is_none() {
+                self.rejected_route = self.rejected_route.saturating_add(1);
+                self.last_error = "no clear arrival exit".to_owned();
+                continue;
+            }
             let Some((surface_points, route)) = plan_taxi(
                 airport,
                 node.id,
                 route_runway,
                 size,
                 (kind == AmbientKind::Arrival).then_some(minimum_rollout),
+                arrival_exit.as_ref().map(|plan| plan.chosen.node),
             ) else {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("no taxi graph route from node {}", node.id);
@@ -2420,6 +2441,7 @@ fn plan_taxi(
     runway: &str,
     size: char,
     arrival: Option<f64>,
+    exit_node: Option<i64>,
 ) -> Option<(Vec<Point>, String)> {
     use std::cmp::Reverse;
     use std::collections::{BTreeMap, BinaryHeap};
@@ -2452,54 +2474,60 @@ fn plan_taxi(
                 .ok()?;
         return Some((route.points, route.via));
     }
-    let target = airport
-        .nodes
-        .iter()
-        .filter(|node| {
-            if openatc_core::airport::within_runway(airport, &node.point)
-                || !openatc_core::airport::on_non_runway_taxiway(airport, &node.point, 12.0)
-                || (arrival.is_none()
-                    && openatc_core::airport::runway_edge_distance(airport, &node.point)
-                        .is_some_and(|distance| distance <= RUNWAY_EDGE_MARGIN))
-            {
-                return false;
-            }
-            let latitude = airport.reference_latitude + node.point.north / 111_320.0;
-            let longitude = airport.reference_longitude
-                + node.point.east
-                    / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
-            let Some((along, across, length, _)) =
-                openatc_core::traffic::runway_position(airport, runway, latitude, longitude)
-            else {
-                return true;
-            };
-            if let Some(minimum_rollout) = arrival {
-                along >= minimum_rollout
-                    && along <= length - 100.0
-                    && across.abs() > runway_data.width / 2.0 + 35.0
-                    && across.abs() < 250.0
-            } else {
-                across.abs() > 50.0
-            }
-        })
-        .min_by(|left, right| {
-            let key = |node: &openatc_core::airport::TaxiNode| {
+    let target = if let Some(exit) = exit_node {
+        exit
+    } else {
+        airport
+            .nodes
+            .iter()
+            .filter(|node| {
+                if openatc_core::airport::within_runway(airport, &node.point)
+                    || !openatc_core::airport::on_non_runway_taxiway(airport, &node.point, 12.0)
+                    || (arrival.is_none()
+                        && openatc_core::airport::runway_edge_distance(airport, &node.point)
+                            .is_some_and(|distance| distance <= RUNWAY_EDGE_MARGIN))
+                {
+                    return false;
+                }
                 let latitude = airport.reference_latitude + node.point.north / 111_320.0;
                 let longitude = airport.reference_longitude
                     + node.point.east
                         / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01));
-                let along =
+                let Some((along, across, length, _)) =
                     openatc_core::traffic::runway_position(airport, runway, latitude, longitude)
-                        .map_or(f64::INFINITY, |(along, _, _, _)| along);
-                let stand = (node.point.east - start_point.east)
-                    .hypot(node.point.north - start_point.north);
-                (along, stand)
-            };
-            key(left)
-                .partial_cmp(&key(right))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })?
-        .id;
+                else {
+                    return true;
+                };
+                if let Some(minimum_rollout) = arrival {
+                    along >= minimum_rollout
+                        && along <= length - 100.0
+                        && across.abs() > runway_data.width / 2.0 + 35.0
+                        && across.abs() < 250.0
+                } else {
+                    across.abs() > 50.0
+                }
+            })
+            .min_by(|left, right| {
+                let key = |node: &openatc_core::airport::TaxiNode| {
+                    let latitude = airport.reference_latitude + node.point.north / 111_320.0;
+                    let longitude = airport.reference_longitude
+                        + node.point.east
+                            / (111_320.0
+                                * (airport.reference_latitude.to_radians().cos()).max(0.01));
+                    let along = openatc_core::traffic::runway_position(
+                        airport, runway, latitude, longitude,
+                    )
+                    .map_or(f64::INFINITY, |(along, _, _, _)| along);
+                    let stand = (node.point.east - start_point.east)
+                        .hypot(node.point.north - start_point.north);
+                    (along, stand)
+                };
+                key(left)
+                    .partial_cmp(&key(right))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })?
+            .id
+    };
     let mut adjacency: BTreeMap<i64, Vec<(i64, f64, String)>> = BTreeMap::new();
     for edge in &airport.edges {
         if edge.runway || edge.size < size {
@@ -2660,6 +2688,71 @@ fn entry_waypoint(airport: &Airport, runway: &str, point: Point) -> Option<Waypo
         longitude: airport.reference_longitude
             + entry.east / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01)),
         altitude_feet: airport.elevation_feet,
+    })
+}
+
+/// One selected arrival exit and the next fallback.
+#[derive(Clone, Debug)]
+pub(crate) struct ArrivalExitPlan {
+    pub chosen: openatc_core::airport::ArrivalExit,
+    pub fallback: Option<openatc_core::airport::ArrivalExit>,
+}
+
+/// Shared arrival exit rule for the player and ambient traffic.
+///
+/// The departure entry is never used, an exit above the aircraft's safe turn-off
+/// speed is skipped, and a stopped queue inside the exit throat moves the plan to
+/// the next exit. A moving queue is assumed to clear.
+#[must_use]
+pub(crate) fn choose_arrival_exit(
+    airport: &Airport,
+    runway: &str,
+    size: char,
+    targets: &[openatc_core::state::TrafficTarget],
+    along: f64,
+    speed_knots: f64,
+    minimum_rollout: f64,
+    self_id: u32,
+) -> Option<ArrivalExitPlan> {
+    let mut viable = openatc_core::airport::arrival_exits(airport, runway, size)
+        .into_iter()
+        .filter(|exit| {
+            if exit.entry || exit.along < minimum_rollout.max(along + 30.0) {
+                return false;
+            }
+            // A distant exit leaves room to slow; an immediate exit does not.
+            let distance = (exit.along - along).max(0.0);
+            distance >= 300.0 || speed_knots <= exit.maximum_knots + 5.0
+        })
+        .filter(|exit| !exit_blocked(airport, exit, targets, self_id));
+    let chosen = viable.next()?;
+    Some(ArrivalExitPlan {
+        chosen,
+        fallback: viable.next(),
+    })
+}
+
+/// A stopped aircraft inside the turn-off throat blocks the exit.
+fn exit_blocked(
+    airport: &Airport,
+    exit: &openatc_core::airport::ArrivalExit,
+    targets: &[openatc_core::state::TrafficTarget],
+    self_id: u32,
+) -> bool {
+    targets.iter().any(|target| {
+        target.id != self_id
+            && target.on_ground
+            && target.latitude.is_finite()
+            && target.longitude.is_finite()
+            && {
+                let point = openatc_core::airport::airport_point(
+                    airport,
+                    target.latitude,
+                    target.longitude,
+                );
+                let gap = (point.east - exit.point.east).hypot(point.north - exit.point.north);
+                gap < 150.0 && target.ground_speed_knots.unwrap_or(0.0) < 5.0
+            }
     })
 }
 
@@ -3905,13 +3998,14 @@ mod phase_tests {
             ..Default::default()
         };
         let (arrival, _) =
-            plan_taxi(&airport, 1, "09", 'C', Some(700.0)).expect("arrival taxi route");
+            plan_taxi(&airport, 1, "09", 'C', Some(700.0), None).expect("arrival taxi route");
         assert!(
             (arrival.last().expect("exit").east - 900.0).abs() < 1.0,
             "arrival should route to the exit at 900 m, got {:?}",
             arrival.last()
         );
-        let (departure, _) = plan_taxi(&airport, 1, "09", 'C', None).expect("departure taxi route");
+        let (departure, _) =
+            plan_taxi(&airport, 1, "09", 'C', None, None).expect("departure taxi route");
         assert!(
             departure.last().expect("hold").east.abs() < 1.0,
             "departure should route to the threshold hold"
@@ -4487,6 +4581,110 @@ mod phase_tests {
     }
 
     #[test]
+    fn the_shared_exit_rule_skips_the_entry_and_a_blocked_queue() {
+        use openatc_core::airport::{Runway, TaxiEdge, TaxiNode};
+        use openatc_core::state::{Point, TrafficTarget};
+        let point = |east: f64, north: f64| Point {
+            east,
+            north,
+            height: 0.0,
+        };
+        let airport = Airport {
+            icao: "TEST".into(),
+            runways: vec![Runway {
+                first_name: "09".into(),
+                second_name: "27".into(),
+                first: point(0.0, 0.0),
+                second: point(2_000.0, 0.0),
+                width: 45.0,
+                ..Default::default()
+            }],
+            nodes: vec![
+                TaxiNode {
+                    id: 1,
+                    point: point(0.0, 0.0),
+                },
+                TaxiNode {
+                    id: 2,
+                    point: point(700.0, 0.0),
+                },
+                TaxiNode {
+                    id: 3,
+                    point: point(700.0, 80.0),
+                },
+                TaxiNode {
+                    id: 4,
+                    point: point(1_100.0, 0.0),
+                },
+                TaxiNode {
+                    id: 5,
+                    point: point(1_300.0, 80.0),
+                },
+                TaxiNode {
+                    id: 6,
+                    point: point(1_500.0, 0.0),
+                },
+                TaxiNode {
+                    id: 7,
+                    point: point(1_500.0, 80.0),
+                },
+            ],
+            edges: vec![
+                TaxiEdge {
+                    first: 1,
+                    second: 2,
+                    name: "09".into(),
+                    runway: true,
+                    size: 'E',
+                    ..Default::default()
+                },
+                TaxiEdge {
+                    first: 2,
+                    second: 3,
+                    name: "N1".into(),
+                    size: 'E',
+                    ..Default::default()
+                },
+                TaxiEdge {
+                    first: 4,
+                    second: 5,
+                    name: "N2".into(),
+                    size: 'E',
+                    ..Default::default()
+                },
+                TaxiEdge {
+                    first: 6,
+                    second: 7,
+                    name: "N3".into(),
+                    size: 'E',
+                    ..Default::default()
+                },
+            ],
+            taxi_hold_lines: vec![[point(680.0, 70.0), point(720.0, 70.0)]],
+            ..Default::default()
+        };
+        let empty: Vec<TrafficTarget> = Vec::new();
+        let plan = choose_arrival_exit(&airport, "09", 'E', &empty, 0.0, 20.0, 500.0, 99)
+            .expect("an exit after the entry");
+        assert_eq!(plan.chosen.taxiway, "N2");
+        let blocked = TrafficTarget {
+            id: 7,
+            latitude: 0.0,
+            longitude: 1_200.0 / 111_320.0,
+            on_ground: true,
+            ground_speed_knots: Some(0.0),
+            ..Default::default()
+        };
+        let plan = choose_arrival_exit(&airport, "09", 'E', &[blocked], 0.0, 20.0, 500.0, 99)
+            .expect("the next clear exit");
+        assert_eq!(plan.chosen.taxiway, "N3");
+        assert!(
+            choose_arrival_exit(&airport, "09", 'E', &empty, 1_450.0, 60.0, 0.0, 99).is_none(),
+            "an aircraft too fast for the remaining exit goes around"
+        );
+    }
+
+    #[test]
     fn ambient_departures_use_the_player_taxi_planner() {
         let airport = openatc_core::airport::demo_airport();
         let cos = (airport.reference_latitude.to_radians().cos()).max(0.01);
@@ -4506,7 +4704,7 @@ mod phase_tests {
         let Some((start, player)) = planned else {
             return;
         };
-        let (points, via) = plan_taxi(&airport, start, "09", 'C', None)
+        let (points, via) = plan_taxi(&airport, start, "09", 'C', None, None)
             .expect("the ambient route uses the same planner");
         assert_eq!(points, player.points);
         assert_eq!(via, player.via);
