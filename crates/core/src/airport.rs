@@ -192,6 +192,65 @@ pub struct Procedure {
     pub transition: String,
 }
 
+/// Closest distance between two runway centreline segments.
+fn runway_centerline_distance(first: &Runway, second: &Runway) -> f64 {
+    if intersection(first.first, first.second, second.first, second.second).is_some() {
+        return 0.0;
+    }
+    segment_distance(first.first, second.first, second.second)
+        .min(segment_distance(first.second, second.first, second.second))
+        .min(segment_distance(second.first, first.first, first.second))
+        .min(segment_distance(second.second, first.first, first.second))
+}
+
+/// Occupancy keys for every runway that physically overlaps this one.
+///
+/// Opposite ends share a key, and crossing or overlapping runways share a group,
+/// so one runway cannot be cleared while another aircraft occupies the same pavement.
+#[must_use]
+pub fn runway_group_keys(airport: &Airport, name: &str) -> Option<Vec<String>> {
+    let target = airport
+        .runways
+        .iter()
+        .find(|runway| runway.first_name == name || runway.second_name == name)?;
+    let mut grouped: Vec<&Runway> = vec![target];
+    loop {
+        let mut added = false;
+        for runway in &airport.runways {
+            if grouped.iter().any(|member| std::ptr::eq(*member, runway)) {
+                continue;
+            }
+            let overlaps = grouped.iter().any(|member| {
+                runway_centerline_distance(member, runway)
+                    <= (member.width.max(runway.width) / 2.0) + 1.0
+            });
+            if overlaps {
+                grouped.push(runway);
+                added = true;
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+    Some(
+        grouped
+            .into_iter()
+            .map(|runway| {
+                let mut names = [runway.first_name.as_str(), runway.second_name.as_str()];
+                names.sort_unstable();
+                names.join("/")
+            })
+            .collect(),
+    )
+}
+
+/// Joined names of every runway that shares pavement with this one.
+#[must_use]
+pub fn runway_group_key(airport: &Airport, name: &str) -> Option<String> {
+    runway_group_keys(airport, name).map(|keys| keys.join("|"))
+}
+
 /// Airport scenery geometry and operational data.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]

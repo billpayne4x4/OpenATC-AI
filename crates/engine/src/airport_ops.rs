@@ -125,18 +125,20 @@ impl AirportManager {
         let Some(key) = runway_key(&context.data, runway) else {
             return false;
         };
+        let Some(group) = openatc_core::airport::runway_group_keys(&context.data, runway) else {
+            return false;
+        };
         context.last_used = Instant::now();
-        match context.occupancy.get_mut(&key) {
-            Some(owners) if owners.iter().any(|owner| *owner != id) => false,
-            Some(owners) => {
-                owners.insert(id);
-                true
-            }
-            None => {
-                context.occupancy.insert(key, BTreeSet::from([id]));
-                true
-            }
+        if group.iter().any(|member| {
+            context
+                .occupancy
+                .get(member)
+                .is_some_and(|owners| owners.iter().any(|owner| *owner != id))
+        }) {
+            return false;
         }
+        context.occupancy.entry(key).or_default().insert(id);
+        true
     }
 
     /// Release only this aircraft's runway claim.
@@ -168,6 +170,26 @@ impl AirportManager {
             .occupancy
             .get(&key)
             .is_some_and(|owners| owners.iter().any(|owner| *owner != id))
+    }
+
+    /// Whether another aircraft owns an intersecting runway in the same pavement group.
+    #[must_use]
+    pub fn crossing_occupied(&self, icao: &str, runway: &str, id: u32) -> bool {
+        let Some(context) = self.contexts.get(icao) else {
+            return false;
+        };
+        let Some(own) = runway_key(&context.data, runway) else {
+            return false;
+        };
+        let Some(group) = openatc_core::airport::runway_group_keys(&context.data, runway) else {
+            return false;
+        };
+        group.iter().filter(|member| **member != own).any(|member| {
+            context
+                .occupancy
+                .get(member)
+                .is_some_and(|owners| owners.iter().any(|owner| *owner != id))
+        })
     }
 
     /// Refresh the live users of one airport context.
@@ -380,6 +402,40 @@ mod tests {
         manager.sync_users("TEST", [7]);
         manager.prune(Some([10.0, 10.0]), 60.0);
         assert!(manager.airport("TEST").is_some());
+    }
+
+    #[test]
+    fn crossing_runways_share_one_occupancy_group() {
+        let mut manager = AirportManager::default();
+        manager.ensure(Arc::new(Airport {
+            icao: "TEST".to_owned(),
+            runways: vec![
+                Runway {
+                    first_name: "04R".to_owned(),
+                    second_name: "22L".to_owned(),
+                    first: point(0.0, 0.0),
+                    second: point(2_000.0, 0.0),
+                    width: 45.0,
+                    ..Default::default()
+                },
+                Runway {
+                    first_name: "09".to_owned(),
+                    second_name: "27".to_owned(),
+                    first: point(1_000.0, -1_000.0),
+                    second: point(1_000.0, 1_000.0),
+                    width: 45.0,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }));
+        assert!(manager.claim("TEST", "04R", 1));
+        assert!(
+            !manager.claim("TEST", "09", 2),
+            "a crossing runway cannot be claimed while the other is occupied"
+        );
+        manager.release("TEST", "04R", 1);
+        assert!(manager.claim("TEST", "09", 2));
     }
 
     #[test]

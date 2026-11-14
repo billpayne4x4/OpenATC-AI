@@ -20,15 +20,23 @@ pub(crate) fn round_taxi_path(
             .to_radians()
             .tan()
             .max(0.1);
-    openatc_core::traffic::surface::rounded(
+    match openatc_core::traffic::surface::rounded(
         points,
         handling.taxi_turn_radius_meters,
         minimum,
         5.0,
         |point| openatc_core::airport::on_pavement(airport, point),
-    )
-    .map(|samples| samples.into_iter().map(|sample| sample.point).collect())
-    .unwrap_or_else(|_| points.to_vec())
+    ) {
+        Ok(samples) => samples.into_iter().map(|sample| sample.point).collect(),
+        Err(_)
+            if points.windows(2).all(|pair| {
+                openatc_core::airport::taxi_segment_on_pavement(airport, pair[0], pair[1])
+            }) =>
+        {
+            points.to_vec()
+        }
+        Err(_) => Vec::new(),
+    }
 }
 
 /// Taxi speed near the current position.

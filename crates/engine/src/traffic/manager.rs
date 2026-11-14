@@ -941,7 +941,10 @@ impl TrafficManager {
                 && (player_on_runway
                     || state
                         .airports
-                        .occupied_by_other(&own_airport, &own_runway, own_id))
+                        .occupied_by_other(&own_airport, &own_runway, own_id)
+                    || state
+                        .airports
+                        .crossing_occupied(&own_airport, &own_runway, own_id))
                 && self.aircraft[index].approaching_runway(5.0)
                 && (rolling_lead.is_none() || self.aircraft[index].takeoff);
             // Give way to traffic on the right at a converging taxiway. The higher id yields
@@ -1064,6 +1067,16 @@ impl TrafficManager {
                 RunwayState::Rolling => RunwaySequence::Rolling,
                 RunwayState::Clear => RunwaySequence::Clear,
             };
+            // A crossing runway shares the same pavement; hold while another
+            // aircraft owns that occupancy group.
+            let sequence = if state
+                .airports
+                .crossing_occupied(&airport.icao, &own_runway, own_id)
+            {
+                RunwaySequence::LineUp
+            } else {
+                sequence
+            };
             let mut decision = openatc_core::apply::takeoff_decision(
                 &airport,
                 &own_runway,
@@ -1126,6 +1139,15 @@ impl TrafficManager {
                     RunwayState::Rolling => RunwaySequence::Rolling,
                     RunwayState::Clear => RunwaySequence::Clear,
                 };
+                let sequence =
+                    if state
+                        .airports
+                        .crossing_occupied(&airport.icao, &own_runway, own_id)
+                    {
+                        RunwaySequence::LineUp
+                    } else {
+                        sequence
+                    };
                 let decision = openatc_core::apply::takeoff_decision(
                     &airport,
                     &own_runway,
@@ -1921,7 +1943,7 @@ impl TrafficManager {
             .iter()
             .map(|aircraft| aircraft.spawn_node)
             .collect();
-        let occupied: Vec<Point> = {
+        let mut occupied: Vec<Point> = {
             let mut points: Vec<Point> = self
                 .aircraft
                 .iter()
@@ -2252,6 +2274,7 @@ impl TrafficManager {
                 )
             };
             let callsign = identity.callsign.clone();
+            let (spawn_latitude, spawn_longitude) = position_at(&points, &cumulative, distance);
             self.aircraft.push(AmbientAircraft {
                 id: 0x00e0_0000 + self.next_id,
                 callsign: callsign.clone(),
@@ -2309,6 +2332,11 @@ impl TrafficManager {
             });
             used_callsigns.insert(callsign.to_uppercase());
             used_nodes.insert(node.id);
+            occupied.push(openatc_core::airport::airport_point(
+                airport,
+                spawn_latitude,
+                spawn_longitude,
+            ));
             self.next_id = self.next_id.wrapping_add(1);
         }
     }
