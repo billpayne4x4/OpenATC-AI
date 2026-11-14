@@ -45,8 +45,8 @@ pub struct FlightFlow {
     /// When the player first reached the departure hold for the current route.
     pub(crate) takeoff_hold_since: Option<std::time::Instant>,
     takeoff_hold_route: u32,
-    /// Last time a departure climb was blocked by traffic.
-    departure_climb_try: Option<std::time::Instant>,
+    /// A blocked departure climb has already been announced.
+    departure_climb_hold: bool,
 }
 
 pub fn station_key(station: &Station) -> String {
@@ -1797,39 +1797,40 @@ fn departure_climb_tick(state: &mut EngineState, current: &Station) -> bool {
     if target <= cleared || t.altitude_feet < f64::from(cleared) - 300.0 {
         return false;
     }
-    let now = std::time::Instant::now();
-    if state
-        .flow
-        .departure_climb_try
-        .is_some_and(|last| now.duration_since(last).as_secs() < 30)
-    {
-        return false;
-    }
-    // Do not climb through nearby airborne traffic.
-    let heading = t.ground_track_degrees.unwrap_or(t.heading_degrees);
+    let enroute = current.service == "Center";
     let blocked = state.traffic_targets().iter().any(|other| {
         if other.id == 0
             || other.on_ground
             || !other.latitude.is_finite()
             || !other.longitude.is_finite()
-            || openatc_core::arrival::distance_nm(
-                [t.latitude, t.longitude],
-                [other.latitude, other.longitude],
-            ) >= 5.0
-            || (other.altitude_feet - t.altitude_feet).abs() >= 1_200.0
         {
             return false;
         }
-        let bearing = openatc_core::arrival::bearing(
-            [t.latitude, t.longitude],
-            [other.latitude, other.longitude],
-        );
-        let relative = (bearing - heading).rem_euclid(360.0);
-        relative < 60.0 || relative > 300.0
+        let climb = state.traffic.pilot_climb_fpm(other.id);
+        openatc_core::traffic::advisory::encounter(t, other, climb)
+            .is_some_and(|encounter| encounter.warrants_advisory(enroute))
     });
     if blocked {
-        state.flow.departure_climb_try = Some(now);
-        return false;
+        if state.flow.departure_climb_hold {
+            return false;
+        }
+        state.flow.departure_climb_hold = true;
+        let altitude = openatc_core::altitude_text(
+            f64::from(cleared),
+            openatc_core::UnitSystem::Imperial,
+            true,
+        );
+        let slots = [
+            ("callsign", state.session.plan.callsign.clone()),
+            ("altitude", altitude),
+        ];
+        let text = say("departure_expect_higher", &slots);
+        let voice = tag(state, current);
+        add_transmission(&mut state.session, "ATC", &text, &voice);
+        if let Some(entry) = state.session.transcript.last_mut() {
+            entry.pilot_reply = say("pilot_maintain_altitude", &slots);
+        }
+        return true;
     }
     let altitude =
         openatc_core::altitude_text(f64::from(target), openatc_core::UnitSystem::Imperial, true);
@@ -1840,7 +1841,7 @@ fn departure_climb_tick(state: &mut EngineState, current: &Station) -> bool {
     };
     let slots = [
         ("callsign", state.session.plan.callsign.clone()),
-        ("altitude", altitude.clone()),
+        ("altitude", altitude),
     ];
     let text = say(phrase, &slots);
     let voice = tag(state, current);
@@ -1857,7 +1858,7 @@ fn departure_climb_tick(state: &mut EngineState, current: &Station) -> bool {
     state.flow.clearance_sequence = sequence;
     state.flow.last_correction = None;
     state.flow.warning.resolved();
-    state.flow.departure_climb_try = Some(now);
+    state.flow.departure_climb_hold = false;
     true
 }
 
@@ -4046,10 +4047,22 @@ mod departure_climb_tests {
             on_ground: false,
             ..Default::default()
         }]);
-        assert!(!departure_climb_tick(&mut state, &center()));
+        assert!(departure_climb_tick(&mut state, &center()));
         assert_eq!(
             state.session.clearance.as_ref().unwrap().altitude_feet,
             5_000
+        );
+        assert!(
+            state
+                .session
+                .transcript
+                .last()
+                .is_some_and(|entry| entry.text.contains("maintain")),
+            "a blocked climb is announced instead of staying silent"
+        );
+        assert!(
+            !departure_climb_tick(&mut state, &center()),
+            "the same blocked climb is not announced twice"
         );
     }
 }

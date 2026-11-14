@@ -774,6 +774,14 @@ impl TrafficManager {
         let player_remaining = (player_departing && state.session.plan.runway == player_runway)
             .then(|| player_runway_remaining(&airport, &player_runway, telemetry))
             .flatten();
+        // Do not launch a departure into a player who is still low in the airport area.
+        let player_low_near_airport = !telemetry.on_ground
+            && telemetry.position_valid
+            && openatc_core::arrival::distance_nm(
+                [telemetry.latitude, telemetry.longitude],
+                [airport.reference_latitude, airport.reference_longitude],
+            ) < 5.0
+            && telemetry.altitude_feet - airport.elevation_feet < 5_000.0;
         for index in 0..self.aircraft.len() {
             let (on_ground, distance) = {
                 let aircraft = &self.aircraft[index];
@@ -1098,7 +1106,7 @@ impl TrafficManager {
                 )
             });
             let is_lead = queue_lead == Some(own_id) && !behind_player;
-            if hold_for_clearance && is_lead {
+            if hold_for_clearance && is_lead && !player_low_near_airport {
                 match decision {
                     TakeoffDecision::Cleared => {
                         self.aircraft[index].cleared = true;

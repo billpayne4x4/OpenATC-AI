@@ -122,17 +122,18 @@ pub fn encounter(
 }
 
 impl Encounter {
-    /// Early warning for converging traffic, or close traffic irrespective of closure.
+    /// Early warning only for traffic that is closing inside the protected volume.
     /// En-route calls start farther out than terminal calls; these are simulator heuristics.
     #[must_use]
     pub fn warrants_advisory(self, enroute: bool) -> bool {
         let horizontal = if enroute { 5.0 } else { 3.0 };
-        let current = self.distance_nm < horizontal && self.relative_altitude_feet.abs() < 1200.0;
-        let predicted = self.closing_knots > 10.0
+        let predicted = self.closing_knots > 5.0
+            && self.seconds > 0.0
+            && self.seconds <= 120.0
             && self.closest_nm < horizontal
-            && self.vertical_feet.abs() < 1200.0
-            && self.seconds > 0.0;
-        current || predicted
+            && self.vertical_feet.abs() < 1_000.0;
+        let immediate = self.distance_nm < 0.75 && self.relative_altitude_feet.abs() < 500.0;
+        predicted || immediate
     }
 
     /// An immediate proximity warning without an unvalidated avoidance heading.

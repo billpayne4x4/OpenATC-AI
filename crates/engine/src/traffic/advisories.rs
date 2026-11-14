@@ -272,7 +272,7 @@ pub(super) fn tick(state: &mut EngineState, station: &Station) -> bool {
         && state
             .traffic
             .last_advisory
-            .is_none_or(|at| at.elapsed().as_secs() >= 10)
+            .is_none_or(|at| at.elapsed().as_secs() >= 15)
     {
         announce(state, station, target, *e);
         return true;

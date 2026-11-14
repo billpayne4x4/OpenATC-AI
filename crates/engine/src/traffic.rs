@@ -320,6 +320,13 @@ fn pilot_voice_pool(state: &EngineState) -> Vec<String> {
 }
 
 /// Voice for a named pilot, remembered per callsign and rotated least-recently-used.
+impl Traffic {
+    /// Last observed climb rate for a traffic target.
+    pub(crate) fn pilot_climb_fpm(&self, id: u32) -> Option<f64> {
+        self.pilots.get(&id).and_then(|pilot| pilot.climb_fpm)
+    }
+}
+
 pub(crate) fn pilot_voice_for_callsign(state: &mut EngineState, callsign: &str) -> String {
     let pool = pilot_voice_pool(state);
     if let Some(voice) = state.traffic.pilot_voices.get(callsign) {

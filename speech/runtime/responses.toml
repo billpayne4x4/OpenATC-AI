@@ -16776,6 +16776,10 @@ say = ["{callsign}, climb and maintain {altitude}.", "{callsign}, climb to {alti
 slots = ["altitude", "callsign"]
 say = ["{callsign}, continue climb to {altitude}.", "{callsign}, continue climbing, maintain {altitude}.", "{callsign}, continue your climb to {altitude}.", "{callsign}, cleared to continue climb to {altitude}.", "{callsign}, continue climb, maintain {altitude}.", "{callsign}, continue climbing to {altitude}."]
 
+[departure_expect_higher]
+slots = ["altitude", "callsign"]
+say = ["{callsign}, maintain {altitude}, expect higher shortly.", "{callsign}, maintain {altitude}. Expect higher when traffic clears.", "{callsign}, hold {altitude} for traffic, expect higher."]
+
 [pilot_climb_readback]
 slots = ["altitude", "callsign"]
 say = ["Climb and maintain {altitude}, {callsign}.", "Climbing to {altitude}, {callsign}."]
