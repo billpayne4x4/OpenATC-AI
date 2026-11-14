@@ -609,6 +609,24 @@ pub fn arrival_exits(airport: &Airport, runway: &str, size: char) -> Vec<Arrival
         {
             continue;
         }
+        if !taxi_point_on_pavement(
+            airport,
+            Point {
+                east: if node == first.id {
+                    first.point.east
+                } else {
+                    second.point.east
+                },
+                north: if node == first.id {
+                    first.point.north
+                } else {
+                    second.point.north
+                },
+                height: first.point.height,
+            },
+        ) {
+            continue;
+        }
         let runway_direction = [along_east, along_north];
         let exit_direction = if node == first.id {
             [
@@ -710,6 +728,9 @@ pub fn departure_hold(airport: &Airport, runway: &str) -> Option<DepartureHold> 
             else {
                 continue;
             };
+            if !taxi_segment_on_pavement(airport, *first, *second) {
+                continue;
+            }
             let gap = segment_distance(midpoint, *first, *second);
             if gap <= 45.0 && edge_best.as_ref().is_none_or(|(current, _)| gap < *current) {
                 edge_best = Some((gap, edge));
@@ -774,6 +795,9 @@ fn taxi_graph(
             continue;
         };
         if edge.runway || !edge.active_runways.is_empty() || edge.size < aircraft_size {
+            continue;
+        }
+        if !taxi_segment_on_pavement(airport, *first, *second) {
             continue;
         }
         // Sample the segment at approximately 15-meter intervals.
@@ -2031,6 +2055,53 @@ pub fn contains_aircraft(airport: &Airport, telemetry: &Telemetry) -> bool {
 
 /// Whether installed runway or pavement faces cover this point.
 #[must_use]
+/// True when a taxi point is on the rendered pavement, with a small edge tolerance.
+///
+/// Airports without pavement polygons keep the old behaviour because there is no
+/// surface data to validate against.
+#[must_use]
+pub fn taxi_point_on_pavement(airport: &Airport, point: Point) -> bool {
+    if airport.pavements.is_empty() && airport.pavement_triangles.is_empty() {
+        return true;
+    }
+    if on_pavement(airport, point) {
+        return true;
+    }
+    [(-3.0, 0.0), (3.0, 0.0), (0.0, -3.0), (0.0, 3.0)]
+        .iter()
+        .any(|(east, north)| {
+            on_pavement(
+                airport,
+                Point {
+                    east: point.east + east,
+                    north: point.north + north,
+                    height: point.height,
+                },
+            )
+        })
+}
+
+/// True when every sampled point of a taxi segment is on pavement.
+#[must_use]
+pub fn taxi_segment_on_pavement(airport: &Airport, first: Point, second: Point) -> bool {
+    if airport.pavements.is_empty() && airport.pavement_triangles.is_empty() {
+        return true;
+    }
+    let length = flat_distance(&first, &second);
+    let steps = (length / 10.0).ceil().max(1.0) as usize;
+    (0..=steps).all(|index| {
+        let amount = index as f64 / steps as f64;
+        taxi_point_on_pavement(
+            airport,
+            Point {
+                east: first.east + (second.east - first.east) * amount,
+                north: first.north + (second.north - first.north) * amount,
+                height: first.height,
+            },
+        )
+    })
+}
+
 pub fn on_pavement(airport: &Airport, p: Point) -> bool {
     if airport.runways.iter().any(|r| {
         let delta = difference(r.second, r.first);
@@ -3312,5 +3383,98 @@ mod arrival_exit_tests {
         assert!(n1.entry, "the departure hold must not be an arrival exit");
         assert!(!n2.entry);
         assert!(n2.maximum_knots >= 45.0, "the angled exit is faster");
+    }
+}
+
+#[cfg(test)]
+mod taxi_pavement_tests {
+    use super::*;
+
+    fn square_airport() -> Airport {
+        let point = |east, north| Point {
+            east,
+            north,
+            height: 0.0,
+        };
+        Airport {
+            pavement_triangles: vec![
+                [point(0.0, 0.0), point(100.0, 0.0), point(100.0, 100.0)],
+                [point(0.0, 0.0), point(100.0, 100.0), point(0.0, 100.0)],
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn taxi_segments_must_stay_on_pavement() {
+        let airport = square_airport();
+        assert!(taxi_point_on_pavement(
+            &airport,
+            Point {
+                east: 50.0,
+                north: 50.0,
+                height: 0.0
+            }
+        ));
+        assert!(!taxi_point_on_pavement(
+            &airport,
+            Point {
+                east: 150.0,
+                north: 50.0,
+                height: 0.0
+            }
+        ));
+        assert!(taxi_segment_on_pavement(
+            &airport,
+            Point {
+                east: 10.0,
+                north: 10.0,
+                height: 0.0
+            },
+            Point {
+                east: 90.0,
+                north: 90.0,
+                height: 0.0
+            },
+        ));
+        assert!(!taxi_segment_on_pavement(
+            &airport,
+            Point {
+                east: 10.0,
+                north: 10.0,
+                height: 0.0
+            },
+            Point {
+                east: 150.0,
+                north: 50.0,
+                height: 0.0
+            },
+        ));
+    }
+
+    #[test]
+    fn missing_pavement_data_does_not_block_legacy_airports() {
+        let airport = Airport::default();
+        assert!(taxi_point_on_pavement(
+            &airport,
+            Point {
+                east: 500.0,
+                north: 500.0,
+                height: 0.0
+            }
+        ));
+        assert!(taxi_segment_on_pavement(
+            &airport,
+            Point {
+                east: 0.0,
+                north: 0.0,
+                height: 0.0
+            },
+            Point {
+                east: 500.0,
+                north: 500.0,
+                height: 0.0
+            },
+        ));
     }
 }

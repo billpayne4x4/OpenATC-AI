@@ -2419,6 +2419,7 @@ fn spawn_node<'a>(
                 && !rejected.contains(&(size, node.id))
                 && !openatc_core::airport::within_runway(airport, &node.point)
                 && openatc_core::airport::on_non_runway_taxiway(airport, &node.point, 8.0)
+                && openatc_core::airport::taxi_point_on_pavement(airport, node.point)
                 && openatc_core::airport::runway_edge_distance(airport, &node.point)
                     .is_none_or(|distance| distance > RUNWAY_EDGE_MARGIN)
                 && blocked.iter().all(|point| {
@@ -2536,6 +2537,9 @@ fn plan_taxi(
         let (Some(first), Some(second)) = (nodes.get(&edge.first), nodes.get(&edge.second)) else {
             continue;
         };
+        if !openatc_core::airport::taxi_segment_on_pavement(airport, *first, *second) {
+            continue;
+        }
         let cost = (second.east - first.east).hypot(second.north - first.north);
         adjacency
             .entry(edge.first)
