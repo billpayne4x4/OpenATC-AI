@@ -245,6 +245,18 @@ pub fn runway_group_keys(airport: &Airport, name: &str) -> Option<Vec<String>> {
     )
 }
 
+/// True when two runway designators belong to the same physical pavement group.
+#[must_use]
+pub fn runways_overlap(airport: &Airport, first: &str, second: &str) -> bool {
+    let Some(first) = runway_group_keys(airport, first) else {
+        return false;
+    };
+    let Some(second) = runway_group_keys(airport, second) else {
+        return false;
+    };
+    first.iter().any(|key| second.contains(key))
+}
+
 /// Joined names of every runway that shares pavement with this one.
 #[must_use]
 pub fn runway_group_key(airport: &Airport, name: &str) -> Option<String> {

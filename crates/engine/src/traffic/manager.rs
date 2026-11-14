@@ -825,6 +825,11 @@ impl TrafficManager {
                 &self.aircraft[index].cumulative,
                 distance,
             );
+            let surface_invalid = on_ground
+                && !openatc_core::airport::taxi_point_on_pavement(
+                    &airport,
+                    openatc_core::airport::airport_point(&airport, latitude, longitude),
+                );
             // A merge can put two aircraft on the same point without either seeing the
             // other ahead. The lower-priority aircraft stops, and the winner ignores it
             // so the pair cannot deadlock.
@@ -1117,7 +1122,20 @@ impl TrafficManager {
                 )
             });
             let is_lead = queue_lead == Some(own_id) && !behind_player;
-            if hold_for_clearance && is_lead && !player_low_near_airport && !player_on_any_runway {
+            let crossing_busy = self.aircraft.iter().any(|other| {
+                other.id != own_id
+                    && other.airport == own_airport
+                    && other.runway != own_runway
+                    && (other.cleared || other.takeoff)
+                    && openatc_core::airport::runways_overlap(&airport, &own_runway, &other.runway)
+            });
+            if hold_for_clearance
+                && is_lead
+                && !player_low_near_airport
+                && !player_on_any_runway
+                && !crossing_busy
+                && !surface_invalid
+            {
                 match decision {
                     TakeoffDecision::Cleared => {
                         self.aircraft[index].cleared = true;
@@ -1174,7 +1192,11 @@ impl TrafficManager {
                     sequence,
                     wake_delay,
                 );
-                if decision == TakeoffDecision::Cleared && !self.performance_hold(index) {
+                if decision == TakeoffDecision::Cleared
+                    && !self.performance_hold(index)
+                    && !crossing_busy
+                    && !surface_invalid
+                {
                     self.aircraft[index].takeoff = true;
                 }
             }
@@ -1206,7 +1228,8 @@ impl TrafficManager {
                 || right_blocked
                 || physical_blocked
                 || overlap_stop.is_some()
-                || hold_for_clearance;
+                || hold_for_clearance
+                || surface_invalid;
             let aircraft = &mut self.aircraft[index];
             aircraft.last = now;
             aircraft.blocked = blocked;
@@ -1292,6 +1315,7 @@ impl TrafficManager {
             } else {
                 (taxi, acceleration)
             };
+            let mut target_speed = if surface_invalid { 0.0 } else { target_speed };
             if let Some((leader_progress, leader_speed)) = flight_leader {
                 let gap = leader_progress - own_progress;
                 if gap < 3.0 * 1_852.0 {
