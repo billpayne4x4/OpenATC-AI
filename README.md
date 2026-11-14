@@ -187,7 +187,7 @@ A running process is not enough: wait for a healthy response after model loading
 
 In **Settings → Audio & microphone**, refresh devices and select the microphone and output. Test the input before flying. Linux supports PulseAudio/PipeWire, with ALSA fallback; recording lists exclude playback-monitor devices. System default follows the operating system's current routing. After changing hardware, refresh the list and reselect missing devices.
 
-In **Settings → Voices & personalities**, refresh the provider's voice list. Test voices with the editable preview sentence before adding them to the controller pool. Role volume and voice effects are separate from the operating-system output volume.
+In **Settings → Voices & personalities**, refresh the provider's voice list. Test voices with the editable preview sentence before adding them to the controller pool. Role volume and voice effects are separate from the operating-system output volume. Synthesized clips are peak-normalized to a consistent speech level before playback, so a quiet TTS voice is boosted rather than staying buried under the system volume.
 
 **Speak my transmitted requests** controls synthesized playback of your own pilot transmissions and is on by default for new settings. Controller and copilot speech are also on. Cabin and ground replies use their own voice and volume settings. Existing saved switches are preserved; seeing text in the log does not confirm that playback is enabled in an older configuration.
 

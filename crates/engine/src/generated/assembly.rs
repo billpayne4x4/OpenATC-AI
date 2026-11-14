@@ -72,8 +72,14 @@ impl Draft {
             }
         };
         let protected = |a: Waypoint, b: Waypoint| {
-            // Duplicate route points carry no corridor and must not reject the flight.
-            if (a.latitude - b.latitude).abs() < 1e-9 && (a.longitude - b.longitude).abs() < 1e-9 {
+            // Very short route steps carry no meaningful corridor and must not
+            // reject the flight on a scenery contact at the airport surface.
+            if openatc_core::arrival::distance_nm(
+                [a.latitude, a.longitude],
+                [b.latitude, b.longitude],
+            ) * 1_852.0
+                < 5.0
+            {
                 return true;
             }
             if !origin.fresh() || !destination.fresh() {

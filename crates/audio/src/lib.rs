@@ -707,7 +707,8 @@ impl Speech {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             // Failed clips retry after a short backoff; successful assets stay cached.
-            if let Some(frames) = frames {
+            if let Some(mut frames) = frames {
+                normalize_speech(&mut frames);
                 cache.insert(key, Some(Arc::new(frames)));
             } else {
                 cache.remove(&key);
@@ -1008,6 +1009,22 @@ fn transcribe_wave(endpoint: &str, wave: &[u8], cancelled: &AtomicBool) -> Resul
         .ok_or_else(|| FAILED.to_owned())
 }
 
+/// Normalize a decoded speech clip to a consistent peak, with a bounded boost.
+fn normalize_speech(frames: &mut [f32]) {
+    let peak = frames
+        .iter()
+        .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+    if peak <= 1e-6 {
+        return;
+    }
+    let gain = (0.80 / peak).clamp(1.0, 8.0);
+    if gain > 1.0 {
+        for sample in frames {
+            *sample = (*sample * gain).clamp(-1.0, 1.0);
+        }
+    }
+}
+
 /// Request synthesis, decode the WAV answer to f32 stereo 48 kHz, and play it.
 fn synthesize_and_play(
     context: *mut MaContext,
@@ -1030,6 +1047,7 @@ fn synthesize_and_play(
         return Ok(());
     }
     let mut frames = decode_wav(&bytes)?;
+    normalize_speech(&mut frames);
     if payload["delivery"].as_str() == Some("atis") {
         // Mild ring modulation adds the fixed electronic timbre of automated ATIS.
         let mut phase = 0.0_f32;
@@ -1146,6 +1164,22 @@ mod tests {
         assert!((rms - 0.5).abs() < 0.01);
         assert!((peak - 0.5).abs() < 0.01);
         assert_eq!(kept, vec![16383, -16383]);
+    }
+
+    #[test]
+    fn quiet_speech_is_normalized_without_clipping() {
+        let mut quiet = vec![0.10, -0.10, 0.04];
+        normalize_speech(&mut quiet);
+        let peak = quiet
+            .iter()
+            .fold(0.0_f32, |peak, sample| peak.max(sample.abs()));
+        assert!((peak - 0.8).abs() < 1e-5);
+        let mut loud = vec![0.9, -0.9];
+        normalize_speech(&mut loud);
+        assert!(
+            (loud[0] - 0.9).abs() < 1e-5,
+            "loud speech is not attenuated"
+        );
     }
 
     #[test]
