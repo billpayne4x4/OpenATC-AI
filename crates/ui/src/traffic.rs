@@ -266,13 +266,6 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface, sta
         ui.text_wrapped(&interface.native_traffic_status);
     }
     widgets::section_title(ui, "TRAFFIC RADIO");
-    if ui.checkbox(
-        "Airport radio chatter",
-        &mut interface.settings.airport_chatter,
-    ) {
-        interface.save_settings();
-    }
-    ui.text_wrapped("When airborne above a receivable Ground or Tower station, you may hear other aircraft taxi and depart. The calls use the installed airport's runways and taxiways. Chatter stops when you retune, leave reception or descend below 1,000 ft above the station.");
     ui.checkbox(
         "Hear simulated traffic pilot reports",
         &mut interface.settings.hear_traffic_radio,

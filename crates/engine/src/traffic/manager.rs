@@ -352,7 +352,7 @@ struct RunwaySlots {
     line_up: Option<u32>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum AmbientKind {
     Departure,
     Arrival,
@@ -412,6 +412,12 @@ struct AmbientAircraft {
     yield_announced: bool,
     /// When the player began holding this aircraft on the taxiway.
     player_hold_since: Option<Instant>,
+    /// When the aircraft first stopped off pavement.
+    off_pavement_since: Option<Instant>,
+    /// Whether the line-up path has been checked for this hold.
+    line_up_checked: bool,
+    /// True when the remaining line-up path leaves pavement.
+    line_up_blocked: bool,
 }
 
 /// Pick a stable density target for one airport and traffic-settings key.
@@ -528,6 +534,27 @@ impl TrafficManager {
         } else {
             RunwayState::Clear
         }
+    }
+
+    /// Whether an aircraft still occupies, or is entering, a runway that
+    /// physically crosses this one.
+    fn crossing_runway_busy(
+        &self,
+        own_id: u32,
+        airport: &str,
+        runway: &str,
+        data: &Airport,
+    ) -> bool {
+        self.aircraft.iter().any(|other| {
+            other.id != own_id
+                && other.airport == airport
+                && other.runway != runway
+                && (other.on_runway()
+                    || (other.cleared
+                        && !other.takeoff
+                        && other.distance >= other.hold_distance - 60.0))
+                && openatc_core::airport::runways_overlap(data, runway, &other.runway)
+        })
     }
 
     /// Tracks the one departing and one lined-up aircraft on a physical runway.
@@ -830,6 +857,11 @@ impl TrafficManager {
                     &airport,
                     openatc_core::airport::airport_point(&airport, latitude, longitude),
                 );
+            if surface_invalid {
+                self.aircraft[index].off_pavement_since.get_or_insert(now);
+            } else {
+                self.aircraft[index].off_pavement_since = None;
+            }
             // A merge can put two aircraft on the same point without either seeing the
             // other ahead. The lower-priority aircraft stops, and the winner ignores it
             // so the pair cannot deadlock.
@@ -932,7 +964,13 @@ impl TrafficManager {
             let own_runway = self.aircraft[index].runway.clone();
             let own_airport = self.aircraft[index].airport.clone();
             let own_id = self.aircraft[index].id;
-            let queue_lead = queue_leader(&self.aircraft, self.player_hold_since);
+            let queue_lead = queue_leader(
+                &self.aircraft,
+                self.player_hold_since,
+                &own_airport,
+                &own_runway,
+                &player_runway,
+            );
             if self.aircraft[index].on_runway() {
                 state.airports.claim(&own_airport, &own_runway, own_id);
             } else {
@@ -1122,19 +1160,40 @@ impl TrafficManager {
                 )
             });
             let is_lead = queue_lead == Some(own_id) && !behind_player;
-            let crossing_busy = self.aircraft.iter().any(|other| {
-                other.id != own_id
-                    && other.airport == own_airport
-                    && other.runway != own_runway
-                    && (other.cleared || other.takeoff)
-                    && openatc_core::airport::runways_overlap(&airport, &own_runway, &other.runway)
-            });
+            let crossing_busy =
+                self.crossing_runway_busy(own_id, &own_airport, &own_runway, &airport);
+            // Check the hold-to-runway path before clearing line-up. A connector
+            // over grass must not get a clearance.
+            if hold_for_clearance
+                && !self.aircraft[index].cleared
+                && !self.aircraft[index].line_up_checked
+            {
+                let (blocked, callsign) = {
+                    let aircraft = &mut self.aircraft[index];
+                    aircraft.line_up_blocked = path_off_pavement(
+                        &airport,
+                        &aircraft.points,
+                        &aircraft.cumulative,
+                        aircraft.distance,
+                        aircraft.runway_start,
+                    )
+                    .is_some();
+                    aircraft.line_up_checked = true;
+                    (aircraft.line_up_blocked, aircraft.callsign.clone())
+                };
+                if blocked {
+                    self.rejected_pavement = self.rejected_pavement.saturating_add(1);
+                    self.last_error = format!("line-up path leaves pavement for {callsign}");
+                }
+            }
+            let line_up_blocked = self.aircraft[index].line_up_blocked;
             if hold_for_clearance
                 && is_lead
                 && !player_low_near_airport
                 && !player_on_any_runway
                 && !crossing_busy
                 && !surface_invalid
+                && !line_up_blocked
             {
                 match decision {
                     TakeoffDecision::Cleared => {
@@ -1251,7 +1310,7 @@ impl TrafficManager {
                 aircraft.taxi_turn_knots,
                 braking,
             );
-            let (mut target_speed, target_acceleration) = if blocked {
+            let (target_speed, target_acceleration) = if blocked {
                 (0.0, braking)
             } else if aircraft.kind == AmbientKind::Departure
                 && aircraft.distance >= aircraft.runway_start
@@ -1366,9 +1425,25 @@ impl TrafficManager {
                 dt,
             );
         }
+        let mut removed = Vec::new();
         self.aircraft.retain(|aircraft| {
-            aircraft.distance < aircraft.cumulative.last().copied().unwrap_or(0.0)
+            let end = aircraft.cumulative.last().copied().unwrap_or(0.0);
+            let off_pavement = aircraft
+                .off_pavement_since
+                .is_some_and(|at| now.duration_since(at) >= Duration::from_secs(15));
+            let stuck = aircraft.line_up_blocked
+                && aircraft
+                    .hold_since
+                    .is_some_and(|at| now.duration_since(at) >= Duration::from_secs(45));
+            let keep = aircraft.distance < end && !off_pavement && !stuck;
+            if !keep {
+                removed.push(aircraft.callsign.clone());
+            }
+            keep
         });
+        if let Some(callsign) = removed.last() {
+            self.last_error = format!("removed {callsign} because its surface path was unusable");
+        }
         state.airports.sync_users(
             &airport.icao,
             self.aircraft.iter().map(|aircraft| aircraft.id),
@@ -1654,7 +1729,7 @@ impl TrafficManager {
         let due = self
             .move_request_at
             .is_none_or(|last| now.duration_since(last) >= MOVE_UP_REPEAT);
-        if !(held && stopped && due) {
+        if !(held && stopped && due) || self.player_blocked_ahead(state) {
             return;
         }
         let Some((station, radio)) = self.tuned_ground_station(state) else {
@@ -1673,6 +1748,64 @@ impl TrafficManager {
             },
         );
         self.move_request_at = Some(now);
+    }
+
+    /// Whether another aircraft is stopped in front of the player.
+    ///
+    /// A player queued behind departing traffic cannot respond to a request to
+    /// continue, even when an aircraft behind is waiting on it.
+    fn player_blocked_ahead(&self, state: &crate::EngineState) -> bool {
+        let telemetry = &state.session.telemetry;
+        if !telemetry.position_valid || !telemetry.on_ground {
+            return false;
+        }
+        let player_runway = state.session.plan.runway.as_str();
+        if queue_leader(
+            &self.aircraft,
+            self.player_hold_since,
+            &self.active_airport,
+            player_runway,
+            player_runway,
+        )
+        .is_some()
+        {
+            return true;
+        }
+        if let Some(airport) = state.airport.as_ref()
+            && let Some(marker) = state.session.taxi_clearance.holding_marker_point
+            && !state.session.taxi_clearance.hold_short_runway.is_empty()
+        {
+            let here = openatc_core::airport::airport_point(
+                airport,
+                telemetry.latitude,
+                telemetry.longitude,
+            );
+            if (here.east - marker.east).hypot(here.north - marker.north) < 25.0 {
+                return true;
+            }
+        }
+        let heading = telemetry
+            .ground_track_degrees
+            .unwrap_or(telemetry.heading_degrees)
+            .to_radians();
+        let (sin, cos) = heading.sin_cos();
+        let cos_latitude = telemetry.latitude.to_radians().cos().abs().max(0.01);
+        self.aircraft.iter().any(|aircraft| {
+            let on_ground = match aircraft.kind {
+                AmbientKind::Departure => aircraft.distance < aircraft.ground_end,
+                AmbientKind::Arrival => aircraft.distance >= aircraft.ground_start,
+            };
+            if !on_ground || aircraft.airport != self.active_airport {
+                return false;
+            }
+            let (latitude, longitude) =
+                position_at(&aircraft.points, &aircraft.cumulative, aircraft.distance);
+            let north = (latitude - telemetry.latitude) * 111_320.0;
+            let east = (longitude - telemetry.longitude) * 111_320.0 * cos_latitude;
+            let ahead = east * sin + north * cos;
+            let lateral = (east * cos - north * sin).abs();
+            ahead > 5.0 && lateral < 40.0 && east.hypot(north) < 160.0 && aircraft.speed < 1.5
+        })
     }
 
     /// The ground station of the active airport that the player is receiving, with its radio.
@@ -1872,6 +2005,16 @@ impl TrafficManager {
                     "runwayEnd": aircraft.runway_end,
                     "holdDistance": aircraft.hold_distance,
                     "hold": aircraft.hold,
+                    "cleared": aircraft.cleared,
+                    "takeoff": aircraft.takeoff,
+                    "awaiting": aircraft.awaiting_clearance,
+                    "blocked": aircraft.blocked,
+                    "blocker": aircraft.blocker,
+                    "lineUpBlocked": aircraft.line_up_blocked,
+                    "offPavement": aircraft.off_pavement_since.is_some(),
+                    "holdSinceSeconds": aircraft
+                        .hold_since
+                        .map(|at| at.elapsed().as_secs_f64()),
                     "points": aircraft.points.len(),
                     "onTaxiway": points.iter().filter(|on| **on).count(),
                     "first": aircraft.points.first(),
@@ -2036,8 +2179,19 @@ impl TrafficManager {
                 .iter()
                 .any(|aircraft| aircraft.kind == AmbientKind::Arrival);
         let departures_requested = if arrival_slot { target - 1 } else { target };
-        for slot in 0..target {
+        // One slot may try several spawn nodes. A node with an unusable route is
+        // rejected for the airport, not the whole batch.
+        let mut slot = 0;
+        let mut node_attempts = 0;
+        let mut tried_nodes: BTreeSet<(char, i64)> = BTreeSet::new();
+        while slot < target {
+            if node_attempts >= 12 {
+                slot += 1;
+                node_attempts = 0;
+                continue;
+            }
             self.attempts = self.attempts.saturating_add(1);
+            node_attempts += 1;
             let kind = if slot == target - 1 && arrival_slot {
                 AmbientKind::Arrival
             } else {
@@ -2062,6 +2216,8 @@ impl TrafficManager {
                 })
             {
                 self.last_error = "arrival slot waits for the player on final".to_owned();
+                slot += 1;
+                node_attempts = 0;
                 continue;
             }
             let ga = mix(state.traffic_seed ^ u64::from(self.next_id)) % 100 < ga_percent;
@@ -2086,6 +2242,8 @@ impl TrafficManager {
             let Some(identity) = identity else {
                 self.rejected_model = self.rejected_model.saturating_add(1);
                 self.last_error = "no fitted airline or GA model".to_owned();
+                slot += 1;
+                node_attempts = 0;
                 continue;
             };
             let size = identity.profile.parking_size();
@@ -2096,6 +2254,7 @@ impl TrafficManager {
                 size,
                 &used_nodes,
                 &self.rejected_spawn_nodes,
+                &tried_nodes,
                 &occupied,
                 kind == AmbientKind::Arrival,
                 state.traffic_seed ^ u64::from(self.next_id),
@@ -2110,6 +2269,8 @@ impl TrafficManager {
                 .map(Arc::new)
             else {
                 self.last_error = format!("no {handling_kind:?} animation handling");
+                slot += 1;
+                node_attempts = 0;
                 continue;
             };
             let latitude = airport.reference_latitude + node.point.north / 111_320.0;
@@ -2135,6 +2296,8 @@ impl TrafficManager {
             if kind == AmbientKind::Arrival && arrival_exit.is_none() {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = "no clear arrival exit".to_owned();
+                slot += 1;
+                node_attempts = 0;
                 continue;
             }
             let Some((surface_points, route)) = plan_taxi(
@@ -2148,6 +2311,7 @@ impl TrafficManager {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("no taxi graph route from node {}", node.id);
                 self.rejected_spawn_nodes.insert((size, node.id));
+                tried_nodes.insert((size, node.id));
                 continue;
             };
             let surface_points =
@@ -2195,11 +2359,14 @@ impl TrafficManager {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("path build failed for node {}", node.id);
                 self.rejected_spawn_nodes.insert((size, node.id));
+                tried_nodes.insert((size, node.id));
                 continue;
             };
             let cumulative = cumulative_distances(&points);
             let total = cumulative.last().copied().unwrap_or(0.0);
             if total < 100.0 {
+                self.rejected_spawn_nodes.insert((size, node.id));
+                tried_nodes.insert((size, node.id));
                 continue;
             }
             let hold_marker = if kind == AmbientKind::Departure {
@@ -2243,12 +2410,16 @@ impl TrafficManager {
                     let Some(raw) = positions.get(slot).copied() else {
                         self.rejected_route = self.rejected_route.saturating_add(1);
                         self.last_error = "no safe taxiway length for another departure".to_owned();
+                        self.rejected_spawn_nodes.insert((size, node.id));
+                        tried_nodes.insert((size, node.id));
                         continue;
                     };
                     let distance = hold_clear_of_runway(airport, &points, &cumulative, raw);
                     if distance <= 0.0 {
                         self.rejected_route = self.rejected_route.saturating_add(1);
                         self.last_error = "seeded departure would start on the runway".to_owned();
+                        self.rejected_spawn_nodes.insert((size, node.id));
+                        tried_nodes.insert((size, node.id));
                         continue;
                     }
                     distance
@@ -2263,6 +2434,8 @@ impl TrafficManager {
             {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = "seed point too close to a runway edge".to_owned();
+                self.rejected_spawn_nodes.insert((size, node.id));
+                tried_nodes.insert((size, node.id));
                 continue;
             }
             if ground_targets.iter().any(|other| {
@@ -2283,6 +2456,7 @@ impl TrafficManager {
             }) {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = "spawn point too close to another aircraft".to_owned();
+                tried_nodes.insert((size, node.id));
                 continue;
             }
             if player_valid
@@ -2297,6 +2471,24 @@ impl TrafficManager {
             {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = "spawn point too close to the player".to_owned();
+                tried_nodes.insert((size, node.id));
+                continue;
+            }
+            // Only the path from the spawn point onward is driven. A bad
+            // connector behind it must not reject the aircraft.
+            let ground_from = if kind == AmbientKind::Arrival {
+                ground_start
+            } else {
+                distance
+            };
+            if let Some((latitude, longitude)) =
+                path_off_pavement(airport, &points, &cumulative, ground_from, ground_end)
+            {
+                self.rejected_pavement = self.rejected_pavement.saturating_add(1);
+                self.last_error =
+                    format!("spawn path leaves pavement at {latitude:.5},{longitude:.5}");
+                self.rejected_spawn_nodes.insert((size, node.id));
+                tried_nodes.insert((size, node.id));
                 continue;
             }
             let taxi_knots = handling.taxi_knots.max(1.0) * 0.514_444;
@@ -2369,6 +2561,9 @@ impl TrafficManager {
                 yield_to: None,
                 yield_announced: false,
                 player_hold_since: None,
+                off_pavement_since: None,
+                line_up_checked: false,
+                line_up_blocked: false,
                 wake_delay: 0.0,
                 last: Instant::now(),
                 frequency_khz: frequency,
@@ -2381,6 +2576,8 @@ impl TrafficManager {
                 spawn_longitude,
             ));
             self.next_id = self.next_id.wrapping_add(1);
+            slot += 1;
+            node_attempts = 0;
         }
     }
 }
@@ -2466,6 +2663,7 @@ fn spawn_node<'a>(
     size: char,
     used: &std::collections::BTreeSet<i64>,
     rejected: &BTreeSet<(char, i64)>,
+    tried: &BTreeSet<(char, i64)>,
     blocked: &[Point],
     arrival: bool,
     seed: u64,
@@ -2488,9 +2686,9 @@ fn spawn_node<'a>(
         .filter(|node| {
             !used.contains(&node.id)
                 && !rejected.contains(&(size, node.id))
+                && !tried.contains(&(size, node.id))
                 && !openatc_core::airport::within_runway(airport, &node.point)
                 && openatc_core::airport::on_non_runway_taxiway(airport, &node.point, 8.0)
-                && openatc_core::airport::taxi_point_on_pavement(airport, node.point)
                 && openatc_core::airport::runway_edge_distance(airport, &node.point)
                     .is_none_or(|distance| distance > RUNWAY_EDGE_MARGIN)
                 && blocked.iter().all(|point| {
@@ -2541,9 +2739,10 @@ fn plan_taxi(
             on_ground: true,
             ..Default::default()
         };
-        let route =
-            openatc_core::airport::calculate_taxi_route(airport, &telemetry, runway, false, size)
-                .ok()?;
+        let route = openatc_core::airport::calculate_taxi_route_unchecked(
+            airport, &telemetry, runway, false, size,
+        )
+        .ok()?;
         return Some((route.points, route.via));
     }
     let target = if let Some(exit) = exit_node {
@@ -2895,11 +3094,14 @@ fn departure_path(
             }
         }
     }
-    let combined = openatc_core::surface::SurfaceModel::new(airport)
-        .validate(&combined, true)
-        .ok()?
-        .into_points();
-    let combined = phases::ground::round_taxi_path(airport, &combined, handling);
+    // Keep the raw path when rounding fails. The manager checks the part the
+    // aircraft actually drives, starting at its seeded position.
+    let rounded = phases::ground::round_taxi_path(airport, &combined, handling);
+    let combined = if rounded.is_empty() {
+        combined
+    } else {
+        rounded
+    };
     let mut path = surface_waypoints(airport, &combined);
     if path.is_empty() {
         return None;
@@ -3046,6 +3248,30 @@ fn arrival_path(
         ground_start,
         runway_end,
     ))
+}
+
+/// First point of the movement path that is not on pavement.
+///
+/// Samples every metre, so a straight connector that clips a grass corner is
+/// caught even when both of its endpoints are paved.
+fn path_off_pavement(
+    airport: &Airport,
+    points: &[Waypoint],
+    cumulative: &[f64],
+    from: f64,
+    to: f64,
+) -> Option<(f64, f64)> {
+    let end = to.min(cumulative.last().copied().unwrap_or(0.0));
+    let mut along = from.max(0.0);
+    while along <= end {
+        let (latitude, longitude) = position_at(points, cumulative, along);
+        let local = openatc_core::airport::airport_point(airport, latitude, longitude);
+        if !openatc_core::airport::taxi_point_on_pavement(airport, local) {
+            return Some((latitude, longitude));
+        }
+        along += 1.0;
+    }
+    None
 }
 
 fn cumulative_distances(points: &[Waypoint]) -> Vec<f64> {
@@ -3320,11 +3546,19 @@ fn departure_behind_player(
 
 /// First departure at the hold in arrival order. The player is part of the same queue:
 /// if the player reached the hold first, no ambient aircraft is the runway leader.
-fn queue_leader(aircraft: &[AmbientAircraft], player_hold: Option<Instant>) -> Option<u32> {
+fn queue_leader(
+    aircraft: &[AmbientAircraft],
+    player_hold: Option<Instant>,
+    airport: &str,
+    runway: &str,
+    player_runway: &str,
+) -> Option<u32> {
     let leader = aircraft
         .iter()
         .filter(|aircraft| {
             aircraft.kind == AmbientKind::Departure
+                && aircraft.airport == airport
+                && aircraft.runway == runway
                 && !aircraft.takeoff
                 && aircraft.distance >= aircraft.hold_distance
         })
@@ -3333,6 +3567,7 @@ fn queue_leader(aircraft: &[AmbientAircraft], player_hold: Option<Instant>) -> O
                 .cmp(&right.hold_since)
                 .then(left.id.cmp(&right.id))
         })?;
+    let player_hold = (player_runway == runway).then_some(player_hold).flatten();
     match (player_hold, leader.hold_since) {
         (Some(player), Some(ambient)) if player < ambient => None,
         (Some(_), None) => None,
@@ -3718,6 +3953,9 @@ mod phase_tests {
             yield_to: None,
             yield_announced: false,
             player_hold_since: None,
+            off_pavement_since: None,
+            line_up_checked: false,
+            line_up_blocked: false,
             wake_delay: 0.0,
             last: Instant::now(),
             frequency_khz: None,
@@ -4265,6 +4503,7 @@ mod phase_tests {
         let node = spawn_node(
             &airport,
             'C',
+            &BTreeSet::new(),
             &BTreeSet::new(),
             &BTreeSet::new(),
             &[],
@@ -5041,6 +5280,78 @@ mod phase_tests {
     }
 
     #[test]
+    fn a_player_queued_behind_traffic_is_not_asked_to_continue() {
+        let mut state = crate::test_state();
+        state.session.plan.callsign = "BIL1975".into();
+        state.session.telemetry.com1_khz = 121_900;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.ground_speed_knots = 0.0;
+        state.session.telemetry.latitude = 0.0;
+        state.session.telemetry.longitude = 0.0;
+        state.session.telemetry.heading_degrees = 0.0;
+        state.stations = vec![openatc_core::stations::Station {
+            airport: "DEMO".into(),
+            service: "Ground".into(),
+            khz: 121_900,
+            ..Default::default()
+        }];
+        let mut manager = TrafficManager {
+            active_airport: "DEMO".into(),
+            ..Default::default()
+        };
+        let mut waiting = ambient(AmbientKind::Departure, 0.0, 0.0, 2_000.0);
+        waiting.id = 1;
+        waiting.airport = "DEMO".into();
+        waiting.player_hold_since = Some(Instant::now() - Duration::from_secs(30));
+        manager.aircraft.push(waiting);
+        let mut ahead = ambient(AmbientKind::Departure, 0.0, 0.0, 1_000.0);
+        ahead.id = 2;
+        ahead.airport = "DEMO".into();
+        ahead.points = vec![
+            Waypoint {
+                latitude: 0.000_45,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: 0.001,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+        ];
+        ahead.cumulative = cumulative_distances(&ahead.points);
+        ahead.distance = 0.0;
+        ahead.speed = 0.0;
+        manager.aircraft.push(ahead);
+        assert!(manager.player_blocked_ahead(&state));
+        manager.ground_calls(&mut state);
+        assert!(
+            !state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.text.contains("traffic is waiting behind you")),
+            "a queued player must not be asked to move"
+        );
+        manager.aircraft[1].points = vec![
+            Waypoint {
+                latitude: -0.000_45,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+            Waypoint {
+                latitude: -0.001,
+                longitude: 0.0,
+                altitude_feet: 0.0,
+            },
+        ];
+        let points = manager.aircraft[1].points.clone();
+        manager.aircraft[1].cumulative = cumulative_distances(&points);
+        assert!(!manager.player_blocked_ahead(&state));
+    }
+
+    #[test]
     fn an_ambient_lead_with_a_clear_runway_is_cleared_in_one_tick() {
         let airport = openatc_core::airport::demo_airport();
         let mut state = crate::test_state();
@@ -5146,14 +5457,26 @@ mod phase_tests {
         ambient.distance = 600.0;
         ambient.hold_since = Some(now - Duration::from_secs(30));
         let aircraft = vec![ambient];
-        assert_eq!(queue_leader(&aircraft, None), Some(9));
+        assert_eq!(queue_leader(&aircraft, None, "TEST", "04L", "04L"), Some(9));
         assert_eq!(
-            queue_leader(&aircraft, Some(now - Duration::from_secs(60))),
+            queue_leader(
+                &aircraft,
+                Some(now - Duration::from_secs(60)),
+                "TEST",
+                "04L",
+                "04L",
+            ),
             None,
             "the player was at the hold first"
         );
         assert_eq!(
-            queue_leader(&aircraft, Some(now - Duration::from_secs(10))),
+            queue_leader(
+                &aircraft,
+                Some(now - Duration::from_secs(10)),
+                "TEST",
+                "04L",
+                "04L",
+            ),
             Some(9),
             "the ambient aircraft was at the hold first"
         );
@@ -5175,7 +5498,10 @@ mod phase_tests {
         second.distance = 600.0;
         second.cleared = false;
         second.hold_since = Some(later);
-        assert_eq!(queue_leader(&[first, second], None), Some(9));
+        assert_eq!(
+            queue_leader(&[first, second], None, "TEST", "04L", "04L"),
+            Some(9)
+        );
         let mut cleared = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
         cleared.id = 9;
         cleared.hold_distance = 600.0;
@@ -5188,7 +5514,7 @@ mod phase_tests {
         next.cleared = false;
         next.hold_since = Some(later);
         assert_eq!(
-            queue_leader(&[cleared, next], None),
+            queue_leader(&[cleared, next], None, "TEST", "04L", "04L"),
             Some(9),
             "a lined-up aircraft remains the queue leader until it starts to roll"
         );
@@ -5203,7 +5529,104 @@ mod phase_tests {
         next.hold_distance = 600.0;
         next.distance = 600.0;
         next.hold_since = Some(later);
-        assert_eq!(queue_leader(&[rolling, next], None), Some(3));
+        assert_eq!(
+            queue_leader(&[rolling, next], None, "TEST", "04L", "04L"),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn a_departure_on_another_runway_does_not_block_the_queue() {
+        let now = Instant::now();
+        let mut other = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        other.id = 1;
+        other.hold_distance = 600.0;
+        other.distance = 600.0;
+        other.runway = "12".into();
+        other.hold_since = Some(now - Duration::from_secs(60));
+        let mut waiting = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        waiting.id = 2;
+        waiting.hold_distance = 600.0;
+        waiting.distance = 600.0;
+        waiting.runway = "35".into();
+        waiting.hold_since = Some(now - Duration::from_secs(10));
+        let queue = vec![other, waiting];
+        assert_eq!(
+            queue_leader(&queue, None, "TEST", "35", "35"),
+            Some(2),
+            "runway 12 traffic must not lead the runway 35 queue"
+        );
+        assert_eq!(queue_leader(&queue, None, "TEST", "12", "35"), Some(1));
+    }
+
+    #[test]
+    fn a_climbed_out_crossing_runway_aircraft_stops_blocking_the_queue() {
+        use openatc_core::airport::{Airport, Runway};
+        use openatc_core::state::Point;
+        let data = Airport {
+            runways: vec![
+                Runway {
+                    first_name: "09".into(),
+                    second_name: "27".into(),
+                    first: Point {
+                        east: -1200.0,
+                        north: 0.0,
+                        height: 0.0,
+                    },
+                    second: Point {
+                        east: 1200.0,
+                        north: 0.0,
+                        height: 0.0,
+                    },
+                    width: 45.0,
+                    ..Default::default()
+                },
+                Runway {
+                    first_name: "18".into(),
+                    second_name: "36".into(),
+                    first: Point {
+                        east: 0.0,
+                        north: -1000.0,
+                        height: 0.0,
+                    },
+                    second: Point {
+                        east: 0.0,
+                        north: 1000.0,
+                        height: 0.0,
+                    },
+                    width: 45.0,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        assert!(openatc_core::airport::runways_overlap(&data, "09", "18"));
+        let mut manager = TrafficManager::default();
+        let mut other = ambient(AmbientKind::Departure, 5000.0, 0.0, 6000.0);
+        other.id = 7;
+        other.airport = "TEST".into();
+        other.runway = "18".into();
+        other.hold_distance = 600.0;
+        other.runway_start = 600.0;
+        other.runway_end = 1000.0;
+        other.cleared = true;
+        other.takeoff = true;
+        manager.aircraft.push(other);
+        assert!(
+            !manager.crossing_runway_busy(1, "TEST", "09", &data),
+            "a climbing aircraft clear of the runway must not block the crossing runway"
+        );
+        manager.aircraft[0].distance = 800.0;
+        assert!(
+            manager.crossing_runway_busy(1, "TEST", "09", &data),
+            "an aircraft rolling on the crossing runway blocks"
+        );
+        manager.aircraft[0].takeoff = false;
+        manager.aircraft[0].distance = 600.0;
+        assert!(
+            manager.crossing_runway_busy(1, "TEST", "09", &data),
+            "an aircraft lined up on the crossing runway blocks"
+        );
     }
 
     #[test]
@@ -5358,13 +5781,23 @@ mod phase_tests {
             'C',
             &BTreeSet::new(),
             &BTreeSet::new(),
+            &BTreeSet::new(),
             &[],
             false,
             7,
         )
         .expect("initial taxi node");
         let rejected = BTreeSet::from([('C', first.id)]);
-        let next = spawn_node(&airport, 'C', &BTreeSet::new(), &rejected, &[], false, 7);
+        let next = spawn_node(
+            &airport,
+            'C',
+            &BTreeSet::new(),
+            &rejected,
+            &BTreeSet::new(),
+            &[],
+            false,
+            7,
+        );
         assert_ne!(next.map(|node| node.id), Some(first.id));
     }
 
@@ -5760,8 +6193,11 @@ mod phase_tests {
     }
 
     #[test]
-    fn landing_lights_follow_runway_phases() {
+    fn taxi_and_landing_lights_follow_the_phase() {
         for stage in [
+            Stage::Pushback,
+            Stage::TaxiOut,
+            Stage::TaxiIn,
             Stage::Crossing,
             Stage::Takeoff,
             Stage::Climb,
@@ -5769,18 +6205,17 @@ mod phase_tests {
             Stage::MissedApproach,
             Stage::Rollout,
         ] {
-            assert!(stage.landing_lights(), "{stage:?} needs landing lights");
+            assert!(stage.landing_lights(), "{stage:?} needs the light channel");
         }
         for stage in [
             Stage::LineUp,
-            Stage::TaxiOut,
-            Stage::TaxiIn,
             Stage::Cruise,
             Stage::Parked,
+            Stage::Turnaround,
         ] {
             assert!(
                 !stage.landing_lights(),
-                "{stage:?} keeps landing lights off"
+                "{stage:?} keeps the light channel off"
             );
         }
     }
@@ -5832,5 +6267,199 @@ mod phase_tests {
         assert!(animation.landing_lights);
         assert!(animation.beacon);
         assert!(animation.navigation_lights);
+    }
+    #[test]
+    #[ignore = "requires installed YSCB scenery via OPENATC_TEST_SIMULATOR_ROOT"]
+    fn canberra_supports_the_requested_ambient_fleet_on_pavement() {
+        let root =
+            std::env::var("OPENATC_TEST_SIMULATOR_ROOT").expect("Set OPENATC_TEST_SIMULATOR_ROOT");
+        let airport = openatc_core::airport::load_airport_from_simulator(
+            &root,
+            "YSCB",
+            &|path| std::path::Path::new(path).is_file(),
+            &|path| std::fs::read_to_string(path).map_err(|error| error.to_string()),
+        )
+        .expect("installed Canberra scenery");
+        let profiles = crate::test_state()
+            .traffic_profiles
+            .current()
+            .expect("bundled profiles");
+        let models = Catalogue {
+            models: profiles
+                .aircraft
+                .keys()
+                .map(|code| Model {
+                    id: code.clone(),
+                    objects: Vec::new(),
+                    vertical_offset: None,
+                    matches: vec![openatc_core::traffic::csl::Match {
+                        aircraft: code.clone(),
+                        operator: String::new(),
+                        livery: String::new(),
+                    }],
+                })
+                .collect(),
+            warnings: Vec::new(),
+        };
+        let mut state = crate::test_state();
+        state.session.plan.runway = "35".to_owned();
+        state.session.plan.callsign = "TEST1".to_owned();
+        state.session.telemetry = openatc_core::state::Telemetry {
+            latitude: -35.312_188,
+            longitude: 149.191_554,
+            on_ground: true,
+            position_valid: true,
+            ground_speed_knots: 0.0,
+            ..Default::default()
+        };
+        state.settings.airline_traffic = 10;
+        state.settings.regional_traffic = 4;
+        state.settings.cargo_traffic = 2;
+        state.settings.ga_traffic = 5;
+        state.traffic_seed = 0x5eed;
+        state.airports.ensure(std::sync::Arc::new(airport.clone()));
+        state.airport = Some(airport.clone());
+        let mut manager = TrafficManager {
+            models: Some(std::sync::Arc::new(models.clone())),
+            ..Default::default()
+        };
+        manager.spawn(&airport, &models, &state, 6);
+        assert!(
+            manager.aircraft.len() >= 4,
+            "only {} ambient aircraft spawned: {}",
+            manager.aircraft.len(),
+            manager.last_error
+        );
+        assert!(manager.aircraft.len() <= 6);
+        for aircraft in &manager.aircraft {
+            let from = if aircraft.kind == AmbientKind::Arrival {
+                aircraft.ground_start
+            } else {
+                aircraft.distance
+            };
+            assert!(
+                path_off_pavement(
+                    &airport,
+                    &aircraft.points,
+                    &aircraft.cumulative,
+                    from,
+                    aircraft.ground_end,
+                )
+                .is_none(),
+                "{} leaves pavement: {}",
+                aircraft.callsign,
+                manager.last_error
+            );
+        }
+        // Run twenty minutes of ground movement in 0.2-second steps. Every
+        // aircraft must stay on pavement and at least one departure must reach a
+        // line-up grant.
+        let mut cleared = false;
+        let mut rolling = false;
+        let mut blocked: Option<String> = None;
+        let mut peak = 0;
+        let mut settled = 0;
+        for tick in 0..6_000 {
+            let now = Instant::now();
+            for aircraft in &mut manager.aircraft {
+                aircraft.last = now - Duration::from_millis(200);
+            }
+            manager.advance(&mut state);
+            cleared |= manager
+                .aircraft
+                .iter()
+                .any(|aircraft| aircraft.kind == AmbientKind::Departure && aircraft.cleared);
+            rolling |= manager
+                .aircraft
+                .iter()
+                .any(|aircraft| aircraft.kind == AmbientKind::Departure && aircraft.takeoff);
+            if blocked.is_none()
+                && let Some(aircraft) = manager
+                    .aircraft
+                    .iter()
+                    .find(|aircraft| aircraft.line_up_blocked)
+            {
+                blocked = Some(format!(
+                    "{} hold {:.0} runway start {:.0}",
+                    aircraft.callsign, aircraft.hold_distance, aircraft.runway_start
+                ));
+            }
+            if tick >= 50 {
+                peak = peak.max(manager.aircraft.len());
+                settled += usize::from(manager.aircraft.len() >= 4);
+            }
+            for aircraft in &manager.aircraft {
+                let on_ground = match aircraft.kind {
+                    AmbientKind::Departure => aircraft.distance < aircraft.ground_end,
+                    AmbientKind::Arrival => aircraft.distance >= aircraft.ground_start,
+                };
+                if !on_ground {
+                    continue;
+                }
+                let (latitude, longitude) =
+                    position_at(&aircraft.points, &aircraft.cumulative, aircraft.distance);
+                let local = openatc_core::airport::airport_point(&airport, latitude, longitude);
+                assert!(
+                    openatc_core::airport::taxi_point_on_pavement(&airport, local),
+                    "{} moved off pavement at {latitude:.5},{longitude:.5}: {}",
+                    aircraft.callsign,
+                    manager.last_error
+                );
+            }
+        }
+        if !cleared {
+            eprintln!(
+                "attempts {} route {} pavement {} model {} error {}",
+                manager.attempts,
+                manager.rejected_route,
+                manager.rejected_pavement,
+                manager.rejected_model,
+                manager.last_error
+            );
+            for aircraft in &manager.aircraft {
+                eprintln!(
+                    "{} {:?} distance {:.0} hold {:.0} runway_start {:.0} cleared {} takeoff {} blocked {} awaiting {} lineup_blocked {} hold_since {:?}",
+                    aircraft.callsign,
+                    aircraft.kind,
+                    aircraft.distance,
+                    aircraft.hold_distance,
+                    aircraft.runway_start,
+                    aircraft.cleared,
+                    aircraft.takeoff,
+                    aircraft.blocked,
+                    aircraft.awaiting_clearance,
+                    aircraft.line_up_blocked,
+                    aircraft.hold_since.map(|at| at.elapsed().as_secs_f64()),
+                );
+            }
+        }
+        assert!(
+            cleared,
+            "no ambient departure reached a line-up clearance: {}",
+            manager.last_error
+        );
+        assert!(
+            rolling,
+            "no ambient departure started its takeoff roll: {}",
+            manager.last_error
+        );
+        assert!(
+            blocked.is_none(),
+            "an ambient departure was blocked at the hold: {}",
+            blocked.unwrap_or_default()
+        );
+        assert!(
+            (4..=6).contains(&peak),
+            "the ambient fleet peaked at {peak} aircraft: {}",
+            manager.last_error
+        );
+        assert!(
+            settled > 3_000,
+            "the fleet held four or more aircraft for only {settled} ticks: {}",
+            manager.last_error
+        );
+        eprintln!(
+            "YSCB held at least four aircraft for {settled} ticks (peak {peak}) and cleared a departure"
+        );
     }
 }

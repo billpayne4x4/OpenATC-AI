@@ -356,7 +356,6 @@ fn update_autopilot(shared: &Arc<Mutex<Shared>>) {
         information_only: false,
         pilot_reply: String::new(),
         background: false,
-        chatter: false,
         speaker: "COPILOT".to_owned(),
         text: openatc_core::dialogue::say(
             "copilot_altitude_set",

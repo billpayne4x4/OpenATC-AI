@@ -362,7 +362,7 @@ pub(crate) fn pilot_voice_for_callsign(state: &mut EngineState, callsign: &str) 
     voice
 }
 
-/// Operational readiness for a departure clearance. Radio chatter and
+/// Operational readiness for a departure clearance. Background radio calls and
 /// information-only calls do not hold the takeoff sequence; an outstanding
 /// readback does.
 pub(crate) fn departure_ready(state: &EngineState) -> bool {

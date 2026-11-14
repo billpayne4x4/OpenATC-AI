@@ -72,7 +72,6 @@ pub async fn post_telemetry(
     Json(telemetry): Json<Telemetry>,
 ) -> Response {
     let shared = state;
-    crate::chatter::ChatterManager::warm_airports(shared.clone()).await;
     // Load the CSL catalogue once so the ambient traffic layer can spawn models.
     let needs_models = {
         let state = shared.read().await;
@@ -185,9 +184,6 @@ pub async fn post_telemetry(
         let mut ambient = std::mem::take(&mut state.ambient);
         ambient.tick(&mut state);
         state.ambient = ambient;
-        let mut chatter = std::mem::take(&mut state.chatter);
-        chatter.tick(&mut state);
-        state.chatter = chatter;
         if state.settings.generated_traffic {
             let worker_state = shared.clone();
             tokio::spawn(async move {

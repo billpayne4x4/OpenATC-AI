@@ -418,11 +418,10 @@ mod tests {
         assert!(parse("[example]\nslots=[]\nsay=['{unknown}']").is_err());
     }
     #[test]
-    fn ambient_traffic_chatter_and_hazard_phrases_render_from_the_shipped_toml() {
+    fn ambient_traffic_and_hazard_phrases_render_from_the_shipped_toml() {
         let callsign = "N123AB";
         let runway = "27";
         let station = "Brisbane Ground";
-        let via = "Alpha, Bravo";
         let simple = [
             ("callsign", callsign.to_owned()),
             ("runway", runway.to_owned()),
@@ -430,16 +429,6 @@ mod tests {
         let ready = [
             ("station", station.to_owned()),
             ("callsign", callsign.to_owned()),
-        ];
-        let taxi = [
-            ("callsign", callsign.to_owned()),
-            ("runway", runway.to_owned()),
-            ("via", via.to_owned()),
-        ];
-        let final_call = [
-            ("station", station.to_owned()),
-            ("callsign", callsign.to_owned()),
-            ("runway", runway.to_owned()),
         ];
         let handoff = [
             ("callsign", callsign.to_owned()),
@@ -455,7 +444,7 @@ mod tests {
             ("station", station.to_owned()),
             ("frequency", "121.700".to_owned()),
         ];
-        let cases: [(&str, &[(&str, String)], &[&str]); 22] = [
+        let cases: [(&str, &[(&str, String)], &[&str]); 11] = [
             ("ambient_hold_short", &simple, &[callsign, runway]),
             ("ambient_hold_short_readback", &simple, &[callsign, runway]),
             ("ambient_line_up", &simple, &[callsign, runway]),
@@ -464,37 +453,6 @@ mod tests {
             ("ambient_takeoff_readback", &simple, &[callsign, runway]),
             ("ambient_landing", &simple, &[callsign, runway]),
             ("ambient_landing_readback", &simple, &[callsign, runway]),
-            ("chatter_ground_ready", &ready, &[station, callsign]),
-            ("chatter_ground_taxi", &taxi, &[callsign, runway, via]),
-            (
-                "chatter_ground_taxi_readback",
-                &taxi,
-                &[callsign, runway, via],
-            ),
-            ("chatter_ground_taxi_direct", &simple, &[callsign, runway]),
-            (
-                "chatter_ground_taxi_direct_readback",
-                &simple,
-                &[callsign, runway],
-            ),
-            ("chatter_tower_departure", &ready, &[station, callsign]),
-            ("chatter_tower_lineup", &simple, &[callsign, runway]),
-            (
-                "chatter_tower_lineup_readback",
-                &simple,
-                &[callsign, runway],
-            ),
-            (
-                "chatter_tower_final",
-                &final_call,
-                &[station, callsign, runway],
-            ),
-            ("chatter_tower_landing", &simple, &[callsign, runway]),
-            (
-                "chatter_tower_landing_readback",
-                &simple,
-                &[callsign, runway],
-            ),
             ("windshear_advise", &ready, &[callsign, station]),
             (
                 "arrival_vacate_contact_ground",

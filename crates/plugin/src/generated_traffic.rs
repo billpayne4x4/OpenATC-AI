@@ -401,11 +401,16 @@ impl Renderer {
         }
         if self.mappings != *mappings {
             crate::debug_log(&format!(
-                "OpenATC traffic: animation channels changed ({} -> {}) without a renderer reset",
+                "OpenATC traffic: animation channels changed ({} -> {})",
                 self.mappings.len(),
                 mappings.len()
             ));
             self.mappings.clone_from(mappings);
+            self.channels.clear();
+            let ids: Vec<u32> = self.aircraft.keys().copied().collect();
+            for id in ids {
+                self.retire(id);
+            }
         }
         self.timeline
             .receive(frames, stamp, paused, std::time::Instant::now());

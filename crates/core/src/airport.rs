@@ -285,9 +285,10 @@ pub struct Airport {
     pub pavements: Vec<Vec<Point>>,
     /// Triangulated pavement faces, preserving cutouts.
     pub pavement_triangles: Vec<[Point; 3]>,
-    /// Contour ranges for each published pavement group. The first contour in a
-    /// group is the outer ring; the rest are holes.
+    /// Contour ranges for each published pavement group.
     pub pavement_groups: Vec<(usize, usize)>,
+    /// Pavement holes as `(hole contour, containing part contour)`.
+    pub pavement_holes: Vec<(usize, usize)>,
     /// Taxi graph nodes.
     pub nodes: Vec<TaxiNode>,
     /// Taxi graph edges.
@@ -998,6 +999,45 @@ pub fn calculate_taxi_route(
     to_parking: bool,
     aircraft_size: char,
 ) -> Result<TaxiClearance, String> {
+    calculate_taxi_route_with(
+        airport,
+        telemetry,
+        destination,
+        to_parking,
+        aircraft_size,
+        true,
+    )
+}
+
+/// Route for automatic traffic that joins the path partway along.
+///
+/// Only the part the aircraft will drive is checked. A connector behind the
+/// spawn point must not reject an otherwise usable route.
+pub fn calculate_taxi_route_unchecked(
+    airport: &Airport,
+    telemetry: &Telemetry,
+    destination: &str,
+    to_parking: bool,
+    aircraft_size: char,
+) -> Result<TaxiClearance, String> {
+    calculate_taxi_route_with(
+        airport,
+        telemetry,
+        destination,
+        to_parking,
+        aircraft_size,
+        false,
+    )
+}
+
+fn calculate_taxi_route_with(
+    airport: &Airport,
+    telemetry: &Telemetry,
+    destination: &str,
+    to_parking: bool,
+    aircraft_size: char,
+    validate_surface: bool,
+) -> Result<TaxiClearance, String> {
     if !telemetry.on_ground || !telemetry.position_valid {
         return Err(crate::dialogue::say(
             "taxi_routing_needs_a_valid_ground_position",
@@ -1195,9 +1235,10 @@ pub fn calculate_taxi_route(
     }
     let (points, via) = taxi_path(&nodes, &previous, start, target);
     let holding_marker_point = holding_marker_position(airport, &points);
-    if crate::surface::SurfaceModel::new(airport)
-        .validate(&points, false)
-        .is_err()
+    if validate_surface
+        && crate::surface::SurfaceModel::new(airport)
+            .validate(&points, false)
+            .is_err()
     {
         return Err(crate::dialogue::say("taxi_route_leaves_pavement", &[]));
     }
@@ -1443,12 +1484,28 @@ pub fn load_airport(text: &str, icao: &str) -> Result<Airport, String> {
         .filter(|limits| limits[1] > limits[0])
         .map(|limits| (limits[0], limits[1]))
         .collect();
-    for (start, end) in &builder.airport.pavement_groups {
-        builder
+    builder.airport.pavement_holes =
+        pavement_holes(&builder.airport.pavements, &builder.airport.pavement_groups);
+    let mut triangles = Vec::new();
+    for (index, part) in builder.airport.pavements.iter().enumerate() {
+        if builder
             .airport
-            .pavement_triangles
-            .extend(pavement_faces(&builder.airport.pavements[*start..*end]));
+            .pavement_holes
+            .iter()
+            .any(|(hole, _)| *hole == index)
+        {
+            continue;
+        }
+        let holes: Vec<&[Point]> = builder
+            .airport
+            .pavement_holes
+            .iter()
+            .filter(|(_, parent)| *parent == index)
+            .map(|(hole, _)| builder.airport.pavements[*hole].as_slice())
+            .collect();
+        triangles.extend(pavement_faces(part, &holes));
     }
+    builder.airport.pavement_triangles = triangles;
     builder.airport.taxi_centerlines = centerlines
         .iter()
         .map(|&(first, second)| [first, second])
@@ -1463,24 +1520,83 @@ pub fn load_airport(text: &str, icao: &str) -> Result<Airport, String> {
     builder.finish()
 }
 
-/// Triangulate each pavement with its interior islands left open.
-fn pavement_faces(contours: &[Vec<Point>]) -> Vec<[Point; 3]> {
-    let mut vertices = Vec::new();
-    let mut holes = Vec::new();
-    for (index, contour) in contours.iter().enumerate() {
-        if index > 0 {
-            holes.push(vertices.len());
-        }
-        vertices.extend_from_slice(contour);
+/// Triangulate one pavement part with its interior holes left open.
+fn pavement_faces(part: &[Point], holes: &[&[Point]]) -> Vec<[Point; 3]> {
+    let mut vertices = part.to_vec();
+    let mut starts = Vec::new();
+    for hole in holes {
+        starts.push(vertices.len());
+        vertices.extend_from_slice(hole);
     }
     let coordinates: Vec<_> = vertices.iter().flat_map(|p| [p.east, p.north]).collect();
-    earcutr::earcut(&coordinates, &holes, 2)
+    earcutr::earcut(&coordinates, &starts, 2)
         .unwrap_or_default()
         .as_chunks::<3>()
         .0
         .iter()
         .map(|v| [vertices[v[0]], vertices[v[1]], vertices[v[2]]])
         .collect()
+}
+
+/// Signed area of a closed contour. Counter-clockwise is positive.
+fn contour_area(contour: &[Point]) -> f64 {
+    contour
+        .iter()
+        .zip(contour.iter().cycle().skip(1))
+        .map(|(first, second)| first.east * second.north - second.east * first.north)
+        .sum::<f64>()
+        * 0.5
+}
+
+/// Pair each hole contour with the smallest pavement part that contains it.
+///
+/// X-Plane can publish several disjoint or overlapping parts under one pavement
+/// header. A contour is only a hole when it is wound against the group's outer
+/// ring and sits inside a part. Treating every later contour as a hole cuts
+/// grass out of valid pavement.
+fn pavement_holes(pavements: &[Vec<Point>], groups: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let areas: Vec<f64> = pavements
+        .iter()
+        .map(|contour| contour_area(contour))
+        .collect();
+    let mut holes = Vec::new();
+    for (start, end) in groups {
+        if end.saturating_sub(*start) < 2 {
+            continue;
+        }
+        let outer_positive = areas[*start] >= 0.0;
+        for index in *start + 1..*end {
+            if (areas[index] >= 0.0) == outer_positive {
+                continue;
+            }
+            let contour = &pavements[index];
+            let step = (contour.len() / 16).max(1);
+            let samples: Vec<Point> = contour.iter().step_by(step).copied().collect();
+            let parent = (*start..*end)
+                .filter(|other| *other != index)
+                .filter(|other| (areas[*other] >= 0.0) == outer_positive)
+                .filter(|other| {
+                    samples
+                        .iter()
+                        .all(|point| contour_contains_or_touches(*point, &pavements[*other]))
+                })
+                .min_by(|left, right| areas[*left].abs().total_cmp(&areas[*right].abs()));
+            if let Some(parent) = parent {
+                holes.push((index, parent));
+            }
+        }
+    }
+    holes
+}
+
+/// Containment with a one-metre edge tolerance, so shared boundaries still count.
+fn contour_contains_or_touches(point: Point, contour: &[Point]) -> bool {
+    if contour_contains(point, contour) {
+        return true;
+    }
+    let length = contour.len();
+    (0..length)
+        .any(|index| segment_distance(point, contour[index], contour[(index + 1) % length]) <= 1.0)
 }
 
 /// Add a verified physical pavement polygon, retaining its holes and Bezier controls.
@@ -1522,7 +1638,8 @@ pub fn append_pavement(
             * 0.5
     };
     let expected = area(&contours[0]) - contours.iter().skip(1).map(|ring| area(ring)).sum::<f64>();
-    let faces = pavement_faces(&contours);
+    let hole_refs: Vec<&[Point]> = contours.iter().skip(1).map(Vec::as_slice).collect();
+    let faces = pavement_faces(&contours[0], &hole_refs);
     let actual = faces.iter().map(|face| area(face)).sum::<f64>();
     if !expected.is_finite()
         || expected <= 0.0
@@ -1537,6 +1654,9 @@ pub fn append_pavement(
     airport
         .pavement_groups
         .push((start, airport.pavements.len()));
+    airport
+        .pavement_holes
+        .extend((start + 1..airport.pavements.len()).map(|hole| (hole, start)));
     airport.pavement_triangles.extend(faces);
     Ok(())
 }
@@ -2130,8 +2250,6 @@ pub fn contains_aircraft(airport: &Airport, telemetry: &Telemetry) -> bool {
         )
 }
 
-/// Whether installed runway or pavement faces cover this point.
-#[must_use]
 /// True when a taxi point is on the rendered pavement, with a small edge tolerance.
 ///
 /// Airports without pavement polygons keep the old behaviour because there is no
@@ -2179,6 +2297,8 @@ pub fn taxi_segment_on_pavement(airport: &Airport, first: Point, second: Point) 
     })
 }
 
+/// Whether installed runway or pavement faces cover this point.
+#[must_use]
 pub fn on_pavement(airport: &Airport, p: Point) -> bool {
     if airport.runways.iter().any(|r| {
         let delta = difference(r.second, r.first);
@@ -2202,18 +2322,28 @@ pub fn on_pavement(airport: &Airport, p: Point) -> bool {
         return true;
     }
     // Earcut can leave slivers in a long, near-degenerate contour. Fall back to
-    // the published rings so a valid pavement is not reported as a gap.
-    for (start, end) in &airport.pavement_groups {
-        if *end > airport.pavements.len() {
+    // the published parts so a valid pavement is not reported as a gap. Holes are
+    // subtracted only from the part that contains them, so overlapping pavement
+    // parts cannot cancel each other.
+    for (index, part) in airport.pavements.iter().enumerate() {
+        if airport
+            .pavement_holes
+            .iter()
+            .any(|(hole, _)| *hole == index)
+        {
             continue;
         }
-        let mut inside = false;
-        for contour in &airport.pavements[*start..*end] {
-            if contour_contains(p, contour) {
-                inside = !inside;
-            }
+        if !contour_contains(p, part) {
+            continue;
         }
-        if inside {
+        let in_hole = airport.pavement_holes.iter().any(|(hole, parent)| {
+            *parent == index
+                && airport
+                    .pavements
+                    .get(*hole)
+                    .is_some_and(|contour| contour_contains(p, contour))
+        });
+        if !in_hole {
             return true;
         }
     }
@@ -3242,7 +3372,7 @@ mod pavement_tests {
                 point(8.0, 2.0),
             ],
         ];
-        let area: f64 = pavement_faces(&contours)
+        let area: f64 = pavement_faces(&contours[0], &[contours[1].as_slice()])
             .iter()
             .map(|v| {
                 ((v[1].east - v[0].east) * (v[2].north - v[0].north)
@@ -3273,19 +3403,97 @@ mod pavement_tests {
                 ],
                 vec![
                     point(4.0, 4.0),
-                    point(6.0, 4.0),
-                    point(6.0, 6.0),
                     point(4.0, 6.0),
+                    point(6.0, 6.0),
+                    point(6.0, 4.0),
                 ],
             ],
             pavement_groups: vec![(0, 2)],
+            pavement_holes: vec![(1, 0)],
             ..Default::default()
         };
         assert!(on_pavement(&airport, point(1.0, 1.0)));
         assert!(!on_pavement(&airport, point(5.0, 5.0)));
         assert!(!on_pavement(&airport, point(20.0, 20.0)));
-        airport.pavement_groups = vec![(0, 1)];
+        airport.pavement_holes.clear();
         assert!(on_pavement(&airport, point(5.0, 5.0)));
+    }
+
+    #[test]
+    fn overlapping_pavement_parts_do_not_cancel_each_other() {
+        let point = |east, north| Point {
+            east,
+            north,
+            height: 0.0,
+        };
+        let airport = Airport {
+            reference_latitude: 0.0,
+            reference_longitude: 0.0,
+            pavements: vec![
+                vec![
+                    point(0.0, 0.0),
+                    point(20.0, 0.0),
+                    point(20.0, 20.0),
+                    point(0.0, 20.0),
+                ],
+                vec![
+                    point(5.0, 5.0),
+                    point(5.0, 15.0),
+                    point(15.0, 15.0),
+                    point(15.0, 5.0),
+                ],
+                vec![
+                    point(8.0, 8.0),
+                    point(12.0, 8.0),
+                    point(12.0, 12.0),
+                    point(8.0, 12.0),
+                ],
+            ],
+            pavement_groups: vec![(0, 3)],
+            pavement_holes: vec![(1, 0)],
+            ..Default::default()
+        };
+        assert!(on_pavement(&airport, point(1.0, 1.0)));
+        assert!(!on_pavement(&airport, point(6.0, 6.0)));
+        assert!(
+            on_pavement(&airport, point(10.0, 10.0)),
+            "a positive part inside a hole must stay pavement"
+        );
+    }
+
+    #[test]
+    fn hole_classification_needs_opposite_winding_and_containment() {
+        let point = |east, north| Point {
+            east,
+            north,
+            height: 0.0,
+        };
+        let outer = vec![
+            point(0.0, 0.0),
+            point(10.0, 0.0),
+            point(10.0, 10.0),
+            point(0.0, 10.0),
+        ];
+        let hole = vec![
+            point(4.0, 4.0),
+            point(4.0, 6.0),
+            point(6.0, 6.0),
+            point(6.0, 4.0),
+        ];
+        let overlapping = vec![
+            point(20.0, 20.0),
+            point(30.0, 20.0),
+            point(30.0, 30.0),
+            point(20.0, 30.0),
+        ];
+        assert_eq!(
+            pavement_holes(&[outer.clone(), hole], &[(0, 2)]),
+            vec![(1, 0)]
+        );
+        assert!(
+            pavement_holes(&[outer, overlapping], &[(0, 2)]).is_empty(),
+            "same-winding parts are pavement, not holes"
+        );
     }
 }
 

@@ -538,7 +538,7 @@ pub fn prepare(state: &State, request: &mut Request) {
     }
 }
 
-/// Construct the pilot's complete reply from the active clearance, never radio chatter.
+/// Construct the pilot's complete reply from the active clearance, never background traffic.
 #[must_use]
 pub fn auto_reply(state: &State) -> Option<Request> {
     if state.taxi_clearance.stage() == crate::state::SurfaceStage::CrossingComplete

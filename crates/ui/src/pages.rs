@@ -652,7 +652,7 @@ fn transcript_badge(
                 format!("ATC - {name}")
             }
         }
-        _ if entry.position == "Traffic" || entry.position == "Chatter" => {
+        _ if entry.position == "Traffic" => {
             format!("TFC · {}", entry.speaker)
         }
         _ => "YOU".to_owned(),
@@ -2780,7 +2780,6 @@ fn voice_popup(ui: &imgui::Ui, interface: &mut Interface) {
                             gap_ms: 0,
                             information_only: false,
                             speaker: "ATC".into(),
-                            chatter: false,
                             text: interface.voice_preview_text.clone(),
                             voice: voice.id.clone(),
                             delivery: "standard".into(),
@@ -2947,7 +2946,6 @@ fn audio_levels_row(ui: &imgui::Ui, interface: &mut Interface) {
             information_only: false,
             pilot_reply: String::new(),
             background: false,
-            chatter: false,
             speaker: "ATC".to_owned(),
             text: "OpenATC AI radio check. Reading you five.".to_owned(),
             sequence: 0,
@@ -4024,7 +4022,6 @@ mod tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
-                chatter: false,
                 speaker: "VH-BIL".to_owned(),
                 text: "request ifr clearance".to_owned(),
                 sequence: 1,
@@ -4041,7 +4038,6 @@ mod tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
-                chatter: false,
                 speaker: "ATC".to_owned(),
                 text: "Cleared.".to_owned(),
                 sequence: 2,
@@ -4294,7 +4290,6 @@ mod tests {
             text: "Taxi via Alpha, Singapore one nine seven five.".into(),
             position: "Traffic".into(),
             background: true,
-            chatter: false,
             radio: Some(openatc_core::state::Radio::Com1),
             sequence: 1,
             voice: String::new(),

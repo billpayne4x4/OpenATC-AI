@@ -206,6 +206,8 @@ pub struct Animation {
     pub wheel_angle: f64,
     /// Landing light command.
     pub landing_lights: bool,
+    /// Taxi light command.
+    pub taxi_lights: bool,
     /// Engine-running beacon command.
     pub beacon: bool,
     /// Navigation light command.
@@ -235,6 +237,7 @@ impl Default for Animation {
             propeller_rpm: 0.0,
             wheel_angle: 0.0,
             landing_lights: false,
+            taxi_lights: false,
             beacon: false,
             navigation_lights: false,
             strobes: false,
@@ -346,6 +349,10 @@ impl Animation {
             .rem_euclid(360.0);
         }
         self.landing_lights = input.landing_lights;
+        self.taxi_lights = matches!(
+            input.stage,
+            Stage::Pushback | Stage::TaxiOut | Stage::Crossing | Stage::TaxiIn
+        );
         self.beacon = input.engines_running;
         self.navigation_lights = !matches!(input.stage, Stage::Parked | Stage::Turnaround);
         self.strobes = !ground
@@ -524,6 +531,50 @@ mod tests {
         );
         assert_eq!(piston.speed_brakes, 0.0);
     }
+
+    #[test]
+    fn taxi_and_landing_lights_follow_the_stage() {
+        for stage in [
+            Stage::Pushback,
+            Stage::TaxiOut,
+            Stage::Crossing,
+            Stage::Takeoff,
+            Stage::Climb,
+            Stage::Approach,
+            Stage::MissedApproach,
+            Stage::Rollout,
+            Stage::TaxiIn,
+        ] {
+            assert!(stage.landing_lights(), "{stage:?} needs the light channel");
+        }
+        for stage in [Stage::Parked, Stage::LineUp, Stage::Turnaround] {
+            assert!(!stage.landing_lights(), "{stage:?} must keep it off");
+        }
+        let handling = builtin().unwrap();
+        let jet = &handling[&Kind::Jet];
+        let input = |stage| Input {
+            stage,
+            knots: 10.0,
+            turn_degrees_sec: 0.0,
+            vertical_fpm: 0.0,
+            engines_running: true,
+            fixed_gear: false,
+            landing_lights: stage.landing_lights(),
+        };
+        let mut animation = Animation::default();
+        animation.advance(input(Stage::TaxiOut), jet, 0.5);
+        assert!(animation.taxi_lights);
+        assert!(animation.landing_lights);
+        assert_eq!(animation.channel(Channel::TaxiLights), 1.0);
+        assert_eq!(animation.channel(Channel::LandingLights), 1.0);
+        animation.advance(input(Stage::LineUp), jet, 0.5);
+        assert!(!animation.taxi_lights);
+        assert!(!animation.landing_lights);
+        assert_eq!(animation.channel(Channel::TaxiLights), 0.0);
+        animation.advance(input(Stage::Takeoff), jet, 0.5);
+        assert!(!animation.taxi_lights);
+        assert!(animation.landing_lights);
+    }
 }
 
 /// Model channel semantics. Names remain editable in the channel catalogue.
@@ -538,6 +589,8 @@ pub enum Channel {
     Beacon,
     /// Landing light.
     LandingLights,
+    /// Taxi light.
+    TaxiLights,
     /// Navigation light.
     NavigationLights,
     /// Strobe light.
@@ -596,6 +649,7 @@ impl Animation {
             Channel::Flaps => self.flaps,
             Channel::Beacon => f64::from(self.beacon),
             Channel::LandingLights => f64::from(self.landing_lights),
+            Channel::TaxiLights => f64::from(self.taxi_lights),
             Channel::NavigationLights => f64::from(self.navigation_lights),
             Channel::Strobes => f64::from(self.strobes),
             Channel::WheelAngle => self.wheel_angle,

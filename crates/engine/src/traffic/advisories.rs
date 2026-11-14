@@ -482,7 +482,7 @@ mod tests {
         (s, station)
     }
     #[test]
-    fn advisory_report_and_clear_scan_complete_without_chatter_enabled() {
+    fn advisory_report_and_clear_scan_complete_without_radio_calls() {
         let (mut s, station) = setup();
         s.settings.hear_traffic_radio = false;
         assert!(!s.settings.hear_traffic_radio);

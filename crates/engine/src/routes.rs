@@ -2129,31 +2129,6 @@ async fn copilot_chat(shared: &Shared, settings: &Settings, request: &Request) -
     Json(json!({"result": result, "state": snapshot})).into_response()
 }
 
-fn chatter_exchanges() -> Vec<(String, String)> {
-    vec![
-        (
-            openatc_core::dialogue::say("qfa_request_taxi", &[]),
-            openatc_core::dialogue::say("qantas_taxi_approved", &[]),
-        ),
-        (
-            openatc_core::dialogue::say("jst_ready_for_departure", &[]),
-            openatc_core::dialogue::say("jetstar_hold_short_traffic_on_final", &[]),
-        ),
-        (
-            openatc_core::dialogue::say("voz_request_altitude_fl", &[]),
-            openatc_core::dialogue::say("velocity_maintain_flight_level", &[]),
-        ),
-        (
-            openatc_core::dialogue::say("rxa_going_around", &[]),
-            openatc_core::dialogue::say("rex_roger_go_around", &[]),
-        ),
-        (
-            openatc_core::dialogue::say("fdx_on_the_gate_request_pushback", &[]),
-            openatc_core::dialogue::say("fedex_pushback_approved", &[]),
-        ),
-    ]
-}
-
 /// Assign (or recall) the controller voice for one airspace, persisting new
 /// assignments, and build its speech tag.
 pub(crate) fn assign_airspace_controller(
@@ -2230,7 +2205,6 @@ pub(crate) fn assign_airspace_controller(
         radio: None,
         frequency: None,
         gap_ms: 0,
-        chatter: false,
         position,
         voice: controller.voice.clone(),
         delivery: controller.delivery.clone(),
@@ -2867,7 +2841,6 @@ pub(crate) async fn atc_request(
             &atc_tag,
         );
     }
-    maybe_chatter(&mut state.session, settings, &pool, &atc_tag);
     let intent = request.intent.clone();
     let message = result.message.clone();
     let accepted = result.accepted;
@@ -2996,50 +2969,6 @@ pub(crate) async fn atc_request(
     let result = json!({"accepted": accepted, "message": final_message});
     let snapshot = snapshot(&state.session, &state.settings);
     Json(json!({"result": result, "state": snapshot})).into_response()
-}
-
-/// Canned frequency exchanges for demo sessions.
-fn maybe_chatter(session: &mut State, settings: &Settings, pool: &[String], atc_tag: &SpeechTag) {
-    if !session.demo
-        || settings.congestion == Congestion::Off
-        || rand::rng().random_range(0..100) >= chance(settings)
-    {
-        return;
-    }
-    let exchanges = chatter_exchanges();
-    let exchange = &exchanges[rand::rng().random_range(0..exchanges.len())];
-    let other = exchange.0.to_lowercase();
-    let own = session.plan.callsign.to_lowercase();
-    if other.starts_with(&own) || own.get(..3) == other.get(..3) {
-        return;
-    }
-    let mut voice = settings.copilot_voice.clone();
-    if !pool.is_empty() {
-        voice.clone_from(&pool[rand::rng().random_range(0..pool.len())]);
-    }
-    if voice.is_empty() {
-        "alloy".clone_into(&mut voice);
-    }
-    let caller = exchange
-        .0
-        .split(' ')
-        .next()
-        .unwrap_or(&exchange.0)
-        .to_owned();
-    let tag = SpeechTag {
-        voice,
-        delivery: "standard".to_owned(),
-        speed: 1.0,
-        ..Default::default()
-    };
-    add_transmission(session, &caller, &exchange.0, &tag);
-    if let Some(entry) = session.transcript.last_mut() {
-        entry.background = true;
-    }
-    add_transmission(session, "ATC", &exchange.1, atc_tag);
-    if let Some(entry) = session.transcript.last_mut() {
-        entry.background = true;
-    }
 }
 
 /// Few-shot voice examples from the speech pool, rendered with sample slots
@@ -3222,7 +3151,7 @@ fn clearance_rejection(
 }
 
 #[cfg(test)]
-mod chatter_tests {
+mod readback_tests {
     use super::*;
     use openatc_core::aircraft::AircraftBehaviour;
     #[test]
@@ -4197,22 +4126,6 @@ mod chatter_tests {
             }
         }
         assert!(prompt.contains("not scripts to copy"));
-    }
-
-    #[test]
-    fn live_busy_frequency_never_invents_aircraft() {
-        let mut session = State {
-            demo: false,
-            ..Default::default()
-        };
-        let settings = Settings {
-            congestion: Congestion::Busy,
-            ..Default::default()
-        };
-        for _ in 0..100 {
-            maybe_chatter(&mut session, &settings, &[], &SpeechTag::default());
-        }
-        assert!(session.transcript.is_empty());
     }
 }
 

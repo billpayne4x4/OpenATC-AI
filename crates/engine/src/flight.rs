@@ -158,11 +158,12 @@ fn next_station(state: &EngineState, stations: &[Station], current: &Station) ->
     if state.session.phase == PhaseCode::Departure && t.height_agl_feet < 500.0 {
         return None;
     }
-    if arrival
-        && state.flow.approach_cleared
-        && final_position(state).is_some_and(|distance| distance < 12.0)
-    {
-        // Transfer final-approach communications before entering Tower's surface volume.
+    let terminal = state.session.phase == PhaseCode::Landed
+        || (state.flow.approach_cleared
+            && (final_position(state).is_some_and(|distance| distance < 12.0)
+                || past_arrival_threshold(state)));
+    if arrival && terminal {
+        // The destination tower owns the arrival until touchdown and the ground handoff.
         return stations
             .iter()
             .filter(|station| {
@@ -1234,6 +1235,23 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
         TakeoffDecision::Hold(_) => return,
         TakeoffDecision::LineUpAndWait => {
             if state.session.taxi_clearance.takeoff_state == TakeoffState::Held {
+                // Do not clear onto a line-up path that leaves pavement.
+                let here = openatc_core::airport::airport_point(
+                    &airport,
+                    state.session.telemetry.latitude,
+                    state.session.telemetry.longitude,
+                );
+                let mut remaining = vec![here];
+                if let Some(end) = state.session.taxi_clearance.points.last().copied() {
+                    remaining.push(end);
+                }
+                remaining.push(state.session.taxi_clearance.destination_point);
+                if openatc_core::surface::SurfaceModel::new(&airport)
+                    .validate(&remaining, true)
+                    .is_err()
+                {
+                    return;
+                }
                 line_up_departure(state, &station, &runway);
                 if state.session.departure_wake_seconds > 0.0 {
                     state.flow.wake_warned = true;
@@ -1654,6 +1672,47 @@ fn amend_airport(
         );
     }
     result
+}
+
+/// Whether the aircraft is over the arrival runway, past the landing threshold.
+fn past_arrival_threshold(state: &EngineState) -> bool {
+    let Some(airport) = state
+        .arrival_airport
+        .as_ref()
+        .or(state.airport.as_ref())
+        .filter(|airport| airport.icao == state.session.plan.destination)
+    else {
+        return false;
+    };
+    let name = &state.session.plan.arrival_runway;
+    let Some(runway) = airport
+        .runways
+        .iter()
+        .find(|runway| runway.first_name == *name || runway.second_name == *name)
+    else {
+        return false;
+    };
+    let Some(start) = runway.landing_threshold(name) else {
+        return false;
+    };
+    let end = if runway.first_name == *name {
+        runway.second
+    } else {
+        runway.first
+    };
+    let telemetry = &state.session.telemetry;
+    let point =
+        openatc_core::airport::airport_point(airport, telemetry.latitude, telemetry.longitude);
+    let east = end.east - start.east;
+    let north = end.north - start.north;
+    let length = east.hypot(north);
+    if length < 100.0 {
+        return false;
+    }
+    let along = ((point.east - start.east) * east + (point.north - start.north) * north) / length;
+    let across =
+        ((point.east - start.east) * north - (point.north - start.north) * east).abs() / length;
+    along > 0.0 && along <= length + 500.0 && across <= runway.width / 2.0 + 100.0
 }
 
 fn final_position(state: &EngineState) -> Option<f64> {
@@ -3028,6 +3087,36 @@ mod ownership_tests {
     }
 
     #[test]
+    fn a_landing_aircraft_is_not_handed_back_to_center() {
+        let (mut state, _, mut tower) = arrival_state();
+        tower.airport = "TEST".into();
+        tower.receivable = true;
+        state.flow.approach_cleared = true;
+        state.session.phase = PhaseCode::Approach;
+        state.session.telemetry.latitude = 0.002;
+        state.session.telemetry.longitude = 0.0;
+        state.session.telemetry.on_ground = false;
+        assert!(
+            final_position(&state).is_none(),
+            "the aircraft is past the threshold"
+        );
+        assert!(past_arrival_threshold(&state));
+        let center = Station {
+            name: "Test Center".into(),
+            service: "Center".into(),
+            khz: 125_000,
+            receivable: true,
+            ..Default::default()
+        };
+        let next = next_station(&state, &[center, tower.clone()], &tower)
+            .expect("the tower keeps the arrival");
+        assert_eq!(next.service, "Tower");
+        assert_eq!(next.khz, tower.khz);
+        state.session.telemetry.longitude = 0.02;
+        assert!(!past_arrival_threshold(&state));
+    }
+
+    #[test]
     fn final_handoff_does_not_wait_for_tower_surface_altitude() {
         let (mut state, approach, mut tower) = arrival_state();
         state.session.telemetry.latitude = -0.19;
@@ -3906,7 +3995,6 @@ mod sequencing_tests {
                 information_only: false,
                 pilot_reply: String::new(),
                 background: false,
-                chatter: false,
                 speaker: "ATC".into(),
                 text: String::new(),
                 sequence: 0,

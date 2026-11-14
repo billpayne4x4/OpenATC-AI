@@ -1,4 +1,4 @@
-//! Observed liftoffs and departure wake delays, kept separate from radio chatter.
+//! Observed liftoffs and departure wake delays, kept separate from radio calls.
 use crate::EngineState;
 use openatc_core::{
     airport::Airport,

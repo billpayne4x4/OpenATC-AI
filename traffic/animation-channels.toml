@@ -7,6 +7,7 @@ version = 1
 "libxplanemp/controls/slat_ratio" = "flaps"
 "libxplanemp/controls/beacon_lites_on" = "beacon"
 "libxplanemp/controls/landing_lites_on" = "landing_lights"
+"libxplanemp/controls/taxi_lites_on" = "taxi_lights"
 "libxplanemp/controls/nav_lites_on" = "navigation_lights"
 "libxplanemp/controls/strobe_lites_on" = "strobes"
 "libxplanemp/controls/speed_brake_ratio" = "speed_brakes"

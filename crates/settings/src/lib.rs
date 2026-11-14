@@ -109,7 +109,7 @@ pub enum Congestion {
     /// Occasional short delays.
     #[default]
     Quiet,
-    /// Longer delays with standby calls and background chatter.
+    /// Longer delays with standby calls.
     Busy,
 }
 
@@ -197,9 +197,6 @@ pub struct Settings {
     pub mute_native_radio: bool,
     /// Native AI aircraft excluding ownship, limited to nineteen SDK slots.
     pub native_traffic_count: u8,
-    /// Simulated airport radio chatter when flying above a receivable station.
-    #[serde(default = "yes")]
-    pub airport_chatter: bool,
     /// Enable `OpenATC`'s lightweight generated model instances.
     pub generated_traffic: bool,
     /// Enable generated traffic automatically when a flight plan is loaded.
@@ -491,7 +488,6 @@ impl Default for Settings {
             suppress_native_traffic: true,
             mute_native_radio: true,
             native_traffic_count: 0,
-            airport_chatter: true,
             generated_traffic: false,
             auto_generated_traffic: true,
             traffic_rate: TrafficRate::EveryFrame,

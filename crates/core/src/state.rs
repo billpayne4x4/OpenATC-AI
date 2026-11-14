@@ -585,10 +585,10 @@ pub struct Transmission {
     /// Receiving radio; absent on interphone and legacy entries.
     #[serde(default)]
     pub radio: Option<Radio>,
-    /// Tuned frequency for background airport chatter.
+    /// Tuned frequency for the background call.
     #[serde(default)]
     pub frequency: Option<i32>,
-    /// Silence after this line before the next background chatter line.
+    /// Silence after this line before the next background call.
     #[serde(default)]
     pub gap_ms: u32,
     /// An advisory may interrupt speech without replacing a pending instruction.
@@ -600,9 +600,6 @@ pub struct Transmission {
     /// Radio exchange addressed to another aircraft.
     #[serde(default)]
     pub background: bool,
-    /// Synthetic airport chatter, subject to the chatter-frequency gate.
-    #[serde(default)]
-    pub chatter: bool,
     /// Speaker tag (`ATC`, callsign, `COPILOT`, …).
     #[serde(default)]
     pub speaker: String,
@@ -702,12 +699,10 @@ pub struct ControlCommand {
 pub struct SpeechTag {
     /// Radio carrying the exchange, or no radio for crew interphone.
     pub radio: Option<Radio>,
-    /// Tuned frequency for background airport chatter.
+    /// Tuned frequency for the background call.
     pub frequency: Option<i32>,
-    /// Silence after this line before the next background chatter line.
+    /// Silence after this line before the next background call.
     pub gap_ms: u32,
-    /// Synthetic airport chatter, not a live aircraft call.
-    pub chatter: bool,
     /// ATC position, empty when none.
     pub position: String,
     /// Voice id.
@@ -726,7 +721,6 @@ impl Default for SpeechTag {
             radio: None,
             frequency: None,
             gap_ms: 0,
-            chatter: false,
             position: String::new(),
             voice: String::new(),
             delivery: "standard".to_owned(),
@@ -936,9 +930,6 @@ pub struct State {
     #[serde(default)]
     pub generated_animation_channels:
         std::collections::BTreeMap<String, crate::traffic::animation::Channel>,
-    /// Frequencies with a live synthetic airport-chatter session.
-    #[serde(default)]
-    pub chatter_frequencies: std::collections::BTreeSet<i32>,
     /// Bounded model and route diagnostics for the generated fleet.
     #[serde(default)]
     pub generated_traffic_diagnostics: Vec<String>,
@@ -1045,7 +1036,6 @@ impl Default for State {
             generated_holding_points: std::collections::BTreeMap::new(),
             generated_traffic_clock: None,
             generated_animation_channels: std::collections::BTreeMap::default(),
-            chatter_frequencies: std::collections::BTreeSet::new(),
             generated_traffic_diagnostics: Vec::new(),
             generated_traffic_debug: Vec::new(),
             traffic_call: None,

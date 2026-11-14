@@ -18090,50 +18090,6 @@ say = ["{callsign}, runway {runway}, cleared to land."]
 slots = ["callsign", "runway"]
 say = ["Cleared to land, runway {runway}, {callsign}."]
 
-[chatter_ground_ready]
-slots = ["station", "callsign"]
-say = ["{station}, {callsign}, ready to taxi."]
-
-[chatter_ground_taxi]
-slots = ["callsign", "runway", "via"]
-say = ["{callsign}, taxi to runway {runway} via {via}.", "{callsign}, taxi to runway {runway}, via {via}."]
-
-[chatter_ground_taxi_readback]
-slots = ["callsign", "runway", "via"]
-say = ["Taxi to runway {runway} via {via}, {callsign}.", "Runway {runway} via {via}, {callsign}.", "{callsign}, runway {runway} via {via}."]
-
-[chatter_ground_taxi_direct]
-slots = ["callsign", "runway"]
-say = ["{callsign}, taxi to runway {runway}."]
-
-[chatter_ground_taxi_direct_readback]
-slots = ["callsign", "runway"]
-say = ["Taxi to runway {runway}, {callsign}."]
-
-[chatter_tower_departure]
-slots = ["station", "callsign"]
-say = ["{station}, {callsign}, ready for departure."]
-
-[chatter_tower_lineup]
-slots = ["callsign", "runway"]
-say = ["{callsign}, runway {runway}, line up and wait."]
-
-[chatter_tower_lineup_readback]
-slots = ["callsign", "runway"]
-say = ["Line up and wait runway {runway}, {callsign}."]
-
-[chatter_tower_final]
-slots = ["station", "callsign", "runway"]
-say = ["{station}, {callsign}, on final runway {runway}."]
-
-[chatter_tower_landing]
-slots = ["callsign", "runway"]
-say = ["{callsign}, runway {runway}, cleared to land."]
-
-[chatter_tower_landing_readback]
-slots = ["callsign", "runway"]
-say = ["Cleared to land runway {runway}, {callsign}."]
-
 [windshear_advise]
 slots = ["callsign", "station"]
 say = ["{callsign}, windshear reported at {station}. Advise intentions."]

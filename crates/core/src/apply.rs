@@ -31,7 +31,6 @@ pub fn add_transmission(state: &mut State, speaker: &str, text: &str, tag: &Spee
         information_only: false,
         pilot_reply: String::new(),
         background: false,
-        chatter: tag.chatter,
         speaker: speaker.to_owned(),
         text: text.to_owned(),
         sequence: state.next_sequence,
