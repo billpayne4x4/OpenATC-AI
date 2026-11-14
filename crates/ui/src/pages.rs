@@ -1652,15 +1652,44 @@ fn taxi_airport<'a>(interface: &'a Interface, state: &'a State) -> &'a str {
 
 /// Wrap map layers to the available panel width.
 fn taxi_layers(ui: &imgui::Ui, interface: &mut Interface) {
+    widgets::section_title(ui, "MAP LAYERS");
     let right = ui.cursor_screen_pos()[0] + ui.content_region_avail()[0];
-    for (index, (label, value)) in [
-        ("Taxiways", &mut interface.settings.show_taxiways),
-        ("Parking", &mut interface.settings.show_parking),
-        ("Taxi route", &mut interface.settings.show_taxi_route),
-        ("Aircraft", &mut interface.settings.show_ownship),
-        ("Show traffic", &mut interface.taxi_traffic_visible),
-        ("Labels", &mut interface.settings.show_labels),
-        ("Traffic debug", &mut interface.settings.show_traffic_debug),
+    for (index, (label, value, color)) in [
+        (
+            "Taxiways",
+            &mut interface.settings.show_taxiways,
+            [0.45, 0.62, 0.78, 1.0],
+        ),
+        (
+            "Parking",
+            &mut interface.settings.show_parking,
+            [0.62, 0.66, 0.70, 1.0],
+        ),
+        (
+            "Taxi route",
+            &mut interface.settings.show_taxi_route,
+            [0.25, 0.87, 0.66, 1.0],
+        ),
+        (
+            "Aircraft",
+            &mut interface.settings.show_ownship,
+            [0.90, 0.95, 1.0, 1.0],
+        ),
+        (
+            "Traffic",
+            &mut interface.taxi_traffic_visible,
+            [1.0, 0.75, 0.34, 1.0],
+        ),
+        (
+            "Labels",
+            &mut interface.settings.show_labels,
+            [0.90, 0.95, 1.0, 1.0],
+        ),
+        (
+            "Traffic debug",
+            &mut interface.settings.show_traffic_debug,
+            [0.86, 0.24, 0.24, 1.0],
+        ),
     ]
     .into_iter()
     .enumerate()
@@ -1668,8 +1697,10 @@ fn taxi_layers(ui: &imgui::Ui, interface: &mut Interface) {
         if index > 0 && ui.item_rect_max()[0] + ui.calc_text_size(label)[0] + 48.0 < right {
             ui.same_line();
         }
+        let _color = ui.push_style_color(imgui::StyleColor::Text, color);
         ui.checkbox(label, value);
     }
+    ui.text_wrapped("Traffic debug replaces the normal traffic markers with state and blocker markers. The player holding ring stays visible during an active taxi clearance.");
 }
 
 /// Select the arrival stand from the displayed airport.
@@ -3036,7 +3067,7 @@ fn realism_tab(ui: &imgui::Ui, interface: &mut Interface) {
         &mut interface.settings.show_ground_taxi_arrows,
     );
     ui.checkbox(
-        "Show holding point on map and simulator ground",
+        "Show holding point on simulator ground",
         &mut interface.settings.show_holding_point,
     );
     ui.text_wrapped("Guidance follows the approved taxi route and stops at the clearance limit. Ground arrows are available in X-Plane while on the ground.");

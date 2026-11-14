@@ -493,7 +493,7 @@ fn draw_map(
             ui.calc_text_size(&beam.label)[0],
         );
     }
-    if interface.taxi_traffic_visible {
+    if interface.taxi_traffic_visible && !interface.settings.show_traffic_debug {
         for target in crate::traffic::targets(state).take(126) {
             if !target.latitude.is_finite()
                 || !target.longitude.is_finite()
@@ -766,12 +766,11 @@ fn draw_route(
         }
     }
     if let Some(endpoint) = points.last().filter(|_| {
-        interface.settings.show_holding_point
-            && (state.taxi_clearance.pending_readback
-                || matches!(
-                    state.phase,
-                    openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::TaxiIn
-                ))
+        (state.taxi_clearance.pending_readback
+            || matches!(
+                state.phase,
+                openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::TaxiIn
+            ))
             && !state.taxi_clearance.hold_short_runway.is_empty()
             && state.taxi_clearance.crossing_runway.is_empty()
     }) {
