@@ -332,7 +332,9 @@ pub(super) fn candidates(input: &Inputs<'_>) -> Result<Vec<Terminal>, String> {
     // approach directly. The approach transition itself supplies the last published fix and
     // its restrictions, so no STAR limit is removed and no higher altitude is invented.
     let mut direct = Vec::new();
-    if input.direct {
+    // If no published STAR reaches the approach, keep the flight by joining the
+    // approach directly rather than dropping every arrival.
+    if input.direct || arrivals.is_empty() {
         for approach_name in &approach_names {
             let transitions: BTreeSet<_> = input
                 .arrivals
@@ -659,6 +661,47 @@ mod tests {
                     route.arrival_transition
                 );
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod fallback_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires installed licensed navigation data"]
+    fn installed_yscb_to_yssy_terminal_candidates_are_available() {
+        let root = std::env::var("OPENATC_TEST_SIMULATOR_ROOT").unwrap();
+        let origin = airport(&root, "YSCB").unwrap();
+        let destination = airport(&root, "YSSY").unwrap();
+        let departures = Catalogue::load(std::path::Path::new(&root), "YSCB").unwrap();
+        let arrivals = Catalogue::load(std::path::Path::new(&root), "YSSY").unwrap();
+        let mut points = Points::requested(&[("YSCB", &departures), ("YSSY", &arrivals)]);
+        points.load(std::path::Path::new(&root)).unwrap();
+        let result = candidates(&Inputs {
+            origin: &origin,
+            destination: &destination,
+            departure_runway: "35",
+            arrival_runway: "34L",
+            departures: &departures,
+            arrivals: &arrivals,
+            points: &points,
+            mora: &openatc_core::navigation::Mora::load(&root),
+            budget: 16,
+            direct: false,
+        })
+        .expect("a terminal candidate for the installed pair");
+        assert!(!result.is_empty());
+        if result.iter().all(|route| !route.direct) {
+            eprintln!(
+                "published STAR joins kept: {}",
+                result
+                    .iter()
+                    .map(|route| route.arrival_name.as_str())
+                    .collect::<std::collections::BTreeSet<_>>()
+                    .len()
+            );
         }
     }
 }

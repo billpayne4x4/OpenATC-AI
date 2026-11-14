@@ -72,6 +72,10 @@ impl Draft {
             }
         };
         let protected = |a: Waypoint, b: Waypoint| {
+            // Duplicate route points carry no corridor and must not reject the flight.
+            if (a.latitude - b.latitude).abs() < 1e-9 && (a.longitude - b.longitude).abs() < 1e-9 {
+                return true;
+            }
             if !origin.fresh() || !destination.fresh() {
                 *reason.borrow_mut() =
                     Some("Weather expired during corridor protection".to_owned());

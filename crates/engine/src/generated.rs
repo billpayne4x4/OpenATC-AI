@@ -2720,7 +2720,9 @@ impl Scene {
             );
         }
         if self.simulator_root.is_empty()
-            || self.flights.len() < 2 && !(allow_single && self.flights.len() == 1)
+            || (self.flights.len() < 2
+                && !(allow_single && self.flights.len() == 1)
+                && !(player_airborne && self.flights.len() == 1))
         {
             return;
         }
@@ -2772,6 +2774,26 @@ impl Scene {
             // Put one aircraft ahead and one behind on the procedure the player is flying, so
             // the sequence and its speed constraints reflect the route.
             self.seed_player_sequence(own, &airport, &ids, &mut seeded, target);
+        }
+        // With only one released flight, the player-sequence finder may not see it on the
+        // active procedure. Put that flight on an airborne segment so the air layer is not
+        // empty when the player is already flying.
+        if player_airborne && seeded.is_empty() {
+            for id in &ids {
+                let Some(plan) = self.flights.get(id) else {
+                    continue;
+                };
+                let Some(index) = airborne_seed(&plan.route, true) else {
+                    continue;
+                };
+                if self
+                    .world
+                    .seed_airborne(generation, *id, plan.route.clone(), index)
+                {
+                    seeded.insert(*id);
+                    break;
+                }
+            }
         }
         // The opening cast is drawn from the run seed: a complete plan for every aircraft,
         // with the mix chosen per start. Two departures can be at the runway (one at the hold
