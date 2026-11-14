@@ -1373,6 +1373,10 @@ say = ["Taxi to the holding point for runway {runway}. Hold short of runway {run
 slots = ["destination"]
 say = ["Taxi to {destination}.", "Continue taxi to {destination}.", "Proceed to {destination}."]
 
+[taxi_route_leaves_pavement]
+slots = []
+say = ["A paved taxi route is not available from this position. Hold position and request progressive taxi.", "Unable to issue a taxi route that stays on the pavement. Hold position and advise.", "The taxi route leaves the paved surface. Hold position; no clearance is available."]
+
 [taxi_route_without_named_taxiways]
 slots = []
 say = ["Taxi unavailable; the taxiway route has no published names. Hold position and request progressive taxi.", "Unable to issue a named taxi route from the installed data. Request progressive taxi.", "The taxi route could not be named from the airport data. Hold position and advise."]

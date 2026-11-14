@@ -1183,6 +1183,12 @@ pub fn calculate_taxi_route(
     }
     let (points, via) = taxi_path(&nodes, &previous, start, target);
     let holding_marker_point = holding_marker_position(airport, &points);
+    if crate::surface::SurfaceModel::new(airport)
+        .validate(&points, false)
+        .is_err()
+    {
+        return Err(crate::dialogue::say("taxi_route_leaves_pavement", &[]));
+    }
     let needs_backtrack = target_distance > 500.0 && !to_parking && hold_short == destination;
     let instructions = if via.is_empty() && !hold_short.is_empty() {
         crate::dialogue::say("taxi_to_holding_point", &[("runway", hold_short.clone())])
@@ -2550,6 +2556,12 @@ pub fn calculate_runway_taxi_route_with(
         } else {
             runway.second_name.clone()
         };
+    if crate::surface::SurfaceModel::new(airport)
+        .validate(&points, true)
+        .is_err()
+    {
+        return Err(failure());
+    }
     let instructions = crate::dialogue::say(
         "taxi_via_runway_backtrack",
         &[

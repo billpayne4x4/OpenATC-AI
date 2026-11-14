@@ -31,6 +31,7 @@ pub mod simbrief;
 pub mod speech;
 pub mod state;
 pub mod stations;
+pub mod surface;
 pub mod voices;
 
 /// Effective display/speech units. Hybrid flies feet aloft.

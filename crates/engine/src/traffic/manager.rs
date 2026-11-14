@@ -945,8 +945,19 @@ impl TrafficManager {
                     &own_runway,
                     telemetry,
                 );
+            let player_on_any_runway = telemetry.on_ground
+                && telemetry.position_valid
+                && openatc_core::airport::within_runway(
+                    &airport,
+                    &openatc_core::airport::airport_point(
+                        &airport,
+                        telemetry.latitude,
+                        telemetry.longitude,
+                    ),
+                );
             let runway_blocked = self.aircraft[index].kind == AmbientKind::Departure
                 && (player_on_runway
+                    || player_on_any_runway
                     || state
                         .airports
                         .occupied_by_other(&own_airport, &own_runway, own_id)
@@ -1106,7 +1117,7 @@ impl TrafficManager {
                 )
             });
             let is_lead = queue_lead == Some(own_id) && !behind_player;
-            if hold_for_clearance && is_lead && !player_low_near_airport {
+            if hold_for_clearance && is_lead && !player_low_near_airport && !player_on_any_runway {
                 match decision {
                     TakeoffDecision::Cleared => {
                         self.aircraft[index].cleared = true;
@@ -2860,6 +2871,10 @@ fn departure_path(
             }
         }
     }
+    let combined = openatc_core::surface::SurfaceModel::new(airport)
+        .validate(&combined, true)
+        .ok()?
+        .into_points();
     let combined = phases::ground::round_taxi_path(airport, &combined, handling);
     let mut path = surface_waypoints(airport, &combined);
     if path.is_empty() {
@@ -2983,6 +2998,12 @@ fn arrival_path(
     let exit_index = path.len().saturating_sub(1);
     // Keep the exit node itself: the centreline point is the rollout end, and the
     // next segment is the lateral turn onto the exit taxiway.
+    if openatc_core::surface::SurfaceModel::new(airport)
+        .validate(points, false)
+        .is_err()
+    {
+        return None;
+    }
     let surface = surface_waypoints(airport, points);
     path.extend(surface.into_iter().rev());
     path.push(stand);
