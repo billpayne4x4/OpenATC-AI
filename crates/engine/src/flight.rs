@@ -45,6 +45,8 @@ pub struct FlightFlow {
     /// When the player first reached the departure hold for the current route.
     pub(crate) takeoff_hold_since: Option<std::time::Instant>,
     takeoff_hold_route: u32,
+    /// Last time a departure climb was blocked by traffic.
+    departure_climb_try: Option<std::time::Instant>,
 }
 
 pub fn station_key(station: &Station) -> String {
@@ -517,6 +519,9 @@ pub fn tick(state: &mut EngineState) {
         return;
     }
     if crate::traffic::holding::tick(state, &current) || crate::traffic::spacing(state, &current) {
+        return;
+    }
+    if departure_climb_tick(state, &current) {
         return;
     }
     if arrival_tick(state, &current) {
@@ -1761,6 +1766,98 @@ fn protect_final(state: &mut EngineState, current: &Station) -> bool {
     if let Some(last) = state.session.transcript.last_mut() {
         last.pilot_reply = say("pilot_go_around_blocked", &slots);
     }
+    true
+}
+
+/// Issue the next departure climb once the aircraft reaches its cleared level.
+///
+/// The initial IFR clearance is only the first level. Without this the aircraft stays
+/// at the initial altitude forever unless the pilot asks for higher.
+fn departure_climb_tick(state: &mut EngineState, current: &Station) -> bool {
+    let t = &state.session.telemetry;
+    if state.session.demo
+        || t.on_ground
+        || t.paused
+        || !t.position_valid
+        || !t.radio_power
+        || !matches!(
+            state.session.phase,
+            PhaseCode::Departure | PhaseCode::Cruise
+        )
+        || !state.session.has_departed
+        || !["Departure", "Center"].contains(&current.service.as_str())
+    {
+        return false;
+    }
+    let Some(clearance) = state.session.clearance.as_ref().filter(|c| c.acknowledged) else {
+        return false;
+    };
+    let cleared = clearance.altitude_feet;
+    let target = state.session.plan.cruise_feet;
+    if target <= cleared || t.altitude_feet < f64::from(cleared) - 300.0 {
+        return false;
+    }
+    let now = std::time::Instant::now();
+    if state
+        .flow
+        .departure_climb_try
+        .is_some_and(|last| now.duration_since(last).as_secs() < 30)
+    {
+        return false;
+    }
+    // Do not climb through nearby airborne traffic.
+    let heading = t.ground_track_degrees.unwrap_or(t.heading_degrees);
+    let blocked = state.traffic_targets().iter().any(|other| {
+        if other.id == 0
+            || other.on_ground
+            || !other.latitude.is_finite()
+            || !other.longitude.is_finite()
+            || openatc_core::arrival::distance_nm(
+                [t.latitude, t.longitude],
+                [other.latitude, other.longitude],
+            ) >= 5.0
+            || (other.altitude_feet - t.altitude_feet).abs() >= 1_200.0
+        {
+            return false;
+        }
+        let bearing = openatc_core::arrival::bearing(
+            [t.latitude, t.longitude],
+            [other.latitude, other.longitude],
+        );
+        let relative = (bearing - heading).rem_euclid(360.0);
+        relative < 60.0 || relative > 300.0
+    });
+    if blocked {
+        state.flow.departure_climb_try = Some(now);
+        return false;
+    }
+    let altitude =
+        openatc_core::altitude_text(f64::from(target), openatc_core::UnitSystem::Imperial, true);
+    let phrase = if t.vertical_speed_fpm > 200.0 {
+        "automatic_continue_climb"
+    } else {
+        "automatic_climb"
+    };
+    let slots = [
+        ("callsign", state.session.plan.callsign.clone()),
+        ("altitude", altitude.clone()),
+    ];
+    let text = say(phrase, &slots);
+    let voice = tag(state, current);
+    let sequence = state.session.next_sequence;
+    add_transmission(&mut state.session, "ATC", &text, &voice);
+    if let Some(entry) = state.session.transcript.last_mut() {
+        entry.pilot_reply = say("pilot_climb_readback", &slots);
+    }
+    if let Some(clearance) = state.session.clearance.as_mut() {
+        clearance.altitude_feet = target;
+        clearance.acknowledged = true;
+        clearance.sequence = sequence;
+    }
+    state.flow.clearance_sequence = sequence;
+    state.flow.last_correction = None;
+    state.flow.warning.resolved();
+    state.flow.departure_climb_try = Some(now);
     true
 }
 
@@ -3880,5 +3977,79 @@ mod hold_tests {
         state.session.telemetry.latitude += 0.01;
         observe_takeoff_hold(&mut state);
         assert!(state.flow.takeoff_hold_since.is_none());
+    }
+}
+
+#[cfg(test)]
+mod departure_climb_tests {
+    use super::*;
+
+    fn at_initial_level() -> EngineState {
+        let mut state = crate::test_state();
+        state.session.phase = PhaseCode::Departure;
+        state.session.has_departed = true;
+        state.session.telemetry.on_ground = false;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.radio_power = true;
+        state.session.telemetry.latitude = -35.0;
+        state.session.telemetry.longitude = 149.0;
+        state.session.telemetry.altitude_feet = 5_040.0;
+        state.session.telemetry.vertical_speed_fpm = 0.0;
+        state.session.plan.cruise_feet = 17_000;
+        state.session.clearance = Some(openatc_core::state::Clearance {
+            altitude_feet: 5_000,
+            acknowledged: true,
+            sequence: 2,
+            ..Default::default()
+        });
+        state
+    }
+
+    fn center() -> Station {
+        Station {
+            service: "Center".into(),
+            name: "MELBOURNE Center".into(),
+            khz: 118_200,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_departure_at_the_initial_level_is_cleared_higher() {
+        let mut state = at_initial_level();
+        state.session.demo = false;
+        assert!(departure_climb_tick(&mut state, &center()));
+        assert_eq!(
+            state.session.clearance.as_ref().unwrap().altitude_feet,
+            17_000
+        );
+        assert!(
+            state
+                .session
+                .transcript
+                .last()
+                .is_some_and(|entry| entry.text.contains("climb")),
+            "the climb clearance is spoken"
+        );
+    }
+
+    #[test]
+    fn nearby_airborne_traffic_holds_the_departure_climb() {
+        let mut state = at_initial_level();
+        state.session.demo = false;
+        state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
+            id: 7,
+            callsign: "TRAFFIC7".into(),
+            latitude: -35.0,
+            longitude: 149.0,
+            altitude_feet: 5_500.0,
+            on_ground: false,
+            ..Default::default()
+        }]);
+        assert!(!departure_climb_tick(&mut state, &center()));
+        assert_eq!(
+            state.session.clearance.as_ref().unwrap().altitude_feet,
+            5_000
+        );
     }
 }
