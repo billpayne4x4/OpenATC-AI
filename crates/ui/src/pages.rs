@@ -3687,12 +3687,19 @@ mod tests {
             "text": "Taxi to the holding point."
         }))
         .expect("transmission");
-        let transcript = [tower, ground];
+        let foreign: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com2",
+            "frequency": 118700,
+            "speaker": "ATC",
+            "text": "Tower on the other receiver."
+        }))
+        .expect("transmission");
+        let transcript = [tower, ground, foreign];
         let com1 = super::TranscriptScope::Radio(Radio::Com1);
         let com2 = super::TranscriptScope::Radio(Radio::Com2);
         assert!(
-            !super::transcript_visible(&state, &transcript, 0, com1, "C-GTLT"),
-            "a Tower call tagged COM1 is not on a Ground receiver"
+            super::transcript_visible(&state, &transcript, 0, com1, "C-GTLT"),
+            "the tag keeps the Tower call in the COM1 history"
         );
         assert!(super::transcript_visible(
             &state,
@@ -3712,6 +3719,17 @@ mod tests {
             &state,
             &transcript,
             1,
+            com2,
+            "C-GTLT"
+        ));
+        assert!(
+            !super::transcript_visible(&state, &transcript, 2, com1, "C-GTLT"),
+            "a COM2 call does not leak onto COM1"
+        );
+        assert!(super::transcript_visible(
+            &state,
+            &transcript,
+            2,
             com2,
             "C-GTLT"
         ));

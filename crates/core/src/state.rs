@@ -1091,15 +1091,14 @@ impl State {
             .find(|radio| self.telemetry.frequency(*radio) == Some(frequency))
     }
 
-    /// Whether a transmission belongs on a radio. The frequency is authoritative
-    /// when present; older entries fall back to the radio tag.
+    /// Whether a transmission belongs on a radio. A receiver keeps everything
+    /// tagged to it and also shows calls on its current frequency.
     #[must_use]
     pub fn transmission_on_radio(&self, entry: &Transmission, radio: Radio) -> bool {
-        entry
-            .frequency
-            .map_or(entry.radio == Some(radio), |frequency| {
-                self.telemetry.frequency(radio) == Some(frequency)
-            })
+        entry.radio == Some(radio)
+            || entry
+                .frequency
+                .is_some_and(|frequency| self.telemetry.frequency(radio) == Some(frequency))
     }
 
     /// Radio that should play a transmission. Prefer the receiver the pilot is
@@ -1255,16 +1254,41 @@ mod radio_tests {
     }
 
     #[test]
-    fn frequency_decides_which_receiver_hears_a_call() {
+    fn a_radio_keeps_its_history_and_shares_the_current_frequency() {
         let mut state = State::default();
         state.telemetry.com1_khz = 121_900;
         state.telemetry.com2_khz = Some(118_700);
         state.control_radio = Radio::Com1;
         let tower = transmission(Some("com1"), Some(118_700));
+        assert!(
+            state.transmission_on_radio(&tower, Radio::Com1),
+            "the tag keeps the call in the radio's history"
+        );
+        assert!(
+            state.transmission_on_radio(&tower, Radio::Com2),
+            "the other receiver is tuned to the frequency"
+        );
+        state.telemetry.com2_khz = Some(118_200);
+        assert!(
+            !state.transmission_on_radio(&tower, Radio::Com2),
+            "an untagged receiver on another frequency does not hear it"
+        );
+        state.telemetry.com1_khz = 118_200;
+        assert!(
+            state.transmission_on_radio(&tower, Radio::Com1),
+            "retuning does not erase the radio's history"
+        );
+    }
+
+    #[test]
+    fn an_untagged_call_follows_only_the_tuned_frequency() {
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_200);
+        let tower = transmission(None, Some(118_700));
         assert!(!state.transmission_on_radio(&tower, Radio::Com1));
-        assert!(state.transmission_on_radio(&tower, Radio::Com2));
-        state.telemetry.com1_khz = 118_700;
-        assert!(state.transmission_on_radio(&tower, Radio::Com1));
+        assert!(!state.transmission_on_radio(&tower, Radio::Com2));
+        state.telemetry.com2_khz = Some(118_700);
         assert!(state.transmission_on_radio(&tower, Radio::Com2));
     }
 

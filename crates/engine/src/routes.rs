@@ -1373,8 +1373,17 @@ pub async fn post_copilot_prepare(AxumState(shared): AxumState<Shared>) -> Respo
             &[],
         ));
     };
+    let frequency = state
+        .session
+        .transcript
+        .iter()
+        .rev()
+        .find(|entry| entry.is_controller_instruction())
+        .and_then(|entry| entry.frequency)
+        .or_else(|| state.session.telemetry.frequency(request.radio));
     let tag = SpeechTag {
         radio: Some(request.radio),
+        frequency,
         voice: state.settings.copilot_voice.clone(),
         delivery: delivery_name(state.settings.copilot_delivery).into(),
         speed: state.settings.copilot_speed,
@@ -1433,6 +1442,7 @@ pub async fn post_copilot_checkin(
     };
     let tag = SpeechTag {
         radio: Some(radio),
+        frequency: Some(station.khz),
         voice: state.settings.copilot_voice.clone(),
         delivery: delivery_name(state.settings.copilot_delivery).into(),
         speed: state.settings.copilot_speed,
@@ -3912,6 +3922,22 @@ mod readback_tests {
                 118_025
             )
             .is_some()
+        );
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.speaker == "COPILOT" && entry.frequency == Some(124_500)),
+            "the handoff readback stays on the old frequency"
+        );
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.speaker == "COPILOT" && entry.frequency == Some(118_025)),
+            "the check-in belongs to the new frequency"
         );
         drop(state);
         std::fs::remove_dir_all(root).unwrap();
