@@ -176,9 +176,16 @@ pub(crate) fn install_plugin(sim: &Path, backup: bool) -> Result {
 fn espeak_data(release: &Path) -> Result<PathBuf> {
     let mut choices = Vec::new();
     for item in fs::read_dir(release.join("build"))? {
-        let p = item?.path().join("out/share/espeak-ng-data");
-        if p.join("phontab").is_file() {
-            choices.push(p);
+        let out = item?.path().join("out");
+        for relative in [
+            "share/espeak-ng-data",
+            "build/espeak-ng-data",
+            "espeak-ng/espeak-ng-data",
+        ] {
+            let path = out.join(relative);
+            if path.join("phontab").is_file() {
+                choices.push(path);
+            }
         }
     }
     choices.sort_by_key(|p| {
@@ -416,6 +423,18 @@ pub(crate) fn package(label: &str) -> Result {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn espeak_data_is_found_in_the_build_output_tree() -> Result {
+        let temp = tempfile::tempdir()?;
+        let release = temp.path().join("release");
+        let data = release.join("build/espeak-rs-sys-test/out/build/espeak-ng-data");
+        fs::create_dir_all(&data)?;
+        fs::write(data.join("phontab"), "test")?;
+        let found = espeak_data(&release)?;
+        assert_eq!(found, data);
+        Ok(())
+    }
 
     #[test]
     fn atomic_install_replaces_contents_and_preserves_permissions() -> Result {

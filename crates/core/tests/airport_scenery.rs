@@ -537,10 +537,11 @@ fn selected_airport_retains_its_owning_scenery_path() {
             .into_owned()
     };
     let source = path(&["Custom Scenery", "Override", "Earth nav data", "apt.dat"]);
+    let override_dir = std::path::PathBuf::from("Custom Scenery").join("Override");
     let files = std::collections::BTreeMap::from([
         (
             path(&["Custom Scenery", "scenery_packs.ini"]),
-            "SCENERY_PACK Custom Scenery/Override\n".to_owned(),
+            format!("SCENERY_PACK {}\n", override_dir.display()),
         ),
         (source.clone(), apt.to_owned()),
         (

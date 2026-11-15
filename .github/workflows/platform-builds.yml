@@ -287,6 +287,10 @@ jobs:
       - name: Build Linux and macOS plugin and companion engine
         if: runner.os != 'Windows' && matrix.product == 'plugin'
         run: cargo build --locked --release -p openatc-plugin -p openatc-engine
+      - name: Prepare ONNX link directories
+        if: matrix.product == 'ai-server'
+        run: mkdir -p target/release/build/examples target/release/build/deps target/release/examples target/release/deps
+
       - name: Build Windows AI server and speech sidecar
         if: runner.os == 'Windows' && matrix.product == 'ai-server'
         shell: pwsh
