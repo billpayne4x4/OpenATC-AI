@@ -223,7 +223,10 @@ pub async fn answer(AxumState(shared): AxumState<Shared>, Json(body): Json<Value
     if accept == Some(false) {
         s.session.atc_offer = None;
         let text = say("pilot_decline_shortcut", &[("callsign", call.clone())]);
-        add_transmission(&mut s.session, &call, &text, &SpeechTag::default());
+        let mut pilot_tag = SpeechTag::default();
+        pilot_tag.radio = s.session.receiving_radio(offer.frequency_khz);
+        pilot_tag.frequency = Some(offer.frequency_khz);
+        add_transmission(&mut s.session, &call, &text, &pilot_tag);
         let voice = crate::flight::tag(&mut s, station);
         add_transmission(
             &mut s.session,

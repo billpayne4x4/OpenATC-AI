@@ -769,6 +769,7 @@ async fn main() {
         .route("/airport/local", post(routes::post_airport_local))
         .route("/airport/arrival", post(routes::post_airport_arrival))
         .route("/stations/nearby", post(radio::nearby))
+        .route("/radio/select", post(radio::select))
         .route("/weather/simulator", post(radio::weather))
         .route("/atis", post(radio::atis))
         .route("/weather", post(routes::post_weather))

@@ -84,7 +84,7 @@ pub fn conversation(state: &State, radio: Option<openatc_core::state::Radio>) ->
             ))
     );
     for entry in &state.transcript {
-        if radio.is_some_and(|radio| entry.radio != Some(radio)) {
+        if radio.is_some_and(|radio| !state.transmission_on_radio(entry, radio)) {
             continue;
         }
         let _ = writeln!(
@@ -175,11 +175,31 @@ mod tests {
             }))
             .unwrap(),
         );
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "radio": "com1",
+                "frequency": 118700,
+                "text": "Tower three."
+            }))
+            .unwrap(),
+        );
         let com1 = conversation(&state, Some(openatc_core::state::Radio::Com1));
         assert!(com1.contains("Ground one."));
         assert!(!com1.contains("Tower two."));
+        assert!(
+            !com1.contains("Tower three."),
+            "a Tower call tagged COM1 does not belong on a Ground receiver"
+        );
+        let com2 = conversation(&state, Some(openatc_core::state::Radio::Com2));
+        assert!(com2.contains("Tower two."));
+        assert!(
+            com2.contains("Tower three."),
+            "frequency decides which receiver hears the call"
+        );
         let all = conversation(&state, None);
         assert!(all.contains("Ground one."));
         assert!(all.contains("Tower two."));
+        assert!(all.contains("Tower three."));
     }
 }

@@ -223,11 +223,14 @@ fn radio_header(
     if interface.settings.show_com2 {
         let mut selected = usize::from(interface.active_radio == openatc_core::state::Radio::Com2);
         widgets::section_tabs(ui, &["COM1", "COM2"], &mut selected);
-        interface.active_radio = if selected == 1 {
+        let radio = if selected == 1 {
             openatc_core::state::Radio::Com2
         } else {
             openatc_core::state::Radio::Com1
         };
+        if interface.active_radio != radio {
+            interface.select_radio(radio);
+        }
     }
     let radio = if interface.active_radio == openatc_core::state::Radio::Com2 {
         "COM2"
@@ -521,6 +524,7 @@ enum TranscriptScope {
 }
 
 fn transcript_visible(
+    state: &State,
     transcript: &[openatc_core::state::Transmission],
     index: usize,
     scope: TranscriptScope,
@@ -528,9 +532,9 @@ fn transcript_visible(
 ) -> bool {
     let entry = &transcript[index];
     match scope {
-        TranscriptScope::Radio(radio) => entry.radio == Some(radio),
+        TranscriptScope::Radio(radio) => state.transmission_on_radio(entry, radio),
         TranscriptScope::Crew(speaker) => {
-            if entry.radio.is_some() {
+            if entry.radio.is_some() || entry.frequency.is_some() {
                 return false;
             }
             if entry.speaker == speaker {
@@ -577,7 +581,7 @@ fn transcript_view(
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
-                transcript_visible(&state.transcript, index, scope, &state.plan.callsign)
+                transcript_visible(state, &state.transcript, index, scope, &state.plan.callsign)
                     .then_some(entry)
             })
         {
@@ -932,7 +936,8 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             .find(|entry| entry.speaker == "ATC")
     {
         let entry = entry.clone();
-        interface.speak_entry(&entry);
+        let radio = state.playback_radio(&entry, interface.active_radio);
+        interface.speak_entry(&entry, radio);
     }
     widgets::same_line_if_fits(
         ui,
@@ -2779,22 +2784,25 @@ fn voice_popup(ui: &imgui::Ui, interface: &mut Interface) {
                     ui.text(&voice.language);
                     ui.table_next_column();
                     if ui.button("Listen") {
-                        interface.speak_entry(&openatc_core::state::Transmission {
-                            radio: None,
-                            frequency: None,
-                            gap_ms: 0,
-                            information_only: false,
-                            speaker: "ATC".into(),
-                            text: interface.voice_preview_text.clone(),
-                            voice: voice.id.clone(),
-                            delivery: "standard".into(),
-                            speed: 1.0,
-                            pilot_reply: String::new(),
-                            background: false,
-                            sequence: 0,
-                            position: String::new(),
-                            urgent: false,
-                        });
+                        interface.speak_entry(
+                            &openatc_core::state::Transmission {
+                                radio: None,
+                                frequency: None,
+                                gap_ms: 0,
+                                information_only: false,
+                                speaker: "ATC".into(),
+                                text: interface.voice_preview_text.clone(),
+                                voice: voice.id.clone(),
+                                delivery: "standard".into(),
+                                speed: 1.0,
+                                pilot_reply: String::new(),
+                                background: false,
+                                sequence: 0,
+                                position: String::new(),
+                                urgent: false,
+                            },
+                            interface.active_radio,
+                        );
                     }
                     ui.table_next_column();
                     let included = pool.iter().any(|id| id == &voice.id);
@@ -2944,22 +2952,25 @@ fn audio_levels_row(ui: &imgui::Ui, interface: &mut Interface) {
     ui.same_line();
     let _test_disabled = ui.begin_disabled(interface.speech.monitoring());
     if ui.button("Test controller voice") {
-        interface.speak_entry(&openatc_core::state::Transmission {
-            radio: None,
-            frequency: None,
-            gap_ms: 0,
-            information_only: false,
-            pilot_reply: String::new(),
-            background: false,
-            speaker: "ATC".to_owned(),
-            text: "OpenATC AI radio check. Reading you five.".to_owned(),
-            sequence: 0,
-            position: String::new(),
-            voice: String::new(),
-            delivery: "standard".to_owned(),
-            speed: 1.0,
-            urgent: false,
-        });
+        interface.speak_entry(
+            &openatc_core::state::Transmission {
+                radio: None,
+                frequency: None,
+                gap_ms: 0,
+                information_only: false,
+                pilot_reply: String::new(),
+                background: false,
+                speaker: "ATC".to_owned(),
+                text: "OpenATC AI radio check. Reading you five.".to_owned(),
+                sequence: 0,
+                position: String::new(),
+                voice: String::new(),
+                delivery: "standard".to_owned(),
+                speed: 1.0,
+                urgent: false,
+            },
+            interface.active_radio,
+        );
     }
     let level = interface.speech.input_level();
     let clipping = interface.speech.clipping();
@@ -3635,57 +3646,80 @@ mod tests {
         let attendant = entry(None, "ATTENDANT");
         let pilot = entry(None, "C-GTLT");
         let transcript = [com1, com2, pilot, attendant];
+        let state = State::default();
         let radio = |radio| super::TranscriptScope::Radio(radio);
+        let visible =
+            |index, scope| super::transcript_visible(&state, &transcript, index, scope, "C-GTLT");
+        assert!(visible(0, radio(Radio::Com1)));
+        assert!(!visible(1, radio(Radio::Com1)));
+        assert!(visible(1, radio(Radio::Com2)));
+        assert!(
+            !visible(2, radio(Radio::Com1)),
+            "crew interphone stays off the radio pages"
+        );
+        assert!(
+            !visible(3, radio(Radio::Com2)),
+            "crew interphone stays off the radio pages"
+        );
+        assert!(visible(3, super::TranscriptScope::Crew("ATTENDANT")));
+        assert!(visible(2, super::TranscriptScope::Crew("ATTENDANT")));
+        assert!(!visible(2, super::TranscriptScope::Crew("GROUND")));
+        assert!(!visible(3, super::TranscriptScope::Crew("GROUND")));
+    }
+
+    #[test]
+    fn a_shared_frequency_appears_on_both_radios() {
+        use openatc_core::state::{Radio, Transmission};
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_700);
+        let tower: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "frequency": 118700,
+            "speaker": "ATC",
+            "text": "Cleared for takeoff."
+        }))
+        .expect("transmission");
+        let ground: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "frequency": 121900,
+            "speaker": "ATC",
+            "text": "Taxi to the holding point."
+        }))
+        .expect("transmission");
+        let transcript = [tower, ground];
+        let com1 = super::TranscriptScope::Radio(Radio::Com1);
+        let com2 = super::TranscriptScope::Radio(Radio::Com2);
+        assert!(
+            !super::transcript_visible(&state, &transcript, 0, com1, "C-GTLT"),
+            "a Tower call tagged COM1 is not on a Ground receiver"
+        );
         assert!(super::transcript_visible(
+            &state,
             &transcript,
             0,
-            radio(Radio::Com1),
+            com2,
             "C-GTLT"
         ));
-        assert!(!super::transcript_visible(
+        assert!(super::transcript_visible(
+            &state,
             &transcript,
             1,
-            radio(Radio::Com1),
+            com1,
             "C-GTLT"
         ));
-        assert!(super::transcript_visible(
+        assert!(!super::transcript_visible(
+            &state,
             &transcript,
             1,
-            radio(Radio::Com2),
+            com2,
             "C-GTLT"
         ));
+        state.telemetry.com1_khz = 118_700;
         assert!(
-            !super::transcript_visible(&transcript, 2, radio(Radio::Com1), "C-GTLT"),
-            "crew interphone stays off the radio pages"
+            super::transcript_visible(&state, &transcript, 0, com1, "C-GTLT"),
+            "both receivers hear Tower when both are on the frequency"
         );
-        assert!(
-            !super::transcript_visible(&transcript, 3, radio(Radio::Com2), "C-GTLT"),
-            "crew interphone stays off the radio pages"
-        );
-        assert!(super::transcript_visible(
-            &transcript,
-            3,
-            super::TranscriptScope::Crew("ATTENDANT"),
-            "C-GTLT"
-        ));
-        assert!(super::transcript_visible(
-            &transcript,
-            2,
-            super::TranscriptScope::Crew("ATTENDANT"),
-            "C-GTLT"
-        ));
-        assert!(!super::transcript_visible(
-            &transcript,
-            2,
-            super::TranscriptScope::Crew("GROUND"),
-            "C-GTLT"
-        ));
-        assert!(!super::transcript_visible(
-            &transcript,
-            3,
-            super::TranscriptScope::Crew("GROUND"),
-            "C-GTLT"
-        ));
     }
 
     #[test]

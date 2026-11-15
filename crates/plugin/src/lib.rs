@@ -371,7 +371,7 @@ fn update_autopilot(shared: &Arc<Mutex<Shared>>) {
         speed: 1.0,
         urgent: false,
     };
-    interface.speak_entry(&entry);
+    interface.speak_entry(&entry, interface.active_radio);
     interface.last_action = format!("Copilot set altitude {altitude}");
 }
 

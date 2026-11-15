@@ -1533,6 +1533,17 @@ impl TrafficManager {
             String,
         )> = Vec::new();
         for aircraft in &mut self.aircraft {
+            if aircraft.frequency_khz.is_none() {
+                aircraft.frequency_khz = state
+                    .stations
+                    .iter()
+                    .find(|station| {
+                        station.airport == aircraft.airport
+                            && (station.service == "Tower"
+                                || station.services.iter().any(|service| service == "Tower"))
+                    })
+                    .map(|station| station.khz);
+            }
             let Some(frequency) = aircraft.frequency_khz else {
                 continue;
             };
@@ -2046,6 +2057,7 @@ impl TrafficManager {
                     "stage": format!("{:?}", aircraft.stage()),
                     "wakeDelay": aircraft.wake_delay,
                     "runway": aircraft.runway,
+                    "frequencyKhz": aircraft.frequency_khz,
                     "taxiEnd": aircraft.taxi_end,
                     "runwayStart": aircraft.runway_start,
                     "runwayEnd": aircraft.runway_end,
@@ -2126,7 +2138,7 @@ impl TrafficManager {
         if departure_runway.is_empty() && arrival_runway.is_empty() {
             return;
         }
-        let frequency = state
+        let Some(frequency) = state
             .stations
             .iter()
             .find(|station| {
@@ -2134,7 +2146,11 @@ impl TrafficManager {
                     && (station.service == "Tower"
                         || station.services.iter().any(|service| service == "Tower"))
             })
-            .map(|station| station.khz);
+            .map(|station| station.khz)
+        else {
+            self.last_error = "waiting for a Tower frequency".to_owned();
+            return;
+        };
         if models.models.is_empty() {
             return;
         }
@@ -2644,7 +2660,7 @@ impl TrafficManager {
                 line_up_blocked: false,
                 wake_delay: 0.0,
                 last: Instant::now(),
-                frequency_khz: frequency,
+                frequency_khz: Some(frequency),
             });
             used_callsigns.insert(callsign.to_uppercase());
             used_nodes.insert(node.id);
@@ -4079,6 +4095,45 @@ mod phase_tests {
             last: Instant::now(),
             frequency_khz: None,
         }
+    }
+
+    #[test]
+    fn an_ambient_aircraft_acquires_tower_when_stations_appear() {
+        let airport = openatc_core::airport::demo_airport();
+        let mut state = crate::test_state();
+        state.airport = Some(airport.clone());
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.com2_khz = Some(118_700);
+        state.stations = vec![openatc_core::stations::Station {
+            airport: airport.icao.clone(),
+            service: "Tower".into(),
+            khz: 118_700,
+            name: "TEST Tower".into(),
+            ..Default::default()
+        }];
+        let mut manager = TrafficManager {
+            models: Some(Arc::new(Catalogue::default())),
+            active_airport: airport.icao.clone(),
+            ..Default::default()
+        };
+        let mut departure = ambient(AmbientKind::Departure, 600.0, 0.0, 1_000.0);
+        departure.airport.clone_from(&airport.icao);
+        departure.runway = "09".into();
+        departure.hold_distance = 600.0;
+        departure.hold = Some([0.0, 0.0]);
+        departure.frequency_khz = None;
+        manager.aircraft.push(departure);
+        manager.advance(&mut state);
+        assert_eq!(manager.aircraft[0].frequency_khz, Some(118_700));
+        assert!(
+            state
+                .session
+                .transcript
+                .iter()
+                .any(|entry| entry.background && entry.frequency == Some(118_700)),
+            "the aircraft should call Tower once the station is available"
+        );
     }
 
     #[test]
@@ -6507,6 +6562,13 @@ mod phase_tests {
         state.settings.cargo_traffic = 2;
         state.settings.ga_traffic = 5;
         state.traffic_seed = 0x5eed;
+        state.stations = vec![openatc_core::stations::Station {
+            airport: "YSCB".into(),
+            service: "Tower".into(),
+            khz: 118_700,
+            name: "CANBERRA Tower".into(),
+            ..Default::default()
+        }];
         state.airports.ensure(std::sync::Arc::new(airport.clone()));
         state.airport = Some(airport.clone());
         let mut manager = TrafficManager {

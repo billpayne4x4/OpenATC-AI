@@ -304,6 +304,8 @@ pub async fn post_telemetry(
                     "standard",
                 );
                 tag.position = station_name;
+                tag.radio = state.session.receiving_radio(station.khz);
+                tag.frequency = Some(station.khz);
                 let text = route.instructions.clone();
                 state.session.taxi_clearance = route;
                 add_transmission(&mut state.session, "ATC", &text, &tag);
@@ -430,6 +432,8 @@ pub async fn post_telemetry(
             "standard",
         );
         tag.position = station_name;
+        tag.radio = state.session.receiving_radio(station.khz);
+        tag.frequency = Some(station.khz);
         if tower && !needs_further && !retry {
             if state.session.taxi_clearance.holding_channel != channel {
                 let slots = [
@@ -842,14 +846,14 @@ mod tests {
                 "reaching the hold must not start the takeoff sequence"
             );
             assert_eq!(state.session.taxi_clearance.holding_channel, 118_700);
-            assert!(
-                state
-                    .session
-                    .transcript
-                    .iter()
-                    .any(|entry| entry.text.to_lowercase().contains("report ready")),
-                "the hold should prompt report ready"
-            );
+            let prompt = state
+                .session
+                .transcript
+                .iter()
+                .find(|entry| entry.text.to_lowercase().contains("report ready"))
+                .expect("the hold should prompt report ready");
+            assert_eq!(prompt.frequency, Some(118_700));
+            assert_eq!(prompt.radio, Some(openatc_core::state::Radio::Com1));
         }
     }
 

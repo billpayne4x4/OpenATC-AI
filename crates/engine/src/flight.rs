@@ -106,7 +106,11 @@ pub(crate) fn tag(state: &mut EngineState, station: &Station) -> SpeechTag {
         "standard",
     );
     tag.position.clone_from(&station.name);
-    tag.radio = Some(state.session.control_radio);
+    tag.radio = state
+        .session
+        .receiving_radio(station.khz)
+        .or(Some(state.session.control_radio));
+    tag.frequency = Some(station.khz);
     tag
 }
 
@@ -3845,6 +3849,18 @@ mod sequencing_tests {
             ..Default::default()
         };
         state
+    }
+
+    #[test]
+    fn station_tags_carry_the_frequency_and_tuned_receiver() {
+        let mut state = departure_state();
+        state.session.telemetry.com1_khz = 121_900;
+        state.session.telemetry.com2_khz = Some(118_700);
+        state.session.control_radio = openatc_core::state::Radio::Com1;
+        let station = state.stations[0].clone();
+        let tag = tag(&mut state, &station);
+        assert_eq!(tag.frequency, Some(118_700));
+        assert_eq!(tag.radio, Some(openatc_core::state::Radio::Com2));
     }
 
     #[test]

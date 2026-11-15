@@ -9,6 +9,14 @@ use axum::{
 };
 use serde_json::{Value, json};
 
+/// Select the radio the pilot is using without changing either frequency.
+pub async fn select(AxumState(shared): AxumState<Shared>, Json(body): Json<Value>) -> Response {
+    let radio = serde_json::from_value::<openatc_core::state::Radio>(body["radio"].clone())
+        .unwrap_or_default();
+    shared.write().await.session.control_radio = radio;
+    Json(json!({"radio": radio})).into_response()
+}
+
 /// End only the affected receiver's ATIS log session when tuning or power changes.
 pub(crate) fn observe_atis_tuning(
     state: &mut crate::EngineState,
@@ -772,6 +780,19 @@ mod tests {
     }
 
     use super::safe_variety;
+
+    #[tokio::test]
+    async fn selecting_a_radio_sets_the_control_receiver() {
+        use axum::{Json, extract::State};
+        use serde_json::json;
+        let shared = std::sync::Arc::new(tokio::sync::RwLock::new(crate::test_state()));
+        super::select(State(shared.clone()), Json(json!({"radio":"com2"}))).await;
+        assert_eq!(
+            shared.read().await.session.control_radio,
+            openatc_core::state::Radio::Com2
+        );
+    }
+
     #[test]
     fn controller_identity_belongs_to_the_station_not_the_receiver() {
         let mut state = crate::test_state();

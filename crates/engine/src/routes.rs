@@ -1733,6 +1733,7 @@ async fn handle_request(AxumState(shared): AxumState<Shared>, Json(body): Json<V
                 let callsign = state.session.plan.callsign.clone();
                 let pilot_tag = SpeechTag {
                     radio: Some(request.radio),
+                    frequency: Some(station.khz),
                     voice: settings.pilot_voice.clone(),
                     delivery: "standard".into(),
                     speed: settings.pilot_speed,
@@ -2633,7 +2634,6 @@ pub(crate) async fn atc_request(
         }
     }
     let airspace = super::flight::station_key(&receiving);
-    let pool = parse_voice_pool(&settings.voice_pool);
     let mut delivery = delivery_name(settings.controller_delivery).to_owned();
     if settings.randomize_delivery {
         let styles = ["standard", "brisk", "urgent"];
@@ -2641,9 +2641,11 @@ pub(crate) async fn atc_request(
     }
     let mut atc_tag = assign_airspace_controller(&mut state, settings, &airspace, &delivery);
     atc_tag.radio = Some(request.radio);
+    atc_tag.frequency = Some(receiving.khz);
     atc_tag.position.clone_from(&receiving.name);
     let pilot_tag = SpeechTag {
         radio: Some(request.radio),
+        frequency: Some(receiving.khz),
         voice: settings.pilot_voice.clone(),
         delivery: "standard".to_owned(),
         speed: settings.pilot_speed,

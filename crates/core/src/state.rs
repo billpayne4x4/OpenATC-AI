@@ -1091,6 +1091,34 @@ impl State {
             .find(|radio| self.telemetry.frequency(*radio) == Some(frequency))
     }
 
+    /// Whether a transmission belongs on a radio. The frequency is authoritative
+    /// when present; older entries fall back to the radio tag.
+    #[must_use]
+    pub fn transmission_on_radio(&self, entry: &Transmission, radio: Radio) -> bool {
+        entry
+            .frequency
+            .map_or(entry.radio == Some(radio), |frequency| {
+                self.telemetry.frequency(radio) == Some(frequency)
+            })
+    }
+
+    /// Radio that should play a transmission. Prefer the receiver the pilot is
+    /// using, then any radio tuned to the frequency, then the stored tag.
+    #[must_use]
+    pub fn playback_radio(&self, entry: &Transmission, preferred: Radio) -> Radio {
+        if entry
+            .frequency
+            .is_some_and(|frequency| self.telemetry.frequency(preferred) == Some(frequency))
+        {
+            return preferred;
+        }
+        entry
+            .frequency
+            .and_then(|frequency| self.receiving_radio(frequency))
+            .or(entry.radio)
+            .unwrap_or(self.control_radio)
+    }
+
     /// Keep an assigned frequency change on the radio that received it.
     #[must_use]
     pub fn handoff_radio(&self) -> Radio {
@@ -1209,5 +1237,58 @@ impl crate::aircraft::AircraftBehaviour for State {
     fn advance(&mut self, seconds: f64) -> crate::aircraft::AircraftOutcome {
         self.aircraft.last_progress_seconds = seconds;
         crate::aircraft::AircraftOutcome::None
+    }
+}
+
+#[cfg(test)]
+mod radio_tests {
+    use super::*;
+
+    fn transmission(radio: Option<&str>, frequency: Option<i32>) -> Transmission {
+        serde_json::from_value(serde_json::json!({
+            "radio": radio,
+            "frequency": frequency,
+            "speaker": "ATC",
+            "text": "test"
+        }))
+        .expect("transmission")
+    }
+
+    #[test]
+    fn frequency_decides_which_receiver_hears_a_call() {
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_700);
+        state.control_radio = Radio::Com1;
+        let tower = transmission(Some("com1"), Some(118_700));
+        assert!(!state.transmission_on_radio(&tower, Radio::Com1));
+        assert!(state.transmission_on_radio(&tower, Radio::Com2));
+        state.telemetry.com1_khz = 118_700;
+        assert!(state.transmission_on_radio(&tower, Radio::Com1));
+        assert!(state.transmission_on_radio(&tower, Radio::Com2));
+    }
+
+    #[test]
+    fn playback_prefers_the_radio_the_pilot_is_using() {
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_700);
+        state.control_radio = Radio::Com1;
+        let tower = transmission(Some("com1"), Some(118_700));
+        assert_eq!(state.playback_radio(&tower, Radio::Com1), Radio::Com2);
+        assert_eq!(state.playback_radio(&tower, Radio::Com2), Radio::Com2);
+        state.telemetry.com1_khz = 118_700;
+        assert_eq!(state.playback_radio(&tower, Radio::Com1), Radio::Com1);
+        assert_eq!(state.playback_radio(&tower, Radio::Com2), Radio::Com2);
+    }
+
+    #[test]
+    fn older_entries_fall_back_to_the_radio_tag() {
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_700);
+        let entry = transmission(Some("com2"), None);
+        assert!(!state.transmission_on_radio(&entry, Radio::Com1));
+        assert!(state.transmission_on_radio(&entry, Radio::Com2));
     }
 }
