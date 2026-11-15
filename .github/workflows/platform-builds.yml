@@ -291,6 +291,13 @@ jobs:
         if: matrix.product == 'ai-server'
         run: mkdir -p target/release/build/examples target/release/build/deps target/release/examples target/release/deps
 
+      - name: Refresh eSpeak data
+        if: matrix.product == 'ai-server'
+        run: |
+          rm -rf target/release/build/espeak-rs-sys-* target/release/build/espeak-rs-* \
+                 target/release/.fingerprint/espeak-rs-sys-* target/release/.fingerprint/espeak-rs-* \
+                 target/release/deps/*espeak_rs_sys* target/release/deps/*espeak_rs-*
+
       - name: Build Windows AI server and speech sidecar
         if: runner.os == 'Windows' && matrix.product == 'ai-server'
         shell: pwsh

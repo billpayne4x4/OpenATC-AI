@@ -188,6 +188,17 @@ fn espeak_data(release: &Path) -> Result<PathBuf> {
             }
         }
     }
+    if choices.is_empty() {
+        for entry in walkdir::WalkDir::new(release.join("build")).max_depth(8) {
+            let entry = entry?;
+            if entry.file_type().is_file()
+                && entry.file_name().to_string_lossy() == "phontab"
+                && let Some(parent) = entry.path().parent()
+            {
+                choices.push(parent.to_path_buf());
+            }
+        }
+    }
     choices.sort_by_key(|p| {
         fs::metadata(p.join("phontab"))
             .and_then(|m| m.modified())
@@ -429,6 +440,18 @@ mod tests {
         let temp = tempfile::tempdir()?;
         let release = temp.path().join("release");
         let data = release.join("build/espeak-rs-sys-test/out/build/espeak-ng-data");
+        fs::create_dir_all(&data)?;
+        fs::write(data.join("phontab"), "test")?;
+        let found = espeak_data(&release)?;
+        assert_eq!(found, data);
+        Ok(())
+    }
+
+    #[test]
+    fn espeak_data_falls_back_to_a_nested_build_tree() -> Result {
+        let temp = tempfile::tempdir()?;
+        let release = temp.path().join("release");
+        let data = release.join("build/espeak-rs-sys-test/out/build/src/espeak-ng-data");
         fs::create_dir_all(&data)?;
         fs::write(data.join("phontab"), "test")?;
         let found = espeak_data(&release)?;
