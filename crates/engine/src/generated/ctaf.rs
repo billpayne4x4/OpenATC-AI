@@ -210,7 +210,9 @@ fn select_local_aircraft(
                 if runway_meters < aircraft.runway {
                     continue;
                 }
-                if category == Category::Regional && !aircraft.propeller {
+                // Circuit traffic stays with light propeller aircraft. A jet at
+                // circuit speed looks stationary beside a departing jet.
+                if !aircraft.propeller {
                     continue;
                 }
                 let model = std::iter::once(kind.clone())

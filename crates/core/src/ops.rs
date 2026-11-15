@@ -1094,6 +1094,8 @@ mod tests {
             clearance: "sid".to_owned(),
             transition_feet: 10000,
             center_khz: None,
+            registration_prefix_omit: Vec::new(),
+            departure_turn: "none".to_owned(),
         }
     }
 

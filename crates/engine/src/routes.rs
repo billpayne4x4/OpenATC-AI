@@ -29,6 +29,7 @@ use openatc_core::{UnitSystem, resolve_units};
 use openatc_settings::{CallsignNumbers, Congestion, Delivery, Settings, Units};
 use rand::Rng;
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 /// JSON error response with HTTP status 400.
@@ -1120,7 +1121,7 @@ pub async fn post_speak(AxumState(state): AxumState<Shared>, Json(body): Json<Va
             .and_then(Value::as_bool)
             .unwrap_or(false),
     );
-    let (callsign, airports, pronunciation, traffic_codes, group_numbers) = {
+    let (callsign, airports, pronunciation, traffic_codes, group_numbers, callsigns) = {
         let current = state.read().await;
         let mut airports = Vec::new();
         for token in text.split_whitespace() {
@@ -1145,17 +1146,48 @@ pub async fn post_speak(AxumState(state): AxumState<Shared>, Json(body): Json<Va
             .iter()
             .map(|frame| frame.target.callsign.clone())
             .collect::<Vec<_>>();
+        let icao = current.airport.as_ref().map_or_else(
+            || current.session.plan.departure.clone(),
+            |airport| airport.icao.clone(),
+        );
+        let region = region_for(&current.regions, &icao);
+        let omit = if current.settings.registration_abbreviations {
+            region.registration_prefix_omit
+        } else {
+            Vec::new()
+        };
+        let mut callsigns = BTreeMap::new();
+        let mut register = |callsign: &str| {
+            if let Some(spoken) = current.pronunciation.registration(callsign, &omit) {
+                callsigns.insert(callsign.trim().to_ascii_uppercase(), spoken);
+            }
+        };
+        register(&current.session.plan.callsign);
+        register(&current.session.plan.registration);
+        for target in current.traffic_targets() {
+            register(&target.callsign);
+        }
+        for frame in &current.session.generated_traffic {
+            register(&frame.target.callsign);
+        }
         (
             current.session.plan.callsign.clone(),
             airports,
             current.pronunciation.clone(),
             traffic_codes,
             current.settings.callsign_numbers == CallsignNumbers::Group,
+            callsigns,
         )
+    };
+    let text = openatc_core::radiotelephony::spoken_callsigns(&text, &callsigns);
+    let player_spelling = if callsigns.contains_key(&callsign.to_ascii_uppercase()) {
+        ""
+    } else {
+        callsign.as_str()
     };
     let mut spoken_text = openatc_core::radiotelephony::spoken_with_pronunciation(
         &text,
-        &callsign,
+        player_spelling,
         &airports,
         &pronunciation,
     );

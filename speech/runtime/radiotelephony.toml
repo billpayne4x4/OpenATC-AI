@@ -6,3 +6,5 @@ taxi_introducers = ["via", "taxiway", "taxiways", "twy"]
 taxi_connectors = ["and", "then"]
 maximum_taxi_letters = 2
 maximum_taxi_digits = 3
+registration_prefixes = ["VH", "ZK", "G", "N", "C", "D", "F", "JA", "9V", "B", "HL", "OE", "PH", "EI", "SE", "LN", "OY", "SP", "OK", "YU", "TC", "A6", "HS", "VT", "V8", "9M", "PK", "AP", "S2", "4X", "HZ", "OD", "YI", "JY", "A4", "A9", "3B", "5B", "CN", "TS", "TT", "TN", "ZS", "5Y", "ET", "9G", "5N", "5T", "5V", "6V", "6W", "C5", "D2", "D4", "D6", "3C", "3D", "3X", "4R", "4S", "5A", "5H", "5R", "5U", "5W", "6Y", "7P", "7Q", "7T", "8P", "8Q", "8R", "9A", "9H", "9J", "9K", "9L", "9N", "9Q", "9U", "9X", "9Y", "ZP"]
+omit_registration_prefixes = []

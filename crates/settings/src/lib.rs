@@ -353,6 +353,8 @@ pub struct Settings {
     pub llm_phrase_variety: bool,
     /// Copilot voices clearance readbacks and traffic sighting reports.
     pub copilot_replies: bool,
+    /// Use the regional policy for omitting a registration prefix in speech.
+    pub registration_abbreviations: bool,
     /// Copilot writes assigned COM1 frequencies.
     pub copilot_tunes: bool,
     /// Copilot retunes on ATC handoffs specifically (subset of tuning above).
@@ -560,6 +562,7 @@ impl Default for Settings {
             ai_enabled: true,
             llm_phrase_variety: false,
             copilot_replies: true,
+            registration_abbreviations: false,
             copilot_tunes: true,
             auto_tune_handoff: true,
             copilot_auto_respond: true,

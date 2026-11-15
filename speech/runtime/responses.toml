@@ -1460,6 +1460,10 @@ say = ["altimeter {pressure} inches"]
 slots = ["altitude"]
 say = ["After departure climb to {altitude}."]
 
+[flight_turn_climb]
+slots = ["turn", "altitude"]
+say = ["After departure turn {turn}, climb to {altitude}.", "Turn {turn} after departure, climb to {altitude}."]
+
 [flight_sid_climb]
 slots = ["sid", "altitude"]
 say = ["Fly the {sid} departure. Maintain {altitude}."]
@@ -17230,14 +17234,6 @@ say = ["{callsign}, {clock} o'clock traffic no longer observed.", "{callsign}, t
 slots = ["callsign"]
 say = ["Traffic in sight, {callsign}."]
 
-[traffic_sighting_acknowledged]
-slots = ["callsign"]
-say = ["{callsign}, roger.", "{callsign}, roger, traffic in sight."]
-
-[traffic_keep_looking]
-slots = ["callsign"]
-say = ["{callsign}, roger. Continue looking.", "{callsign}, roger, I'll keep you advised.", "{callsign}, roger, further traffic information to follow."]
-
 [traffic_no_active_advisory]
 slots = ["callsign"]
 say = ["{callsign}, confirm which traffic you are reporting.", "{callsign}, say again which traffic you have in sight."]
@@ -18012,8 +18008,8 @@ slots = ["callsign"]
 say = ["Caution wake turbulence, {callsign}."]
 
 [ambient_takeoff]
-slots = ["callsign", "runway"]
-say = ["{callsign}, runway {runway}, cleared for takeoff."]
+slots = ["callsign", "runway", "turn"]
+say = ["{callsign}, runway {runway}, cleared for takeoff{turn}."]
 
 [ambient_takeoff_readback]
 slots = ["callsign", "runway"]

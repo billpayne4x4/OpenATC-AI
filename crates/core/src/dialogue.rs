@@ -430,6 +430,11 @@ mod tests {
             ("station", station.to_owned()),
             ("callsign", callsign.to_owned()),
         ];
+        let takeoff = [
+            ("callsign", callsign.to_owned()),
+            ("runway", runway.to_owned()),
+            ("turn", String::new()),
+        ];
         let handoff = [
             ("callsign", callsign.to_owned()),
             ("runway", runway.to_owned()),
@@ -449,7 +454,7 @@ mod tests {
             ("ambient_hold_short_readback", &simple, &[callsign, runway]),
             ("ambient_line_up", &simple, &[callsign, runway]),
             ("ambient_line_up_readback", &simple, &[callsign, runway]),
-            ("ambient_takeoff", &simple, &[callsign, runway]),
+            ("ambient_takeoff", &takeoff, &[callsign, runway]),
             ("ambient_takeoff_readback", &simple, &[callsign, runway]),
             ("ambient_landing", &simple, &[callsign, runway]),
             ("ambient_landing_readback", &simple, &[callsign, runway]),

@@ -11,6 +11,12 @@ pub struct Pronunciation {
     taxi_connectors: Vec<String>,
     maximum_taxi_letters: usize,
     maximum_taxi_digits: usize,
+    /// National registration prefixes, without the hyphen.
+    #[serde(default)]
+    registration_prefixes: Vec<String>,
+    /// A local policy may leave these prefixes unspoken.
+    #[serde(default)]
+    omit_registration_prefixes: Vec<String>,
 }
 impl Pronunciation {
     /// Parse a bounded pronunciation table without changing operational identifiers.
@@ -28,6 +34,8 @@ impl Pronunciation {
             || value.taxi_introducers.is_empty()
             || value.taxi_introducers.len() > 16
             || value.taxi_connectors.len() > 16
+            || value.registration_prefixes.len() > 200
+            || value.omit_registration_prefixes.len() > 200
             || value
                 .letters
                 .iter()
@@ -39,11 +47,75 @@ impl Pronunciation {
                         || word.len() > 32
                         || !word.chars().all(|c| c.is_ascii_alphabetic() || c == '-')
                 })
+            || value
+                .registration_prefixes
+                .iter()
+                .chain(&value.omit_registration_prefixes)
+                .any(|prefix| {
+                    prefix.is_empty()
+                        || prefix.len() > 3
+                        || !prefix
+                            .chars()
+                            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+                })
         {
-            return Err("Radio pronunciation has invalid alphabet or context entries".into());
+            return Err(
+                "Radio pronunciation has invalid alphabet, prefix or context entries".into(),
+            );
         }
         Ok(value)
     }
+    /// Spell a registration, optionally leaving a regional prefix unspoken.
+    #[must_use]
+    pub fn registration(&self, callsign: &str, omit: &[String]) -> Option<String> {
+        let token = callsign.trim().to_ascii_uppercase();
+        let (prefix, rest) = if let Some((prefix, rest)) = token.split_once('-') {
+            (prefix.to_owned(), rest.to_owned())
+        } else {
+            let prefix = self
+                .registration_prefixes
+                .iter()
+                .filter(|prefix| token.starts_with(prefix.as_str()))
+                .max_by_key(|prefix| prefix.len())?;
+            let rest = token[prefix.len()..].to_owned();
+            // A no-hyphen registration starts its suffix with a digit. This keeps
+            // three-letter airline codes such as BAW123 out of the spelling path.
+            if !rest.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                return None;
+            }
+            (prefix.clone(), rest)
+        };
+        if prefix.is_empty()
+            || prefix.len() > 3
+            || !prefix.chars().all(|c| c.is_ascii_alphanumeric())
+            || !(3..=6).contains(&rest.len())
+            || !rest.chars().all(|c| c.is_ascii_alphanumeric())
+        {
+            return None;
+        }
+        let omit = omit.iter().any(|value| value.eq_ignore_ascii_case(&prefix));
+        let mut words = Vec::new();
+        if !omit {
+            for c in prefix.chars() {
+                words.push(self.character(c)?);
+            }
+        }
+        for c in rest.chars() {
+            words.push(self.character(c)?);
+        }
+        Some(words.join(" "))
+    }
+
+    fn character(&self, c: char) -> Option<&str> {
+        if c.is_ascii_alphabetic() {
+            Some(self.letters[(c.to_ascii_uppercase() as u8 - b'A') as usize].as_str())
+        } else if c.is_ascii_digit() {
+            Some(self.digits[(c as u8 - b'0') as usize].as_str())
+        } else {
+            None
+        }
+    }
+
     fn taxiway(&self, token: &str) -> Option<String> {
         let letters = token.bytes().take_while(u8::is_ascii_uppercase).count();
         if letters == 0
@@ -89,6 +161,33 @@ pub fn spoken(text: &str, callsign: &str) -> String {
 #[must_use]
 pub fn spoken_with_airports(text: &str, callsign: &str, airports: &[(String, String)]) -> String {
     spoken_with_pronunciation(text, callsign, airports, bundled())
+}
+
+/// Replace registration callsigns with their spoken forms without changing the transcript.
+#[must_use]
+pub fn spoken_callsigns(
+    text: &str,
+    callsigns: &std::collections::BTreeMap<String, String>,
+) -> String {
+    if callsigns.is_empty() {
+        return text.to_owned();
+    }
+    let mut output = String::with_capacity(text.len());
+    for part in text.split_inclusive(|c: char| c.is_whitespace() || c == ',') {
+        let token = part.trim();
+        let bare = token.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+        if let Some(spoken) = callsigns.get(&bare.to_ascii_uppercase())
+            && let Some(start) = token.find(bare).filter(|_| !bare.is_empty())
+        {
+            output.push_str(&token[..start]);
+            output.push_str(spoken);
+            output.push_str(&token[start + bare.len()..]);
+            output.push_str(&part[token.len()..]);
+            continue;
+        }
+        output.push_str(part);
+    }
+    output
 }
 
 /// Spoken copy of a flight number for a traffic callsign. The displayed transcript keeps the
@@ -386,6 +485,46 @@ mod tests {
             .is_err()
         );
     }
+    #[test]
+    fn registrations_are_spelled_and_regional_prefixes_can_be_omitted() {
+        let policy = super::Pronunciation::default();
+        assert_eq!(
+            policy.registration("VH-EUA", &[]).unwrap(),
+            "Victor Hotel Echo Uniform Alfa"
+        );
+        assert_eq!(
+            policy.registration("VH-EUA", &["VH".to_owned()]).unwrap(),
+            "Echo Uniform Alfa"
+        );
+        assert_eq!(
+            policy.registration("N123AB", &[]).unwrap(),
+            "November one two three Alfa Bravo"
+        );
+        assert_eq!(
+            policy.registration("9V-SKA", &[]).unwrap(),
+            "niner Victor Sierra Kilo Alfa"
+        );
+        assert!(policy.registration("QFA123", &[]).is_none());
+        assert!(policy.registration("BAW123", &[]).is_none());
+    }
+
+    #[test]
+    fn callsign_map_replaces_registration_tokens() {
+        let mut callsigns = std::collections::BTreeMap::new();
+        callsigns.insert(
+            "VH-EUA".to_owned(),
+            "Victor Hotel Echo Uniform Alfa".to_owned(),
+        );
+        assert_eq!(
+            super::spoken_callsigns("VH-EUA, line up.", &callsigns),
+            "Victor Hotel Echo Uniform Alfa, line up."
+        );
+        assert_eq!(
+            super::spoken_callsigns("QFA123, line up.", &callsigns),
+            "QFA123, line up."
+        );
+    }
+
     #[test]
     fn expands_radio_names_without_changing_log_text() {
         let text = "Los Angeles GND West, C-GTLT, cleared to KSNA, IFR.";

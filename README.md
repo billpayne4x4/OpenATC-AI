@@ -70,6 +70,7 @@ Release uploads include installer/archive files and verified SHA-256 sidecars; f
 | Controller, copilot and own-pilot speech | All on |
 | Cabin and ground voices | Available with nonzero role volumes |
 | Copilot radio readbacks, routine responses and handoff tuning | On |
+| Regional registration abbreviations | Off; full registrations by default |
 | Heard reports from observed traffic | On; requires identified observed traffic |
 | Autopilot target control | Off; enable explicitly if wanted |
 | Informal pilot chat, humour and unsolicited pilot calls | Off; opt in when wanted |
@@ -407,6 +408,8 @@ Tower lines a departure up as soon as the runway surface is clear, even when tra
 
 A takeoff instruction may include known wind, pressure and departure guidance. The cleared altitude and departure constraints remain authoritative. Conversational radio lines and information-only wake cautions do not hold the takeoff clearance; the runway, wake and required-readback state govern it. The departure handoff is tied to the airborne workflow; accepting a takeoff readback alone should not send the aircraft to another controller while still parked at the hold.
 
+Light propeller aircraft without a SID may receive a regional turnout after departure, for example “After departure turn left, climb to 5,000 feet.” The direction comes from `departure_turn` in `regions.toml`; Australia currently uses `left`, other regions default to `none`. Ambient light departures follow the same path. The ambient queue may release once the preceding light aircraft is above about 500 ft AGL and clear of the extended centreline, and the pilot’s own turnout also releases the low-near-airport hold once those conditions are met. Wake separation still applies.
+
 ### 5. Departure, enroute requests and constraints
 
 - Altitude compliance allows a 300-foot band and a 30-second sustained-deviation delay; an aircraft climbing or descending toward its assigned level is not treated as non-compliant.
@@ -472,6 +475,7 @@ Routine automatic ATC transmissions wait while the radio is occupied. Copilot re
 **ATC Auto Reply** handles the pending response once, including a traffic in sight reply when a traffic call is active. It does not generate permission for unrelated movement. Quick buttons are filtered by tuned service, flight phase and applicable state; completed start-up/pushback permissions and duplicate readback actions are not intended to clutter the list. Every quick request, including crew requests, comes from `intents.toml`.
 
 - The debug Map offers **Flight path**, showing the engine’s expanded route and installed SID/STAR fixes.
+- **Copy ATC conversation** copies only the selected radio’s transcript and includes a `Conversation: COM1/COM2` header. The full all-radios export remains available for diagnostics.
 - Hover waypoints for altitude/flight-level and speed limits.
 - A filed connection into the STAR’s initial fix stays continuous; genuinely unresolved vectors or curves retain dashed connectors.
 - These are schematic rather than direct clearances.
@@ -735,7 +739,7 @@ Open **Traffic** from the visible page tabs to see simulator-reported aircraft. 
 
 When the player gives way, ATC says so on the ground frequency the player is receiving: a moving player gives way to crossing traffic on its right, and ATC says continue once the conflict clears. Crossing traffic on the player's right gets the same give-way instruction the other way round. These taxi instructions stay on the airport's Ground frequency even after an ambient aircraft has switched to Tower for departure; an airport with no Ground service uses Tower.
 
-**Add local pattern traffic** adds a circuit arrival and two departures at your airport when the network released fewer than two flights. The pattern flies on the Tower frequency with a clearance and a readback. It defaults on, so the airport is not empty while the procedure data cannot release a complete city pair.
+**Add local pattern traffic** adds a circuit arrival and two departures at your airport when the network released fewer than two flights. The pattern uses light propeller aircraft on the Tower frequency with a clearance and a readback. It defaults on, so the airport is not empty while the procedure data cannot release a complete city pair.
 
 **Settings → Traffic → Traffic mix** controls the relative airline, regional, freight and general-aviation shares. Set **Regional** to zero to remove regional turboprops and regional jets, or **General aviation** to zero to remove light aircraft and business jets. The ambient layer rolls the general-aviation share per aircraft, so the mix varies rather than switching models at a fixed interval.
 
@@ -806,7 +810,7 @@ flight acceptance remain open.
 - Urgent alerts can interrupt ordinary speech while preserving the outstanding clearance; routine calls wait their turn.
 - The ATC page offers **Traffic in sight** and **Negative contact** for the most recently called traffic on the tuned frequency. With **Copilot reads back clearances and traffic** enabled, the copilot answers **Traffic in sight** once and the advisory stops.
 - Follow-up calls distinguish traffic that is no longer a factor from traffic that is no longer observed.
-- Once the pilot reports traffic in sight, no further traffic call is made for that target.
+- Once the pilot reports traffic in sight, no further traffic call is made for that target. The report is not separately acknowledged; the next call is “traffic no factor” or a new target.
 - Reporting traffic in sight does not grant visual separation or acknowledge another clearance.
 - Trigger thresholds are conservative simulator heuristics, not a complete regional separation system or a replacement for TCAS.
 
@@ -1050,7 +1054,7 @@ All spoken phrase alternatives belong in the speech library. Aircraft profiles d
 
 Alternatives must retain required placeholders and operational facts. With wording variety enabled, matching phrases become examples for the LLM, together with its role and context. Repetition can still occur for standard phraseology. The engine remembers phrase selections and protects route, altitude, runway, frequency and other cleared values; a rewrite changing protected facts is discarded.
 
-Displayed identifiers remain compact. Speech expands controller abbreviations such as GND to Ground, uses known airport names, spells registration callsigns phonetically, and applies aviation number pronunciation. IFR/VFR/ILS remain spoken letters. Missing airport-name data can still require an identifier fallback.
+Displayed identifiers remain compact. Speech expands controller abbreviations such as GND to Ground, uses known airport names, spells registration callsigns phonetically for the player and all traffic, and applies aviation number pronunciation. Airline codes stay on the flight-number path. A regional policy can leave a home registration prefix unspoken: with **Use regional registration abbreviations** enabled, `VH-EUA` is spoken as “Echo Uniform Alfa” in Australia and as the full “Victor Hotel Echo Uniform Alfa” elsewhere. The setting is off by default, so the full registration remains the standard. IFR/VFR/ILS remain spoken letters. Missing airport-name data can still require an identifier fallback.
 
 Adding TOML text does not implement a new operational permission or simulator action. Add the associated request handling, validation and monitoring before connecting a new scenario to live operations. Regional examples are a starting point and require local procedure review.
 

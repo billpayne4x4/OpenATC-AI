@@ -361,7 +361,7 @@ pub(crate) fn reply(state: &mut EngineState, station: &Station, request: &Reques
             },
         );
     }
-    let key = if accepted {
+    if accepted {
         let sighted = request.intent == "traffic_sighted";
         state.session.traffic_call.as_mut().unwrap().sighted = sighted;
         state.session.traffic_call.as_mut().unwrap().replied = true;
@@ -371,25 +371,19 @@ pub(crate) fn reply(state: &mut EngineState, station: &Station, request: &Reques
             .get_mut(&id.unwrap())
             .unwrap()
             .sighted = sighted;
-        if sighted {
-            "traffic_sighting_acknowledged"
-        } else {
-            "traffic_keep_looking"
-        }
-    } else {
-        "traffic_no_active_advisory"
-    };
+        return Some(true);
+    }
     transmit(
         state,
         station,
-        key,
+        "traffic_no_active_advisory",
         &[("callsign", state.session.plan.callsign.clone())],
         false,
     );
     if let Some(reply) = state.session.transcript.last_mut() {
         reply.radio = Some(request.radio);
     }
-    Some(accepted)
+    Some(false)
 }
 #[cfg(test)]
 mod tests {
@@ -526,7 +520,7 @@ mod tests {
         s.traffic.last_urgent = None;
         assert!(!tick(&mut s, &station));
         assert!(!urgent(&mut s));
-        assert_eq!(s.session.transcript.len(), calls + 2);
+        assert_eq!(s.session.transcript.len(), calls + 1);
     }
 
     #[test]

@@ -442,6 +442,10 @@ fn radio_assistance(ui: &imgui::Ui, settings: &mut openatc_settings::Settings) -
         "Copilot reads back clearances and traffic",
         &mut settings.copilot_replies,
     );
+    changed |= ui.checkbox(
+        "Use regional registration abbreviations",
+        &mut settings.registration_abbreviations,
+    );
     let mut tunes = settings.copilot_tunes || settings.auto_tune_handoff;
     if ui.checkbox("Tune the assigned radio on handoff", &mut tunes) {
         settings.copilot_tunes = tunes;
@@ -963,7 +967,8 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     if interface.settings.dev_mode {
         ui.new_line();
         if ui.button("Copy ATC conversation") {
-            let mut text = crate::debug::conversation(&interface.engine.state());
+            let mut text =
+                crate::debug::conversation(&interface.engine.state(), Some(interface.active_radio));
             let _ = writeln!(text, "Callouts: {}", interface.callout_status);
             let _ = writeln!(
                 text,

@@ -387,6 +387,12 @@ struct AmbientAircraft {
     /// Lowest safe climb speed; the anti-overtake cap cannot go below it.
     minimum_climb_speed: f64,
     climb_fpm: f64,
+    /// Light-aircraft turnout direction, if one was issued.
+    turn: Option<String>,
+    /// Distance where the turnout starts.
+    turn_start: f64,
+    /// Whether the aircraft has passed far enough through the turnout.
+    turn_complete: bool,
     descent_fpm: f64,
     approach_speed: f64,
     touchdown_speed: f64,
@@ -462,6 +468,10 @@ pub struct TrafficManager {
     movement_started: bool,
     active_airport: String,
     generation: u64,
+    /// Simulator time at the last movement step.
+    last_simulation: Option<f64>,
+    /// Effective movement step, for diagnostics.
+    last_step_seconds: f64,
 }
 
 impl TrafficManager {
@@ -502,8 +512,10 @@ impl TrafficManager {
                             let separation_end = (aircraft.runway_start
                                 + SAME_RUNWAY_DEPARTURE_SEPARATION_METERS)
                                 .min(aircraft.runway_end);
-                            let clear_of_runway = aircraft.distance >= aircraft.ground_end
-                                && aircraft.distance >= separation_end;
+                            let clear_of_runway = (aircraft.distance >= aircraft.ground_end
+                                && aircraft.distance >= separation_end)
+                                || (aircraft.turn_complete
+                                    && aircraft.distance >= aircraft.runway_end);
                             if aircraft.distance >= aircraft.runway_start && !clear_of_runway {
                                 rolling = true;
                             } else if aircraft.distance < aircraft.runway_start {
@@ -636,6 +648,8 @@ impl TrafficManager {
             self.density_key.clear();
             self.density_target = 0;
             self.rejected_spawn_nodes.clear();
+            self.last_simulation = None;
+            self.last_step_seconds = 0.0;
         }
         let Some(models) = self.models.clone() else {
             return;
@@ -647,6 +661,8 @@ impl TrafficManager {
             for aircraft in &mut self.aircraft {
                 aircraft.last = now;
             }
+            self.last_simulation = state.session.telemetry.simulation_seconds;
+            self.last_step_seconds = 0.0;
             return;
         }
         self.player_hold_since = state.flow.takeoff_hold_since;
@@ -684,6 +700,8 @@ impl TrafficManager {
             self.density_key.clear();
             self.density_target = 0;
             self.rejected_spawn_nodes.clear();
+            self.last_simulation = None;
+            self.last_step_seconds = 0.0;
         }
         if telemetry.on_ground && telemetry.ground_speed_knots > 1.0 {
             self.movement_started = true;
@@ -776,11 +794,16 @@ impl TrafficManager {
             self.last_spawn = Some(now);
         }
 
-        let dt = self.aircraft.first().map_or(0.016, |aircraft| {
-            now.duration_since(aircraft.last)
-                .as_secs_f64()
-                .clamp(0.0, 0.2)
+        let wall = self.aircraft.first().map_or(0.016, |aircraft| {
+            now.duration_since(aircraft.last).as_secs_f64()
         });
+        let dt = simulation_step(
+            self.last_simulation,
+            state.session.telemetry.simulation_seconds,
+            wall,
+        );
+        self.last_simulation = state.session.telemetry.simulation_seconds;
+        self.last_step_seconds = dt;
         let player_runway = state.session.plan.runway.clone();
         let player_takeoff = state.session.taxi_clearance.takeoff_state;
         let player_runway_state = (telemetry.on_ground
@@ -802,8 +825,23 @@ impl TrafficManager {
             .then(|| player_runway_remaining(&airport, &player_runway, telemetry))
             .flatten();
         // Do not launch a departure into a player who is still low in the airport area.
+        let player_clear_of_departure = telemetry.position_valid
+            && !telemetry.on_ground
+            && matches!(
+                state.session.phase,
+                openatc_core::state::PhaseCode::Departure | openatc_core::state::PhaseCode::Taxi
+            )
+            && telemetry.altitude_feet - airport.elevation_feet >= 500.0
+            && openatc_core::traffic::runway_position(
+                &airport,
+                &state.session.plan.runway,
+                telemetry.latitude,
+                telemetry.longitude,
+            )
+            .is_some_and(|(_, across, _, _)| across.abs() > 0.3 * 1_852.0);
         let player_low_near_airport = !telemetry.on_ground
             && telemetry.position_valid
+            && !player_clear_of_departure
             && openatc_core::arrival::distance_nm(
                 [telemetry.latitude, telemetry.longitude],
                 [airport.reference_latitude, airport.reference_longitude],
@@ -1395,6 +1433,8 @@ impl TrafficManager {
             let heading_before =
                 position_heading_at(&aircraft.points, &aircraft.cumulative, aircraft.distance).2;
             aircraft.distance += aircraft.speed * dt;
+            aircraft.turn_complete = aircraft.turn_start > 0.0
+                && aircraft.distance >= aircraft.turn_start + 0.8 * 1_852.0;
             let heading_after =
                 position_heading_at(&aircraft.points, &aircraft.cumulative, aircraft.distance).2;
             let turn_rate = if dt > 0.0 {
@@ -1514,6 +1554,12 @@ impl TrafficManager {
             let slots = [
                 ("callsign", aircraft.callsign.clone()),
                 ("runway", aircraft.runway.clone()),
+                (
+                    "turn",
+                    aircraft.turn.as_ref().map_or(String::new(), |turn| {
+                        format!(" turn {turn} after departure")
+                    }),
+                ),
             ];
             let text = match phase {
                 // The aircraft is already on the Tower frequency; a handoff here would be circular.
@@ -1780,7 +1826,7 @@ impl TrafficManager {
                 telemetry.latitude,
                 telemetry.longitude,
             );
-            if (here.east - marker.east).hypot(here.north - marker.north) < 25.0 {
+            if (here.east - marker.east).hypot(here.north - marker.north) < 120.0 {
                 return true;
             }
         }
@@ -2032,6 +2078,8 @@ impl TrafficManager {
             "rejectedPavement": self.rejected_pavement,
             "rejectedModel": self.rejected_model,
             "lastError": self.last_error,
+            "stepSeconds": self.last_step_seconds,
+            "simulationSeconds": self.last_simulation,
         })
     }
 
@@ -2337,6 +2385,16 @@ impl TrafficManager {
             let minimum_climb_speed =
                 phases::sid::minimum_climb_speed(&identity.profile, &handling);
             let climb_fpm = identity.profile.climb_fpm;
+            let departure_turn = (kind == AmbientKind::Departure && identity.profile.propeller)
+                .then(|| {
+                    let region = openatc_core::regions::region_for(&state.regions, &airport.icao);
+                    match region.departure_turn.as_str() {
+                        "left" => Some(-30.0),
+                        "right" => Some(30.0),
+                        _ => None,
+                    }
+                })
+                .flatten();
             let path = match kind {
                 AmbientKind::Departure => departure_path(
                     airport,
@@ -2347,6 +2405,7 @@ impl TrafficManager {
                     &handling,
                     climb_speed,
                     climb_fpm,
+                    departure_turn,
                 ),
                 AmbientKind::Arrival => arrival_path(
                     airport,
@@ -2356,7 +2415,15 @@ impl TrafficManager {
                     minimum_rollout,
                 ),
             };
-            let Some((points, ground_start, ground_end, taxi_end, runway_start, runway_end)) = path
+            let Some((
+                points,
+                ground_start,
+                ground_end,
+                taxi_end,
+                runway_start,
+                runway_end,
+                turn_start,
+            )) = path
             else {
                 self.rejected_route = self.rejected_route.saturating_add(1);
                 self.last_error = format!("path build failed for node {}", node.id);
@@ -2547,6 +2614,15 @@ impl TrafficManager {
                 climb_speed,
                 minimum_climb_speed,
                 climb_fpm,
+                turn: departure_turn.map(|angle| {
+                    if angle < 0.0 {
+                        "left".to_owned()
+                    } else {
+                        "right".to_owned()
+                    }
+                }),
+                turn_start,
+                turn_complete: false,
                 descent_fpm,
                 approach_speed,
                 touchdown_speed,
@@ -3084,7 +3160,8 @@ fn departure_path(
     handling: &Handling,
     climb_speed: f64,
     climb_fpm: f64,
-) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64)> {
+    turn: Option<f64>,
+) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64, f64)> {
     let mut combined = points.to_vec();
     if let Some(entry) = entry {
         for point in entry {
@@ -3152,7 +3229,7 @@ fn departure_path(
         [threshold.latitude, threshold.longitude],
         [far.latitude, far.longitude],
     );
-    let advance = |from: Waypoint, nm: f64, altitude: f64| {
+    let advance = |from: Waypoint, nm: f64, altitude: f64, heading: f64| {
         let radians = heading.to_radians();
         let latitude = from.latitude + radians.cos() * nm * 1852.0 / 111_320.0;
         let longitude = from.longitude
@@ -3174,7 +3251,7 @@ fn departure_path(
         .last()
         .copied()
         .unwrap_or(taxi_end);
-    let rotation = advance(base, rotation_nm, 0.0);
+    let rotation = advance(base, rotation_nm, 0.0, heading);
     let rotation_index = path.len();
     path.push(rotation);
     // Climb away from the departure end at the aircraft's own gradient. A fixed
@@ -3182,16 +3259,42 @@ fn departure_path(
     // liftoff, regardless of its published climb rate.
     let climb_knots = (climb_speed * 1.943_844).max(40.0);
     let feet_per_nm = (climb_fpm * 60.0 / climb_knots).max(100.0);
-    for after_liftoff_nm in [2.0, 5.0, 10.0] {
-        path.push(advance(
-            rotation,
-            after_liftoff_nm,
-            feet_per_nm * after_liftoff_nm,
-        ));
+    let mut turn_start = 0.0;
+    if let Some(angle) = turn {
+        let turn_nm = (500.0 / feet_per_nm).clamp(0.5, 1.5);
+        let start = advance(rotation, turn_nm, feet_per_nm * turn_nm, heading);
+        path.push(start);
+        turn_start = cumulative_distances(&path).last().copied().unwrap_or(0.0);
+        let turned = (heading + angle).rem_euclid(360.0);
+        for after_liftoff_nm in [2.0, 5.0, 10.0] {
+            path.push(advance(
+                rotation,
+                turn_nm + after_liftoff_nm,
+                feet_per_nm * (turn_nm + after_liftoff_nm),
+                turned,
+            ));
+        }
+    } else {
+        for after_liftoff_nm in [2.0, 5.0, 10.0] {
+            path.push(advance(
+                rotation,
+                after_liftoff_nm,
+                feet_per_nm * after_liftoff_nm,
+                heading,
+            ));
+        }
     }
     let cumulative = cumulative_distances(&path);
     let ground_end = cumulative.get(rotation_index).copied().unwrap_or(0.0);
-    Some((path, 0.0, ground_end, taxi_end, runway_start, ground_end))
+    Some((
+        path,
+        0.0,
+        ground_end,
+        taxi_end,
+        runway_start,
+        ground_end,
+        turn_start,
+    ))
 }
 
 fn arrival_path(
@@ -3200,7 +3303,7 @@ fn arrival_path(
     runway: &str,
     stand: Waypoint,
     minimum_rollout: f64,
-) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64)> {
+) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64, f64)> {
     let (_, threshold, far) = runway_ends(airport, runway, None)?;
     let bearing = openatc_core::arrival::bearing(
         [threshold.latitude, threshold.longitude],
@@ -3249,7 +3352,18 @@ fn arrival_path(
         ground_start,
         ground_start,
         runway_end,
+        0.0,
     ))
+}
+
+/// Movement step from the simulator clock, with a wall-clock fallback and a stall cap.
+fn simulation_step(last: Option<f64>, now: Option<f64>, wall: f64) -> f64 {
+    match (last, now) {
+        (Some(last), Some(now)) if last.is_finite() && now.is_finite() => {
+            (now - last).clamp(0.0, 1.0)
+        }
+        _ => wall.clamp(0.0, 0.2),
+    }
 }
 
 /// First point of the movement path that is not on pavement.
@@ -3936,6 +4050,9 @@ mod phase_tests {
             climb_speed: 80.0,
             minimum_climb_speed: 0.0,
             climb_fpm: 2_200.0,
+            turn: None,
+            turn_start: 0.0,
+            turn_complete: false,
             descent_fpm: 1_800.0,
             approach_speed: 75.0,
             touchdown_speed: 70.0,
@@ -4247,7 +4364,7 @@ mod phase_tests {
             north: 80.0,
             height: 0.0,
         };
-        let (path, ground_start, _, _, _, runway_end) =
+        let (path, ground_start, _, _, _, runway_end, _) =
             arrival_path(&airport, &[exit], "09", stand, 700.0).expect("arrival path");
         assert!(runway_end - ground_start >= 699.0);
         assert!(path.len() > 5, "the exit and taxi-in remain on the path");
@@ -4351,8 +4468,8 @@ mod phase_tests {
             altitude_feet: 0.0,
         };
         let handling = jet_handling();
-        let (path, _, ground_end, _, runway_start, runway_end) = departure_path(
-            &airport, &points, None, "09", stand, &handling, 82.0, 2_200.0,
+        let (path, _, ground_end, _, runway_start, runway_end, _) = departure_path(
+            &airport, &points, None, "09", stand, &handling, 82.0, 2_200.0, None,
         )
         .expect("departure path");
         assert!(runway_start < ground_end);
@@ -4366,6 +4483,41 @@ mod phase_tests {
             last.altitude_feet > 4_000.0,
             "a jet at 2,200 fpm should climb well over 4,000 ft in the first 10 NM, got {}",
             last.altitude_feet
+        );
+    }
+
+    #[test]
+    fn a_light_departure_turns_off_the_runway_heading() {
+        let airport = openatc_core::airport::demo_airport();
+        let points = [Point {
+            east: -1_300.0,
+            north: 0.0,
+            height: 0.0,
+        }];
+        let stand = Waypoint {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude_feet: 0.0,
+        };
+        let handling = jet_handling();
+        let (path, _, ground_end, _, _, _, turn_start) = departure_path(
+            &airport,
+            &points,
+            None,
+            "09",
+            stand,
+            &handling,
+            40.0,
+            700.0,
+            Some(-30.0),
+        )
+        .expect("turning departure path");
+        assert!(turn_start > ground_end);
+        let last = path.last().expect("climb end");
+        assert!(
+            last.latitude > 0.01,
+            "a left turn from runway 09 should carry the path north, got {}",
+            last.latitude
         );
     }
 
@@ -4385,7 +4537,7 @@ mod phase_tests {
         let handling = jet_handling();
         let a320 = openatc_core::traffic::profiles::aircraft("A320").expect("A320");
         let climb_speed = phases::sid::climb_speed(a320, &handling);
-        let (path, _, _, _, _, _) = departure_path(
+        let (path, _, _, _, _, _, _) = departure_path(
             &airport,
             &points,
             None,
@@ -4394,6 +4546,7 @@ mod phase_tests {
             &handling,
             climb_speed,
             a320.climb_fpm,
+            None,
         )
         .expect("departure path");
         let last = path.last().expect("climb end");
@@ -5279,6 +5432,41 @@ mod phase_tests {
             asked,
             "not asked again straight away"
         );
+    }
+
+    #[test]
+    fn simulation_steps_use_the_simulator_clock_and_cap_stalls() {
+        assert!((simulation_step(Some(10.0), Some(10.5), 0.2) - 0.5).abs() < 1e-9);
+        assert_eq!(simulation_step(Some(10.0), Some(20.0), 0.2), 1.0);
+        assert_eq!(simulation_step(Some(10.0), Some(9.0), 0.2), 0.0);
+        assert_eq!(simulation_step(None, Some(10.0), 0.05), 0.05);
+    }
+
+    #[test]
+    fn a_player_approaching_the_hold_is_not_asked_to_continue() {
+        let mut state = crate::test_state();
+        state.airport = Some(openatc_core::airport::Airport {
+            reference_latitude: 0.0,
+            reference_longitude: 0.0,
+            ..Default::default()
+        });
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.latitude = 0.0;
+        state.session.telemetry.longitude = 0.0;
+        state.session.taxi_clearance.holding_marker_point = Some(openatc_core::state::Point {
+            east: 0.0,
+            north: 45.0,
+            height: 0.0,
+        });
+        state.session.taxi_clearance.hold_short_runway = "35".into();
+        let manager = TrafficManager::default();
+        assert!(
+            manager.player_blocked_ahead(&state),
+            "45 m from the hold is an approach, not a free taxi"
+        );
+        state.session.telemetry.latitude = 200.0 / 111_320.0;
+        assert!(!manager.player_blocked_ahead(&state));
     }
 
     #[test]

@@ -1324,6 +1324,27 @@ fn clear_takeoff(state: &mut EngineState, station: &Station, runway: &str) {
 }
 
 /// Full takeoff clearance text for the current flight plan.
+/// A regional turnout for light propeller aircraft without a SID.
+fn light_departure_turn(state: &EngineState) -> Option<&'static str> {
+    let airport = state.airport.as_ref()?;
+    let profiles = state.traffic_profiles.current()?;
+    let code = if state.session.plan.aircraft.is_empty() {
+        &state.session.telemetry.aircraft_icao
+    } else {
+        &state.session.plan.aircraft
+    };
+    let profile = profiles.aircraft.get(code)?;
+    if !profile.propeller {
+        return None;
+    }
+    let region = openatc_core::regions::region_for(&state.regions, &airport.icao);
+    match region.departure_turn.as_str() {
+        "left" => Some("left"),
+        "right" => Some("right"),
+        _ => None,
+    }
+}
+
 fn takeoff_clearance_text(state: &EngineState, station: &Station) -> String {
     let plan = &state.session.plan;
     let sid = state.airport.as_ref().is_some_and(|airport| {
@@ -1337,33 +1358,26 @@ fn takeoff_clearance_text(state: &EngineState, station: &Station) -> String {
         .clearance
         .as_ref()
         .map_or(plan.initial_altitude_feet, |c| c.altitude_feet);
+    let altitude_text = openatc_core::altitude_text(
+        f64::from(altitude),
+        openatc_core::UnitSystem::Imperial,
+        true,
+    );
     let climb = if sid {
         say(
             "flight_sid_climb",
             &[
                 ("sid", plan.sid.clone()),
-                (
-                    "altitude",
-                    openatc_core::altitude_text(
-                        f64::from(altitude),
-                        openatc_core::UnitSystem::Imperial,
-                        true,
-                    ),
-                ),
+                ("altitude", altitude_text.clone()),
             ],
         )
-    } else {
+    } else if let Some(turn) = light_departure_turn(state) {
         say(
-            "flight_initial_climb",
-            &[(
-                "altitude",
-                openatc_core::altitude_text(
-                    f64::from(altitude),
-                    openatc_core::UnitSystem::Imperial,
-                    true,
-                ),
-            )],
+            "flight_turn_climb",
+            &[("turn", turn.to_owned()), ("altitude", altitude_text)],
         )
+    } else {
+        say("flight_initial_climb", &[("altitude", altitude_text)])
     };
     let expected = if plan.cruise_feet > altitude {
         say(
@@ -3831,6 +3845,23 @@ mod sequencing_tests {
             ..Default::default()
         };
         state
+    }
+
+    #[test]
+    fn a_light_departure_gets_a_regional_turnout() {
+        let mut state = departure_state();
+        state.session.plan.aircraft = "C172".into();
+        state.session.plan.sid.clear();
+        state.session.plan.initial_altitude_feet = 5000;
+        if let Some(airport) = state.airport.as_mut() {
+            airport.icao = "YSCB".into();
+        }
+        let station = state.stations[0].clone();
+        let text = takeoff_clearance_text(&state, &station);
+        assert!(
+            text.to_lowercase().contains("turn left"),
+            "Australian light departure should turn out: {text}"
+        );
     }
 
     #[test]

@@ -20,6 +20,10 @@ pub struct Region {
     /// Area control fallback kHz, if the region defines one. Absent means
     /// uncontrolled enroute airspace: nobody answers out there.
     pub center_khz: Option<i32>,
+    /// Registration prefixes this region may leave unspoken.
+    pub registration_prefix_omit: Vec<String>,
+    /// Light-aircraft departure turn: none, left or right.
+    pub departure_turn: String,
 }
 
 /// Default regional procedure table.
@@ -32,6 +36,8 @@ pub fn builtin_region(icao: &str) -> Region {
         clearance: "sid".to_owned(),
         transition_feet: 10_000,
         center_khz: None,
+        registration_prefix_omit: Vec::new(),
+        departure_turn: "none".to_owned(),
     };
     if icao.is_empty() {
         return icao_default;
@@ -59,6 +65,8 @@ pub fn builtin_region(icao: &str) -> Region {
         },
         'Y' => Region {
             name: "australia".to_owned(),
+            registration_prefix_omit: vec!["VH".to_owned()],
+            departure_turn: "left".to_owned(),
             ..icao_default
         },
         'E' | 'L' => Region {
@@ -90,8 +98,14 @@ pub fn load_regions(path: &Path) -> Result<BTreeMap<String, Region>, String> {
             .ok_or_else(|| format!("bad section {name}"))?;
         for key in body.keys() {
             match key.as_str() {
-                "prefixes" | "pressure" | "altitude" | "clearance" | "transition_feet"
-                | "center_khz" => {}
+                "prefixes"
+                | "pressure"
+                | "altitude"
+                | "clearance"
+                | "transition_feet"
+                | "center_khz"
+                | "registration_prefix_omit"
+                | "departure_turn" => {}
                 _ => return Err(format!("unknown regions key: {key}")),
             }
         }
@@ -143,6 +157,34 @@ pub fn load_regions(path: &Path) -> Result<BTreeMap<String, Region>, String> {
                     }
                     Some(khz)
                 }
+            },
+            departure_turn: match body.get("departure_turn").and_then(toml::Value::as_str) {
+                None => "none".to_owned(),
+                Some(value) if matches!(value, "none" | "left" | "right") => value.to_owned(),
+                Some(_) => return Err(format!("region {name} has bad departure_turn")),
+            },
+            registration_prefix_omit: match body.get("registration_prefix_omit") {
+                None => Vec::new(),
+                Some(value) => value
+                    .as_array()
+                    .ok_or_else(|| format!("region {name} has bad registration_prefix_omit"))?
+                    .iter()
+                    .map(|prefix| {
+                        let prefix = prefix
+                            .as_str()
+                            .filter(|text| {
+                                !text.is_empty()
+                                    && text.len() <= 3
+                                    && text
+                                        .chars()
+                                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+                            })
+                            .ok_or_else(|| {
+                                format!("region {name} has bad registration_prefix_omit entry")
+                            })?;
+                        Ok(prefix.to_owned())
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
             },
         };
         for prefix in prefixes {

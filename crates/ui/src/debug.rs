@@ -3,7 +3,7 @@ use openatc_core::state::State;
 use std::fmt::Write as _;
 use std::io::Write;
 
-pub fn conversation(state: &State) -> String {
+pub fn conversation(state: &State, radio: Option<openatc_core::state::Radio>) -> String {
     let mut text = format!(
         "OpenATC conversation\nFlight: {} -> {} | callsign {} | runway {}\nPhase: {:?} | COM1 {:.3} MHz | radio power {}\nPosition: {:.6}, {:.6} | on ground {} | ground speed {:.2} kt | AGL {:.1} ft\n\n",
         state.plan.departure,
@@ -19,19 +19,40 @@ pub fn conversation(state: &State) -> String {
         state.telemetry.ground_speed_knots,
         state.telemetry.height_agl_feet
     );
-    let _ = writeln!(
-        text,
-        "COM2: {} | controlling radio: {}",
-        state.telemetry.com2_khz.map_or_else(
+    if let Some(radio) = radio {
+        let frequency = state.telemetry.frequency(radio).map_or_else(
             || "Unavailable".into(),
-            |frequency| format!("{:.3} MHz", f64::from(frequency) / 1000.0)
-        ),
-        if state.control_radio == openatc_core::state::Radio::Com2 {
-            "COM2"
-        } else {
-            "COM1"
-        }
-    );
+            |khz| format!("{:.3} MHz", f64::from(khz) / 1000.0),
+        );
+        let _ = writeln!(
+            text,
+            "Conversation: {} {frequency} | controlling radio: {}",
+            if radio == openatc_core::state::Radio::Com2 {
+                "COM2"
+            } else {
+                "COM1"
+            },
+            if state.control_radio == openatc_core::state::Radio::Com2 {
+                "COM2"
+            } else {
+                "COM1"
+            }
+        );
+    } else {
+        let _ = writeln!(
+            text,
+            "COM2: {} | controlling radio: {}",
+            state.telemetry.com2_khz.map_or_else(
+                || "Unavailable".into(),
+                |frequency| format!("{:.3} MHz", f64::from(frequency) / 1000.0)
+            ),
+            if state.control_radio == openatc_core::state::Radio::Com2 {
+                "COM2"
+            } else {
+                "COM1"
+            }
+        );
+    }
     let _ = writeln!(
         text,
         "Altitude: geometric {:.1} ft | indicated {:?} ft | standard-pressure {:?} ft",
@@ -63,6 +84,9 @@ pub fn conversation(state: &State) -> String {
             ))
     );
     for entry in &state.transcript {
+        if radio.is_some_and(|radio| entry.radio != Some(radio)) {
+            continue;
+        }
         let _ = writeln!(
             text,
             "[{}] {}{}: {}",
@@ -124,9 +148,38 @@ mod tests {
         state.plan.destination = "VLVT".into();
         state.telemetry.com1_khz = 118_100;
         state.transcript.push(serde_json::from_value(serde_json::json!({"speaker":"ATC", "position":"VIENTIANE Tower", "text":"Your flight departs YMLT."})).unwrap());
-        let text = conversation(&state);
+        let text = conversation(&state, None);
         assert!(text.contains("YMLT -> VLVT"));
         assert!(text.contains("118.100 MHz"));
         assert!(text.contains("ATC - VIENTIANE Tower: Your flight departs YMLT."));
+    }
+
+    #[test]
+    fn conversation_copy_filters_to_one_radio() {
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_700);
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "radio": "com1",
+                "text": "Ground one."
+            }))
+            .unwrap(),
+        );
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "radio": "com2",
+                "text": "Tower two."
+            }))
+            .unwrap(),
+        );
+        let com1 = conversation(&state, Some(openatc_core::state::Radio::Com1));
+        assert!(com1.contains("Ground one."));
+        assert!(!com1.contains("Tower two."));
+        let all = conversation(&state, None);
+        assert!(all.contains("Ground one."));
+        assert!(all.contains("Tower two."));
     }
 }

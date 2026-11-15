@@ -30,6 +30,8 @@ pressure = "qnh"
 altitude = "feet"
 clearance = "sid"
 transition_feet = 10000
+registration_prefix_omit = ["VH"]
+departure_turn = "left"
 
 [regions.newzealand]
 prefixes = ["N"]
