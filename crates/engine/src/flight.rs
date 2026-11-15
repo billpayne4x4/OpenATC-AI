@@ -1070,7 +1070,8 @@ fn return_with_reply(
         ("callsign", state.session.plan.callsign.clone()),
         ("runway", state.session.plan.runway.clone()),
     ];
-    result.message = say(instruction, &slots);
+    let text = say(instruction, &slots);
+    result.message = Some(text.clone());
     if let Some(entry) = state
         .session
         .transcript
@@ -1078,7 +1079,7 @@ fn return_with_reply(
         .rev()
         .find(|entry| entry.speaker == "ATC")
     {
-        entry.text.clone_from(&result.message);
+        entry.text = text;
         entry.pilot_reply = say(readback, &slots);
     }
 }
@@ -1097,7 +1098,8 @@ pub fn takeoff_wording(
         return;
     }
     state.flow.takeoff_cleared = true;
-    result.message = takeoff_clearance_text(state, station);
+    let text = takeoff_clearance_text(state, station);
+    result.message = Some(text.clone());
     if let Some(entry) = state
         .session
         .transcript
@@ -1105,7 +1107,7 @@ pub fn takeoff_wording(
         .rev()
         .find(|entry| entry.speaker == "ATC")
     {
-        entry.text.clone_from(&result.message);
+        entry.text = text;
         entry.pilot_reply = say(
             "pilot_takeoff_readback",
             &[
@@ -3946,11 +3948,11 @@ mod sequencing_tests {
         let mut state = departure_state();
         let mut result = openatc_core::apply::RequestOutcome {
             accepted: false,
-            message: "Holding short of runway 09.".into(),
+            message: Some("Holding short of runway 09.".into()),
         };
         let station = state.stations[0].clone();
         takeoff_wording(&mut state, &station, &mut result);
-        assert_eq!(result.message, "Holding short of runway 09.");
+        assert_eq!(result.text(), "Holding short of runway 09.");
         assert!(!state.flow.takeoff_cleared);
     }
 
@@ -3960,22 +3962,19 @@ mod sequencing_tests {
         state.session.taxi_clearance.takeoff_state = TakeoffState::Cleared;
         let mut result = openatc_core::apply::RequestOutcome {
             accepted: true,
-            message: "Cleared for takeoff.".into(),
+            message: Some("Cleared for takeoff.".into()),
         };
         let station = state.stations[0].clone();
         takeoff_wording(&mut state, &station, &mut result);
         assert!(
-            result
-                .message
-                .to_lowercase()
-                .contains("cleared for takeoff"),
+            result.text().to_lowercase().contains("cleared for takeoff"),
             "{}",
-            result.message
+            result.text()
         );
         assert!(
-            result.message.to_lowercase().contains("runway 09"),
+            result.text().to_lowercase().contains("runway 09"),
             "{}",
-            result.message
+            result.text()
         );
         assert!(state.flow.takeoff_cleared);
     }
@@ -4006,7 +4005,7 @@ mod sequencing_tests {
             });
         let mut result = openatc_core::apply::RequestOutcome {
             accepted: true,
-            message: String::new(),
+            message: None,
         };
         for (instruction, readback, expected) in [
             (
@@ -4026,7 +4025,7 @@ mod sequencing_tests {
             ),
         ] {
             return_with_reply(&mut state, &mut result, instruction, readback);
-            let spoken = result.message.to_lowercase();
+            let spoken = result.text().to_lowercase();
             assert!(spoken.contains(expected), "{spoken}");
             assert!(!spoken.contains("cleared for takeoff"), "{spoken}");
             let entry = state.session.transcript.last().expect("transcript entry");

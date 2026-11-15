@@ -721,7 +721,7 @@ mod tests {
                 runway_sequence: RunwaySequence::Clear,
             },
         );
-        assert!(result.accepted, "{}", result.message);
+        assert!(result.accepted, "{}", result.text());
         acknowledge(s, request.clearance_sequence);
     }
     #[test]

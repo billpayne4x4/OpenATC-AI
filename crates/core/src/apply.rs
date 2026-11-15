@@ -18,8 +18,16 @@ use super::{UnitSystem, altitude_text};
 pub struct RequestOutcome {
     /// Whether the controller accepted the request.
     pub accepted: bool,
-    /// Spoken reply text.
-    pub message: String,
+    /// Spoken reply text. `None` accepts without a controller transmission.
+    pub message: Option<String>,
+}
+
+impl RequestOutcome {
+    /// Spoken reply, empty when the controller stayed silent.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        self.message.as_deref().unwrap_or("")
+    }
 }
 
 /// Record a transmission and retain the latest 500 entries.
@@ -429,7 +437,10 @@ fn reply(
             entry.pilot_reply = text;
         }
     }
-    RequestOutcome { accepted, message }
+    RequestOutcome {
+        accepted,
+        message: Some(message),
+    }
 }
 
 /// The always-available small talk: radio checks, repeats, standby, unable.
@@ -501,25 +512,23 @@ fn accepted_readback(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
             .as_ref()
             .is_some_and(|clearance| clearance.readback_scope.is_empty())
     {
-        // Delivery may close the initial clearance with an acknowledgement and
-        // a Ground contact instruction. Routine readbacks end with the pilot.
-        return reply(
+        // Delivery closes the initial clearance with a verification and a Ground
+        // contact instruction. Routine readbacks end with the pilot.
+        let outcome = reply(
             state,
             ctx,
             true,
             crate::dialogue::say("readback_correct_for_recorded_altitude_and_route", &[]),
         );
+        if let Some(entry) = state.transcript.last_mut() {
+            entry.information_only = true;
+        }
+        return outcome;
     }
-    let phrase = if ctx.request.readback_kind == "taxi" {
-        "taxi_readback_correct_follow_the_approved_route"
-    } else {
-        "readback_correct_for_recorded_altitude_and_route"
-    };
-    let outcome = reply(state, ctx, true, crate::dialogue::say(phrase, &[]));
-    if let Some(entry) = state.transcript.last_mut() {
-        entry.information_only = true;
+    RequestOutcome {
+        accepted: true,
+        message: None,
     }
-    outcome
 }
 
 /// Readback handling, strict or lenient depending on the realism toggles.
@@ -1589,16 +1598,10 @@ pub fn apply_request(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
             )
         {
             entry.pilot_reply.clear();
-            let outcome = reply(
-                state,
-                ctx,
-                true,
-                crate::dialogue::say("readback_correct", &[]),
-            );
-            if let Some(entry) = state.transcript.last_mut() {
-                entry.information_only = true;
-            }
-            return outcome;
+            return RequestOutcome {
+                accepted: true,
+                message: None,
+            };
         }
         return reply(
             state,
@@ -1761,17 +1764,17 @@ mod tests {
                 runway_sequence: RunwaySequence::Clear,
             },
         );
-        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(outcome.accepted, "{}", outcome.text());
         assert!(
             outcome
-                .message
+                .text()
                 .to_lowercase()
                 .contains("cleared for takeoff")
         );
         assert!(
-            !outcome.message.to_lowercase().contains("line up"),
+            !outcome.text().to_lowercase().contains("line up"),
             "a clear runway must not produce a line-up instruction: {}",
-            outcome.message
+            outcome.text()
         );
         assert_eq!(state.taxi_clearance.takeoff_state, TakeoffState::Cleared);
     }
@@ -1943,9 +1946,9 @@ mod tests {
         );
         assert!(!outcome.accepted);
         assert!(
-            outcome.message.to_lowercase().contains("hold short"),
+            outcome.text().to_lowercase().contains("hold short"),
             "{}",
-            outcome.message
+            outcome.text()
         );
         assert!(
             state.taxi_clearance.approved,
@@ -1973,7 +1976,7 @@ mod tests {
                 runway_sequence: RunwaySequence::Clear,
             },
         );
-        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(outcome.accepted, "{}", outcome.text());
         assert_eq!(state.taxi_clearance.takeoff_state, TakeoffState::Cleared);
         assert!(!state.taxi_clearance.approved);
     }
@@ -2026,15 +2029,15 @@ mod tests {
             "a ready call must not turn a lined-up aircraft back into a hold-short"
         );
         assert!(
-            !outcome.message.to_lowercase().contains("hold short"),
+            !outcome.text().to_lowercase().contains("hold short"),
             "{}",
-            outcome.message
+            outcome.text()
         );
         assert!(
-            outcome.message.to_lowercase().contains("hold position")
-                || outcome.message.to_lowercase().contains("continue holding"),
+            outcome.text().to_lowercase().contains("hold position")
+                || outcome.text().to_lowercase().contains("continue holding"),
             "{}",
-            outcome.message
+            outcome.text()
         );
     }
 
@@ -2076,11 +2079,11 @@ mod tests {
                 runway_sequence: RunwaySequence::Rolling,
             },
         );
-        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(outcome.accepted, "{}", outcome.text());
         assert!(
-            outcome.message.to_lowercase().contains("line up and wait"),
+            outcome.text().to_lowercase().contains("line up and wait"),
             "{}",
-            outcome.message
+            outcome.text()
         );
         assert!(state.taxi_clearance.approved);
         assert_eq!(
@@ -2128,11 +2131,11 @@ mod tests {
                 runway_sequence: RunwaySequence::Clear,
             },
         );
-        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(outcome.accepted, "{}", outcome.text());
         assert!(
-            outcome.message.to_lowercase().contains("line up and wait"),
+            outcome.text().to_lowercase().contains("line up and wait"),
             "{}",
-            outcome.message
+            outcome.text()
         );
         assert_eq!(
             state.taxi_clearance.takeoff_state,
@@ -2200,7 +2203,7 @@ mod tests {
         }
     }
     #[test]
-    fn routine_readbacks_are_acknowledged_and_errors_still_need_correction() {
+    fn routine_readbacks_are_silent_and_errors_still_need_correction() {
         let tag = SpeechTag::default();
         let region = Region::default();
         for (phase, on_ground, taxi) in [
@@ -2223,9 +2226,7 @@ mod tests {
                 sequence: 7,
                 ..Default::default()
             });
-            if phase == PhaseCode::Clearance {
-                state.clearance.as_mut().unwrap().readback_scope = "runway".into();
-            }
+            // An initial clearance is the one readback that Delivery confirms.
             state.taxi_clearance.pending_readback = taxi;
             state.taxi_clearance.sequence = 7;
             state.taxi_clearance.instructions = "ROUTE".into();
@@ -2264,16 +2265,21 @@ mod tests {
             };
             let rejected = outcome(&mut state, &request);
             assert!(!rejected.accepted);
-            assert!(!rejected.message.is_empty());
+            assert!(!rejected.text().is_empty());
             assert!(!state.clearance.as_ref().unwrap().acknowledged);
             assert_eq!(state.taxi_clearance.pending_readback, taxi);
             let before = state.transcript.len();
             request.waypoint = "ROUTE".into();
             let accepted = outcome(&mut state, &request);
             assert!(accepted.accepted);
-            assert!(!accepted.message.is_empty(), "{phase:?}");
-            assert_eq!(state.transcript.len(), before + 1, "{phase:?}");
-            assert!(state.transcript.last().unwrap().information_only);
+            if phase == PhaseCode::Clearance {
+                assert!(accepted.message.is_some(), "{phase:?}");
+                assert_eq!(state.transcript.len(), before + 1, "{phase:?}");
+                assert!(state.transcript.last().unwrap().information_only);
+            } else {
+                assert!(accepted.message.is_none(), "{phase:?}");
+                assert_eq!(state.transcript.len(), before, "{phase:?}");
+            }
             assert!(state.transcript[0].pilot_reply.is_empty());
             if taxi {
                 assert!(state.taxi_clearance.approved);
@@ -2309,6 +2315,7 @@ mod tests {
             clearance_sequence: 7,
             ..Default::default()
         };
+        let before = state.transcript.len();
         let outcome = apply_request(
             &mut state,
             &RequestContext {
@@ -2325,9 +2332,11 @@ mod tests {
                 runway_sequence: RunwaySequence::Clear,
             },
         );
-        assert!(outcome.accepted, "{}", outcome.message);
+        assert!(outcome.accepted, "{}", outcome.text());
+        assert!(outcome.message.is_none());
+        assert_eq!(state.transcript.len(), before + 1);
+        assert_ne!(state.transcript.last().unwrap().speaker, "ATC");
         assert!(state.transcript[0].pilot_reply.is_empty());
-        assert!(state.transcript.last().unwrap().information_only);
     }
 
     #[test]
@@ -2370,13 +2379,13 @@ mod tests {
         };
         // A pleasantry classified as a taxi request grants nothing.
         let (state, outcome) = run("taxi", "Thanks, have a good day");
-        assert!(!outcome.accepted, "{}", outcome.message);
+        assert!(!outcome.accepted, "{}", outcome.text());
         assert!(state.taxi_clearance.instructions.is_empty());
         assert_eq!(state.taxi_clearance.sequence, 0);
         // A movement clause classified as conversation is answered as a request, not small talk.
         let (_, outcome) = run("conversation", "Thanks, cleared to taxi via A");
         assert!(!outcome.accepted);
-        assert!(outcome.message.contains("standard request"));
+        assert!(outcome.text().contains("standard request"));
     }
     fn fixtures() -> serde_json::Value {
         let path =
@@ -2589,13 +2598,13 @@ mod tests {
             "apply {name}"
         );
         if let Some(message) = want.get("message").and_then(serde_json::Value::as_str) {
-            assert_eq!(outcome.message, message, "message {name}");
+            assert_eq!(outcome.text(), message, "message {name}");
         }
         if let Some(prefix) = want
             .get("messagePrefix")
             .and_then(serde_json::Value::as_str)
         {
-            assert!(outcome.message.starts_with(prefix), "prefix {name}");
+            assert!(outcome.text().starts_with(prefix), "prefix {name}");
         }
         if let Some(code) = want.get("phaseAfter").and_then(serde_json::Value::as_i64) {
             assert_eq!(state.phase, phase(code), "phase {name}");

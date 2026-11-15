@@ -2820,16 +2820,18 @@ pub(crate) async fn atc_request(
                 ),
             ],
         );
-        result.message.push(' ');
-        result.message.push_str(&handoff);
-        state.session.recommended_frequency_khz = ground.khz;
-        state.session.frequency_sequence = state
-            .session
-            .transcript
-            .last()
-            .map_or(0, |entry| entry.sequence);
-        if let Some(last) = state.session.transcript.last_mut() {
-            last.text.clone_from(&result.message);
+        if let Some(message) = result.message.as_mut() {
+            message.push(' ');
+            message.push_str(&handoff);
+            state.session.recommended_frequency_khz = ground.khz;
+            state.session.frequency_sequence = state
+                .session
+                .transcript
+                .last()
+                .map_or(0, |entry| entry.sequence);
+            if let Some(last) = state.session.transcript.last_mut() {
+                last.text.clone_from(message);
+            }
         }
     }
     if state.session.demo
@@ -2844,7 +2846,7 @@ pub(crate) async fn atc_request(
         );
     }
     let intent = request.intent.clone();
-    let message = result.message.clone();
+    let message = result.message.clone().unwrap_or_default();
     let accepted = result.accepted;
     let response_sequence = state
         .session

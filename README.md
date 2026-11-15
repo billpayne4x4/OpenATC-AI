@@ -369,7 +369,7 @@ Routine pressure calls use **QNH 1022**, without a unit suffix. Settings below 1
 
 The clearance needs a correct readback. **ATC Auto Reply** submits the current pending reply; optional copilot replies can do it for you. A request button is a request, not permission to move. Unclear or incorrect readbacks leave the instruction pending. Routine clearances do not need to announce a list of fields to read back, but those fields remain checked.
 
-A correct routine airborne or taxi readback receives a spoken “Readback correct.” and advances the clearance or taxi state. Incorrect or incomplete readbacks still receive a correction. Delivery can acknowledge the initial IFR clearance and give the next Ground contact instruction; that is a further operational instruction, not a required confirmation after every readback.
+A correct routine airborne or taxi readback advances the clearance or taxi state without a spoken confirmation. Incorrect or incomplete readbacks still receive a correction. Delivery acknowledges the initial IFR clearance and gives the next Ground contact instruction; that is the one routine readback confirmation.
 
 ### 2. Start-up and pushback
 
@@ -806,6 +806,7 @@ flight acceptance remain open.
 - Urgent alerts can interrupt ordinary speech while preserving the outstanding clearance; routine calls wait their turn.
 - The ATC page offers **Traffic in sight** and **Negative contact** for the most recently called traffic on the tuned frequency. With **Copilot reads back clearances and traffic** enabled, the copilot answers **Traffic in sight** once and the advisory stops.
 - Follow-up calls distinguish traffic that is no longer a factor from traffic that is no longer observed.
+- Once the pilot reports traffic in sight, no further traffic call is made for that target.
 - Reporting traffic in sight does not grant visual separation or acknowledge another clearance.
 - Trigger thresholds are conservative simulator heuristics, not a complete regional separation system or a replacement for TCAS.
 

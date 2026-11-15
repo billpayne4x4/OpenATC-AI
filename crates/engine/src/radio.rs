@@ -630,7 +630,7 @@ pub fn apply_wording(
                 pick + 1,
                 station.name
             );
-            result.message.clone_from(&text);
+            result.message = Some(text.clone());
             if let Some(last) = state
                 .session
                 .transcript

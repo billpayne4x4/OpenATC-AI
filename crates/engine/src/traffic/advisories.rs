@@ -235,7 +235,7 @@ pub(crate) fn urgent(state: &mut EngineState) -> bool {
         .filter(|(t, e)| {
             e.urgent()
                 && state.traffic.advisories.get(&t.id).is_some_and(|a| {
-                    !a.urgent || a.at.is_none_or(|at| at.elapsed().as_secs() >= 15)
+                    !a.sighted && (!a.urgent || a.at.is_none_or(|at| at.elapsed().as_secs() >= 15))
                 })
         })
         .min_by(|a, b| {
@@ -262,26 +262,25 @@ pub(crate) fn urgent(state: &mut EngineState) -> bool {
 pub(super) fn tick(state: &mut EngineState, station: &Station) -> bool {
     let candidates = refresh(state, station);
     let enroute = station.service == "Center";
-    let candidate = candidates
-        .iter()
-        .filter(|(t, e)| {
-            e.warrants_advisory(enroute)
-                && state
-                    .traffic
-                    .advisories
-                    .get(&t.id)
-                    .is_some_and(|a| (e.urgent() && !a.urgent) || a.at.is_none())
-        })
-        .min_by(|a, b| {
-            b.1.urgent()
-                .cmp(&a.1.urgent())
-                .then_with(|| {
-                    state.traffic.advisories[&a.0.id]
-                        .at
-                        .cmp(&state.traffic.advisories[&b.0.id].at)
-                })
-                .then_with(|| a.1.seconds.total_cmp(&b.1.seconds))
-        });
+    let candidate =
+        candidates
+            .iter()
+            .filter(|(t, e)| {
+                e.warrants_advisory(enroute)
+                    && state.traffic.advisories.get(&t.id).is_some_and(|a| {
+                        !a.sighted && ((e.urgent() && !a.urgent) || a.at.is_none())
+                    })
+            })
+            .min_by(|a, b| {
+                b.1.urgent()
+                    .cmp(&a.1.urgent())
+                    .then_with(|| {
+                        state.traffic.advisories[&a.0.id]
+                            .at
+                            .cmp(&state.traffic.advisories[&b.0.id].at)
+                    })
+                    .then_with(|| a.1.seconds.total_cmp(&b.1.seconds))
+            });
     if let Some((target, e)) = candidate
         && state
             .traffic
@@ -496,6 +495,40 @@ mod tests {
         };
         (s, station)
     }
+    #[test]
+    fn a_sighted_target_is_not_called_again_when_it_becomes_urgent() {
+        let (mut s, station) = setup();
+        assert!(tick(&mut s, &station));
+        let calls = s.session.transcript.len();
+        assert_eq!(
+            reply(
+                &mut s,
+                &station,
+                &Request {
+                    intent: "traffic_sighted".into(),
+                    ..Default::default()
+                }
+            ),
+            Some(true)
+        );
+        let target = {
+            let target = &mut s.session.telemetry.traffic.as_mut().unwrap()[0];
+            target.latitude = 0.5 / 60.0;
+            target.altitude_feet = 5000.0;
+            target.clone()
+        };
+        assert!(
+            encounter(&s.session.telemetry, &target, None)
+                .unwrap()
+                .urgent()
+        );
+        s.traffic.last_advisory = None;
+        s.traffic.last_urgent = None;
+        assert!(!tick(&mut s, &station));
+        assert!(!urgent(&mut s));
+        assert_eq!(s.session.transcript.len(), calls + 2);
+    }
+
     #[test]
     fn reported_traffic_is_not_repeated_on_a_timer() {
         let (mut s, station) = setup();

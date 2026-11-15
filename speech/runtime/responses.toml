@@ -314,17 +314,6 @@ say = [
   "Taxi readback not confirmed. Repeat the taxi instruction and runway hold-short restriction.",
 ]
 
-[taxi_readback_correct_follow_the_approved_route]
-slots = []
-say = [
-  "Readback correct.",
-  "Correct readback.",
-  "Readback correct, hold short as instructed.",
-  "Correct. Hold short as cleared.",
-  "Taxi readback correct.",
-  "Readback correct. Continue taxi as cleared.",
-]
-
 [no_pending_clearance_to_acknowledge]
 slots = []
 say = [
@@ -333,14 +322,6 @@ say = [
   "No unacknowledged clearance is recorded.",
   "There is no clearance readback pending.",
   "No outstanding clearance to acknowledge.",
-]
-
-[readback_correct]
-slots = []
-say = [
-  "Readback correct.",
-  "Correct readback.",
-  "Your readback is correct.",
 ]
 
 [readback_correct_for_recorded_altitude_and_route]
@@ -1361,10 +1342,6 @@ say = ["Taxi via runway {entry_runway}, backtrack runway {runway} to the departu
 slots = ["entry_runway", "runway", "callsign"]
 say = ["Taxi via runway {entry_runway}, backtrack runway {runway}, stop and hold position at the departure end, {callsign}.", "{callsign}, taxi via runway {entry_runway}, backtrack runway {runway}, stop and hold position at the departure end."]
 
-[runway_taxi_readback_correct]
-slots = []
-say = ["Runway taxi readback correct. Backtrack as cleared, stop and hold position at the departure end.", "Correct runway taxi readback. Stop and hold position at the cleared departure end."]
-
 [taxi_to_holding_point]
 slots = ["runway"]
 say = ["Taxi to the holding point for runway {runway}. Hold short of runway {runway}.", "Taxi to runway {runway} holding point, hold short of runway {runway}."]
@@ -1380,10 +1357,6 @@ say = ["A paved taxi route is not available from this position. Hold position an
 [taxi_route_without_named_taxiways]
 slots = []
 say = ["Taxi unavailable; the taxiway route has no published names. Hold position and request progressive taxi.", "Unable to issue a named taxi route from the installed data. Request progressive taxi.", "The taxi route could not be named from the airport data. Hold position and advise."]
-
-[parking_taxi_readback_correct]
-slots = []
-say = ["Readback correct.", "Correct readback.", "Roger.", "Readback correct, continue taxi."]
 
 [pilot_taxi_holding_point_readback]
 slots = ["runway", "callsign"]

@@ -709,8 +709,8 @@ mod tests {
         };
         let outcome = openatc_core::apply::apply_request(&mut s.session, &ctx);
         assert!(!outcome.accepted);
-        assert!(outcome.message.contains("04L/22R"), "{}", outcome.message);
-        assert!(!outcome.message.to_lowercase().contains("backtrack"));
+        assert!(outcome.text().contains("04L/22R"), "{}", outcome.text());
+        assert!(!outcome.text().to_lowercase().contains("backtrack"));
     }
 
     #[test]
