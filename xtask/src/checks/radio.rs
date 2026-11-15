@@ -366,7 +366,14 @@ pub(super) fn radio(e: &mut Engine, m: &Model) -> Result {
     );
     e.settings(json!({"copilotReplies":true}))?;
     e.post("request/copilot-prepare", json!({}))?;
-    e.post("request/copilot-reply", json!({}))?;
+    let reply = e.post("request/copilot-reply", json!({}))?;
+    accepted(&reply);
+    assert!(
+        reply["result"]["message"]
+            .as_str()
+            .is_none_or(str::is_empty),
+        "a routine takeoff readback is silent"
+    );
     let state = e.state()?;
     let transcript = state["transcript"].as_array().unwrap();
     let readback = transcript
@@ -380,12 +387,6 @@ pub(super) fn radio(e: &mut Engine, m: &Model) -> Result {
             .unwrap()
             .to_lowercase()
             .contains("cleared for takeoff")
-    );
-    assert!(
-        transcript
-            .last()
-            .is_some_and(|entry| entry["speaker"] == "ATC" && entry["informationOnly"] == true),
-        "the accepted readback should be acknowledged"
     );
     e.settings(json!({"copilotReplies":false}))?;
     let again = e.req("clearance")?;
@@ -655,7 +656,10 @@ fn crossing(e: &mut Engine) -> Result {
         .count();
     let ack = e.post("request/auto-reply", json!({}))?;
     accepted(&ack);
-    assert!(!ack["result"]["message"].as_str().unwrap().is_empty());
+    assert!(
+        ack["result"]["message"].as_str().is_none_or(str::is_empty),
+        "a routine crossing readback is silent"
+    );
     assert_eq!(
         ack["state"]["transcript"]
             .as_array()
@@ -663,7 +667,8 @@ fn crossing(e: &mut Engine) -> Result {
             .iter()
             .filter(|t| t["speaker"] == "ATC")
             .count(),
-        n + 1
+        n,
+        "a routine crossing readback adds no controller line"
     );
     e.tune(124500, json!({"latitude":0}))?;
     assert_eq!(e.state()?["taxiClearance"]["crossingRunway"], "25R");

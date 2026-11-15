@@ -55,21 +55,10 @@ fn reply(e: &mut Engine) -> Result {
             || before["clearance"]["acknowledged"] == false)
     {
         require(
-            !result["result"]["message"]
+            result["result"]["message"]
                 .as_str()
-                .unwrap_or_default()
-                .is_empty(),
-            "Routine readback was not acknowledged",
-        )?;
-        require(
-            recorded.len() == count(&prepared) + 1,
-            "Routine readback did not add one controller acknowledgement",
-        )?;
-        require(
-            recorded
-                .last()
-                .is_some_and(|entry| entry["speaker"] == "ATC" && entry["informationOnly"] == true),
-            "Readback acknowledgement must be information-only",
+                .is_none_or(str::is_empty),
+            "Routine readback should be silent",
         )?;
     }
     e.telemetry["radioBusy"] = json!(false);
