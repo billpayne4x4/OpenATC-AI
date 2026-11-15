@@ -349,8 +349,10 @@ pub struct Interface {
     pub(crate) transcript_layout: Option<([f32; 2], bool)>,
     /// Last transcript sequence queued for speech.
     pub last_speech_sequence: u32,
-    /// Last transcript sequence revealed on COM1 and COM2.
-    pub(crate) revealed_sequence: [u32; 2],
+    /// Transcript sequences revealed on COM1 and COM2.
+    pub(crate) revealed: [std::collections::BTreeSet<u32>; 2],
+    /// Line waiting for its playback to start on each radio.
+    pending_reveal: [Option<(u32, [bool; 2])>; 2],
     /// Last handoff sequence already applied to the radio.
     last_handoff_tuned: u32,
     /// Pending speech entries.
@@ -581,7 +583,11 @@ impl Interface {
             transcript_follow_latest: true,
             transcript_layout: None,
             last_speech_sequence: 0,
-            revealed_sequence: [0, 0],
+            revealed: [
+                std::collections::BTreeSet::new(),
+                std::collections::BTreeSet::new(),
+            ],
+            pending_reveal: [None, None],
             last_handoff_tuned: 0,
             speech_queue: std::collections::VecDeque::new(),
             window_offset: [0.0, 0.0],
@@ -1246,6 +1252,11 @@ impl Interface {
         }
         if state.transcript.is_empty() {
             self.last_speech_sequence = 0;
+            self.revealed = [
+                std::collections::BTreeSet::new(),
+                std::collections::BTreeSet::new(),
+            ];
+            self.pending_reveal = [None, None];
             self.last_handoff_tuned = 0;
         }
         for entry in &state.transcript {
@@ -1253,6 +1264,7 @@ impl Interface {
                 if matches!(entry.speaker.as_str(), "ATIS" | "SYSTEM")
                     || entry.delivery == "preloaded-callout"
                 {
+                    self.reveal_now(state, entry);
                     self.last_speech_sequence = entry.sequence;
                     continue;
                 }
@@ -1268,6 +1280,7 @@ impl Interface {
                         radios.push(self.playback_radio(entry, state));
                     }
                     for radio in &radios {
+                        self.clear_pending_reveal(*radio);
                         if *radio == openatc_core::state::Radio::Com2 {
                             self.speech_com2.stop_speech();
                         } else {
@@ -1298,6 +1311,7 @@ impl Interface {
                     && entry.speaker != "ATTENDANT"
                     && entry.speaker != "GROUND";
                 if !entry_frequency_tuned(entry, state) {
+                    self.reveal_now(state, entry);
                     self.last_speech_sequence = entry.sequence;
                     continue;
                 }
@@ -1309,6 +1323,8 @@ impl Interface {
                     || entry.speaker == "GROUND"
                 {
                     self.speech_queue.push_back(entry.clone());
+                } else {
+                    self.reveal_now(state, entry);
                 }
                 self.last_speech_sequence = entry.sequence;
             }
@@ -1347,6 +1363,7 @@ impl Interface {
 
     /// Drop queued background calls that no longer have a receiver after a retune.
     fn stop_background(&mut self, radio: openatc_core::state::Radio, state: &State) {
+        self.clear_pending_reveal(radio);
         let listening = self.listening_radio(state);
         self.speech_queue.retain(|entry| {
             if !entry.background || state.playback_radio(entry, listening) != radio {
@@ -1365,6 +1382,7 @@ impl Interface {
 
     fn stop_all_background(&mut self) {
         self.speech_queue.retain(|entry| !entry.background);
+        self.pending_reveal = [None, None];
         self.speech.stop_speech();
         self.speech_com2.stop_speech();
     }
@@ -1382,11 +1400,34 @@ impl Interface {
         state.playback_radio(entry, self.listening_radio(state))
     }
 
-    /// Reveal a transcript line on every receiver that can show it.
-    fn reveal_entry(&mut self, state: &State, entry: &Transmission) {
-        if entry.sequence == 0 {
+    fn reveal_mask(&self, state: &State, entry: &Transmission) -> [bool; 2] {
+        [
+            state.transmission_on_radio(entry, openatc_core::state::Radio::Com1),
+            state.transmission_on_radio(entry, openatc_core::state::Radio::Com2),
+        ]
+    }
+
+    fn apply_reveal(&mut self, sequence: u32, mask: [bool; 2]) {
+        if sequence == 0 {
             return;
         }
+        for (index, reveal) in mask.into_iter().enumerate() {
+            if reveal {
+                self.revealed[index].insert(sequence);
+            }
+        }
+    }
+
+    /// Reveal a line that will not be spoken.
+    fn reveal_now(&mut self, state: &State, entry: &Transmission) {
+        let mask = self.reveal_mask(state, entry);
+        self.apply_reveal(entry.sequence, mask);
+    }
+
+    /// Reveal a pending line once its audio has actually started. If the
+    /// speech job failed or finished before a tick observed it, reveal then
+    /// so the text is not lost.
+    fn resolve_reveals(&mut self) {
         for (index, radio) in [
             openatc_core::state::Radio::Com1,
             openatc_core::state::Radio::Com2,
@@ -1394,10 +1435,23 @@ impl Interface {
         .into_iter()
         .enumerate()
         {
-            if state.transmission_on_radio(entry, radio) {
-                self.revealed_sequence[index] = self.revealed_sequence[index].max(entry.sequence);
+            let (started, busy) = if radio == openatc_core::state::Radio::Com2 {
+                (self.speech_com2.started(), self.speech_com2.busy())
+            } else {
+                (self.speech.started(), self.speech.busy())
+            };
+            if !started && busy {
+                continue;
+            }
+            if let Some((sequence, mask)) = self.pending_reveal[index].take() {
+                self.apply_reveal(sequence, mask);
             }
         }
+    }
+
+    fn clear_pending_reveal(&mut self, radio: openatc_core::state::Radio) {
+        let index = usize::from(radio == openatc_core::state::Radio::Com2);
+        self.pending_reveal[index] = None;
     }
 
     pub(crate) fn select_radio(&mut self, radio: openatc_core::state::Radio) {
@@ -1456,7 +1510,13 @@ impl Interface {
             self.settings.controller_volume
         };
         let state = self.engine.state();
-        self.reveal_entry(&state, entry);
+        if entry.sequence != 0 {
+            let index = usize::from(radio == openatc_core::state::Radio::Com2);
+            if let Some((sequence, mask)) = self.pending_reveal[index].take() {
+                self.apply_reveal(sequence, mask);
+            }
+            self.pending_reveal[index] = Some((entry.sequence, self.reveal_mask(&state, entry)));
+        }
         let endpoint = self.engine.endpoint();
         let output = if radio == openatc_core::state::Radio::Com2 {
             &mut self.speech_com2
@@ -1507,6 +1567,15 @@ impl Interface {
             self.pending_window_bounds = self.settings.window_bounds;
             self.settings_loaded = true;
             self.last_speech_sequence = state.transcript.last().map_or(0, |entry| entry.sequence);
+            self.revealed = [
+                std::collections::BTreeSet::new(),
+                std::collections::BTreeSet::new(),
+            ];
+            for entry in &state.transcript {
+                self.revealed[0].insert(entry.sequence);
+                self.revealed[1].insert(entry.sequence);
+            }
+            self.pending_reveal = [None, None];
         }
         if self.settings_loaded && self.settings.simulator_root.is_empty() {
             self.settings.simulator_root = self.engine.settings().simulator_root;
@@ -1534,6 +1603,7 @@ impl Interface {
         self.update_local_airport(&state);
         self.update_arrival(&state, now);
         self.update_speech(&state);
+        self.resolve_reveals();
         if self.settings.copilot_replies
             && !self.auto_reply_pending
             && !self.radio_audio_busy(state.control_radio, &state)
@@ -1784,6 +1854,7 @@ impl Interface {
                 || self.atis_radio != radio
                 || station.is_none_or(|s| s.airport != self.atis_airport))
         {
+            self.clear_pending_reveal(self.atis_radio);
             if self.atis_radio == openatc_core::state::Radio::Com2 {
                 self.speech_com2.stop_speech();
             } else {
@@ -2099,6 +2170,7 @@ impl Interface {
         self.speech.stop_speech();
         self.speech_com2.stop_speech();
         self.speech_queue.clear();
+        self.pending_reveal = [None, None];
         self.ptt_armed = false;
         self.pending_clearance = None;
         self.requested_debug_jump = None;
@@ -2415,6 +2487,7 @@ impl Interface {
         self.speech.stop_speech();
         self.speech_com2.stop_speech();
         self.speech_queue.clear();
+        self.pending_reveal = [None, None];
         self.auto_reply_pending = false;
         self.copilot_reply_prepared = false;
         self.last_copilot_reply_sequence = self.engine.state().next_sequence.saturating_sub(1);
@@ -2920,13 +2993,15 @@ mod radio_playback_tests {
             "text": "Cleared for takeoff."
         }))
         .expect("transmission");
-        interface.reveal_entry(&state, &entry);
-        assert_eq!(interface.revealed_sequence, [9, 9]);
+        interface.reveal_now(&state, &entry);
+        assert!(interface.revealed[0].contains(&9));
+        assert!(interface.revealed[1].contains(&9));
 
         let mut one = Interface::new("http://127.0.0.1:1");
         state.telemetry.com2_khz = Some(118_200);
-        one.reveal_entry(&state, &entry);
-        assert_eq!(one.revealed_sequence, [9, 0]);
+        one.reveal_now(&state, &entry);
+        assert!(one.revealed[0].contains(&9));
+        assert!(one.revealed[1].is_empty());
     }
 
     #[test]

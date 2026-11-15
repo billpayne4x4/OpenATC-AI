@@ -193,6 +193,7 @@ pub struct Speech {
     capture_handle: *mut MaStream,
     capture_ud: *mut c_void,
     playing: Arc<AtomicBool>,
+    started: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
     busy_job: Arc<AtomicBool>,
     jobs: Mutex<Vec<std::thread::JoinHandle<()>>>,
@@ -236,6 +237,7 @@ impl Speech {
             capture_handle: std::ptr::null_mut(),
             capture_ud: std::ptr::null_mut(),
             playing: Arc::new(AtomicBool::new(false)),
+            started: Arc::new(AtomicBool::new(false)),
             cancelled: Arc::new(AtomicBool::new(false)),
             busy_job: Arc::new(AtomicBool::new(false)),
             jobs: Mutex::new(Vec::new()),
@@ -325,6 +327,12 @@ impl Speech {
     #[must_use]
     pub fn busy(&self) -> bool {
         self.busy_job.load(Ordering::SeqCst) || self.playing.load(Ordering::SeqCst)
+    }
+
+    /// Whether the current speech job has reached playback.
+    #[must_use]
+    pub fn started(&self) -> bool {
+        self.started.load(Ordering::SeqCst)
     }
 
     /// Whether a capture is running for transcription.
@@ -750,15 +758,18 @@ impl Speech {
         }
         self.cancelled.store(false, Ordering::SeqCst);
         self.busy_job.store(true, Ordering::SeqCst);
+        self.started.store(false, Ordering::SeqCst);
         let context = self.context as usize;
         let output = self.output_key.clone();
         let cancelled = self.cancelled.clone();
         let busy = self.busy_job.clone();
         let playing = self.playing.clone();
+        let started = self.started.clone();
         let status = self.status.clone();
         let gain = self.effective_gain(volume);
         self.track_job(std::thread::spawn(move || {
             playing.store(true, Ordering::SeqCst);
+            started.store(true, Ordering::SeqCst);
             let result = play_frames(
                 context as *mut MaContext,
                 &output,
@@ -771,6 +782,7 @@ impl Speech {
             {
                 *status = format!("Callout output failed: {error}");
             }
+            started.store(false, Ordering::SeqCst);
             playing.store(false, Ordering::SeqCst);
             busy.store(false, Ordering::SeqCst);
         }));
@@ -855,9 +867,11 @@ impl Speech {
         self.cancelled.store(false, Ordering::SeqCst);
         let cancelled = self.cancelled.clone();
         self.busy_job.store(true, Ordering::SeqCst);
+        self.started.store(false, Ordering::SeqCst);
         let context = self.context as usize;
         let output_key = self.output_key.clone();
         let playing = self.playing.clone();
+        let started = self.started.clone();
         let status = self.status.clone();
         let busy = self.busy_job.clone();
         let gain = self.pending_volume;
@@ -870,6 +884,7 @@ impl Speech {
                 &output_key,
                 gain,
                 &cancelled,
+                &started,
             );
             if let Ok(mut slot) = status.lock() {
                 if result.is_ok() {
@@ -878,6 +893,7 @@ impl Speech {
                     error.clone_into(&mut slot);
                 }
             }
+            started.store(false, Ordering::SeqCst);
             playing.store(false, Ordering::SeqCst);
             busy.store(false, Ordering::SeqCst);
         });
@@ -1033,6 +1049,7 @@ fn synthesize_and_play(
     output_key: &str,
     volume: f32,
     cancelled: &AtomicBool,
+    started: &AtomicBool,
 ) -> Result<(), String> {
     const FAILED: &str = "Speech synthesis failed. Check engine TTS settings.";
     let bytes = openatc_http::post_wav_cancelled(
@@ -1059,6 +1076,7 @@ fn synthesize_and_play(
             }
         }
     }
+    started.store(true, Ordering::SeqCst);
     play_frames(context, output_key, &frames, volume, cancelled)
 }
 
@@ -1143,6 +1161,14 @@ fn play_frames(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn started_reports_playback_state() {
+        let speech = Speech::new();
+        assert!(!speech.started());
+        speech.started.store(true, Ordering::SeqCst);
+        assert!(speech.started());
+    }
 
     #[test]
     fn wave_layout_matches_encoder() {

@@ -475,7 +475,7 @@ Routine automatic ATC transmissions wait while the radio is occupied. Copilot re
 **ATC Auto Reply** handles the pending response once, including a traffic in sight reply when a traffic call is active. It does not generate permission for unrelated movement. Quick buttons are filtered by tuned service, flight phase and applicable state; completed start-up/pushback permissions and duplicate readback actions are not intended to clutter the list. Every quick request, including crew requests, comes from `intents.toml`.
 
 - The debug Map offers **Flight path**, showing the engine’s expanded route and installed SID/STAR fixes.
-- **Copy ATC conversation** copies only the selected radio’s transcript, stopping at the last line that has been spoken, and includes a `Conversation: COM1/COM2` header. The full all-radios export remains available for diagnostics. The ATC page reveals each line when its speech starts, so the log follows the voice instead of showing the whole exchange at once.
+- **Copy ATC conversation** copies only the selected radio’s transcript, stopping at the last line that has been spoken, and includes a `Conversation: COM1/COM2` header. The full all-radios export remains available for diagnostics. The ATC page reveals each line when its audio playback begins, so the log follows the voice instead of showing the whole exchange at once.
 - Hover waypoints for altitude/flight-level and speed limits.
 - A filed connection into the STAR’s initial fix stays continuous; genuinely unresolved vectors or curves retain dashed connectors.
 - These are schematic rather than direct clearances.

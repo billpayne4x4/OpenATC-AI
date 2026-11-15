@@ -550,12 +550,19 @@ fn transcript_visible(
     }
 }
 
-fn revealed_through(interface: &Interface, scope: TranscriptScope) -> u32 {
+fn revealed_for(
+    interface: &Interface,
+    scope: TranscriptScope,
+) -> Option<&std::collections::BTreeSet<u32>> {
     match scope {
-        TranscriptScope::Radio(openatc_core::state::Radio::Com1) => interface.revealed_sequence[0],
-        TranscriptScope::Radio(openatc_core::state::Radio::Com2) => interface.revealed_sequence[1],
-        TranscriptScope::Crew(_) => u32::MAX,
+        TranscriptScope::Radio(openatc_core::state::Radio::Com1) => Some(&interface.revealed[0]),
+        TranscriptScope::Radio(openatc_core::state::Radio::Com2) => Some(&interface.revealed[1]),
+        TranscriptScope::Crew(_) => None,
     }
+}
+
+fn transcript_revealed(interface: &Interface, scope: TranscriptScope, sequence: u32) -> bool {
+    revealed_for(interface, scope).is_none_or(|revealed| revealed.contains(&sequence))
 }
 
 fn transcript_view(
@@ -584,15 +591,34 @@ fn transcript_view(
             ui.text_colored(widgets::accent(ui), "Ready when you are");
             ui.text_wrapped("Set up your flight plan, then request clearance. Available requests follow your flight stage.");
         }
+        // Offline or before the engine connects there is no speech queue, so
+        // the stored transcript is shown whole.
+        let revealed = interface
+            .engine
+            .connected()
+            .then(|| revealed_for(interface, scope))
+            .flatten()
+            .cloned();
+        let mut last_visible = 0;
         for entry in state
             .transcript
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
-                transcript_visible(state, &state.transcript, index, scope, &state.plan.callsign)
-                    .then_some(entry)
+                (revealed
+                    .as_ref()
+                    .is_none_or(|revealed| revealed.contains(&entry.sequence))
+                    && transcript_visible(
+                        state,
+                        &state.transcript,
+                        index,
+                        scope,
+                        &state.plan.callsign,
+                    ))
+                .then_some(entry)
             })
         {
+            last_visible = entry.sequence;
             let _identifier = ui.push_id(entry.sequence.to_string());
             let airport = if interface.local_airport.icao.is_empty() { &interface.airport } else { &interface.local_airport };
             let tuned = state
@@ -618,7 +644,7 @@ fn transcript_view(
         for notice in &interface.local_notices {
             transcript_line(ui, "INFO", &notice.text, widgets::warning(ui), scale, false, false);
         }
-        let sequence = state.transcript.last().map_or(0, |e| e.sequence);
+        let sequence = last_visible;
         if resized || sequence != interface.last_transcript_sequence {
             if interface.transcript_follow_latest || interface.last_transcript_sequence == 0 {
                 ui.set_scroll_here_y_with_ratio(1.0);
@@ -980,12 +1006,16 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     if interface.settings.dev_mode {
         ui.new_line();
         if ui.button("Copy ATC conversation") {
-            let revealed =
-                revealed_through(interface, TranscriptScope::Radio(interface.active_radio));
+            let revealed = interface
+                .engine
+                .connected()
+                .then(|| revealed_for(interface, TranscriptScope::Radio(interface.active_radio)))
+                .flatten()
+                .cloned();
             let mut text = crate::debug::conversation(
                 &interface.engine.state(),
                 Some(interface.active_radio),
-                revealed,
+                revealed.as_ref(),
             );
             let _ = writeln!(text, "Callouts: {}", interface.callout_status);
             let _ = writeln!(
@@ -3754,27 +3784,28 @@ mod tests {
     }
 
     #[test]
-    fn a_radio_page_stops_at_its_revealed_sequence() {
+    fn a_radio_page_reveals_only_spoken_lines() {
         let mut interface = Interface::new("http://127.0.0.1:1");
-        interface.revealed_sequence = [3, 7];
-        assert_eq!(
-            super::revealed_through(
-                &interface,
-                super::TranscriptScope::Radio(openatc_core::state::Radio::Com1)
-            ),
-            3
-        );
-        assert_eq!(
-            super::revealed_through(
-                &interface,
-                super::TranscriptScope::Radio(openatc_core::state::Radio::Com2)
-            ),
-            7
-        );
-        assert_eq!(
-            super::revealed_through(&interface, super::TranscriptScope::Crew("COPILOT")),
+        interface.revealed[0].insert(3);
+        interface.revealed[1].extend([2, 7]);
+        let com1 = super::TranscriptScope::Radio(openatc_core::state::Radio::Com1);
+        let com2 = super::TranscriptScope::Radio(openatc_core::state::Radio::Com2);
+        assert!(super::transcript_revealed(&interface, com1, 3));
+        assert!(!super::transcript_revealed(&interface, com1, 4));
+        assert!(super::transcript_revealed(&interface, com2, 2));
+        assert!(super::transcript_revealed(&interface, com2, 7));
+        assert!(!super::transcript_revealed(&interface, com2, 5));
+        assert!(super::transcript_revealed(
+            &interface,
+            super::TranscriptScope::Crew("COPILOT"),
             u32::MAX
+        ));
+        interface.revealed[0].insert(6);
+        assert!(
+            super::transcript_revealed(&interface, com1, 6),
+            "a later line can be revealed without exposing the gap"
         );
+        assert!(!super::transcript_revealed(&interface, com1, 4));
     }
 
     #[test]
