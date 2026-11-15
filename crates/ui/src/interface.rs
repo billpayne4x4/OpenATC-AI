@@ -349,6 +349,8 @@ pub struct Interface {
     pub(crate) transcript_layout: Option<([f32; 2], bool)>,
     /// Last transcript sequence queued for speech.
     pub last_speech_sequence: u32,
+    /// Last transcript sequence revealed on COM1 and COM2.
+    pub(crate) revealed_sequence: [u32; 2],
     /// Last handoff sequence already applied to the radio.
     last_handoff_tuned: u32,
     /// Pending speech entries.
@@ -579,6 +581,7 @@ impl Interface {
             transcript_follow_latest: true,
             transcript_layout: None,
             last_speech_sequence: 0,
+            revealed_sequence: [0, 0],
             last_handoff_tuned: 0,
             speech_queue: std::collections::VecDeque::new(),
             window_offset: [0.0, 0.0],
@@ -1379,6 +1382,24 @@ impl Interface {
         state.playback_radio(entry, self.listening_radio(state))
     }
 
+    /// Reveal a transcript line on every receiver that can show it.
+    fn reveal_entry(&mut self, state: &State, entry: &Transmission) {
+        if entry.sequence == 0 {
+            return;
+        }
+        for (index, radio) in [
+            openatc_core::state::Radio::Com1,
+            openatc_core::state::Radio::Com2,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            if state.transmission_on_radio(entry, radio) {
+                self.revealed_sequence[index] = self.revealed_sequence[index].max(entry.sequence);
+            }
+        }
+    }
+
     pub(crate) fn select_radio(&mut self, radio: openatc_core::state::Radio) {
         self.active_radio = radio;
         self.engine
@@ -1434,6 +1455,8 @@ impl Interface {
         } else {
             self.settings.controller_volume
         };
+        let state = self.engine.state();
+        self.reveal_entry(&state, entry);
         let endpoint = self.engine.endpoint();
         let output = if radio == openatc_core::state::Radio::Com2 {
             &mut self.speech_com2
@@ -2881,6 +2904,29 @@ mod radio_playback_tests {
         state.telemetry.com1_khz = 121_900;
         state.telemetry.com2_khz = Some(118_700);
         assert!(entry_frequency_tuned(&tower_call(), &state));
+    }
+
+    #[test]
+    fn a_spoken_line_is_revealed_on_the_receivers_that_can_show_it() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.telemetry.com2_khz = Some(118_700);
+        let entry: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "frequency": 118700,
+            "sequence": 9,
+            "speaker": "ATC",
+            "text": "Cleared for takeoff."
+        }))
+        .expect("transmission");
+        interface.reveal_entry(&state, &entry);
+        assert_eq!(interface.revealed_sequence, [9, 9]);
+
+        let mut one = Interface::new("http://127.0.0.1:1");
+        state.telemetry.com2_khz = Some(118_200);
+        one.reveal_entry(&state, &entry);
+        assert_eq!(one.revealed_sequence, [9, 0]);
     }
 
     #[test]

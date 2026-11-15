@@ -550,6 +550,14 @@ fn transcript_visible(
     }
 }
 
+fn revealed_through(interface: &Interface, scope: TranscriptScope) -> u32 {
+    match scope {
+        TranscriptScope::Radio(openatc_core::state::Radio::Com1) => interface.revealed_sequence[0],
+        TranscriptScope::Radio(openatc_core::state::Radio::Com2) => interface.revealed_sequence[1],
+        TranscriptScope::Crew(_) => u32::MAX,
+    }
+}
+
 fn transcript_view(
     ui: &imgui::Ui,
     interface: &mut Interface,
@@ -972,8 +980,13 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     if interface.settings.dev_mode {
         ui.new_line();
         if ui.button("Copy ATC conversation") {
-            let mut text =
-                crate::debug::conversation(&interface.engine.state(), Some(interface.active_radio));
+            let revealed =
+                revealed_through(interface, TranscriptScope::Radio(interface.active_radio));
+            let mut text = crate::debug::conversation(
+                &interface.engine.state(),
+                Some(interface.active_radio),
+                revealed,
+            );
             let _ = writeln!(text, "Callouts: {}", interface.callout_status);
             let _ = writeln!(
                 text,
@@ -3695,8 +3708,8 @@ mod tests {
         }))
         .expect("transmission");
         let transcript = [tower, ground, foreign];
-        let com1 = super::TranscriptScope::Radio(Radio::Com1);
-        let com2 = super::TranscriptScope::Radio(Radio::Com2);
+        let com1 = super::TranscriptScope::Radio(openatc_core::state::Radio::Com1);
+        let com2 = super::TranscriptScope::Radio(openatc_core::state::Radio::Com2);
         assert!(
             super::transcript_visible(&state, &transcript, 0, com1, "C-GTLT"),
             "the tag keeps the Tower call in the COM1 history"
@@ -3737,6 +3750,30 @@ mod tests {
         assert!(
             super::transcript_visible(&state, &transcript, 0, com1, "C-GTLT"),
             "both receivers hear Tower when both are on the frequency"
+        );
+    }
+
+    #[test]
+    fn a_radio_page_stops_at_its_revealed_sequence() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.revealed_sequence = [3, 7];
+        assert_eq!(
+            super::revealed_through(
+                &interface,
+                super::TranscriptScope::Radio(openatc_core::state::Radio::Com1)
+            ),
+            3
+        );
+        assert_eq!(
+            super::revealed_through(
+                &interface,
+                super::TranscriptScope::Radio(openatc_core::state::Radio::Com2)
+            ),
+            7
+        );
+        assert_eq!(
+            super::revealed_through(&interface, super::TranscriptScope::Crew("COPILOT")),
+            u32::MAX
         );
     }
 

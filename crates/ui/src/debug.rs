@@ -3,7 +3,11 @@ use openatc_core::state::State;
 use std::fmt::Write as _;
 use std::io::Write;
 
-pub fn conversation(state: &State, radio: Option<openatc_core::state::Radio>) -> String {
+pub fn conversation(
+    state: &State,
+    radio: Option<openatc_core::state::Radio>,
+    revealed: u32,
+) -> String {
     let mut text = format!(
         "OpenATC conversation\nFlight: {} -> {} | callsign {} | runway {}\nPhase: {:?} | COM1 {:.3} MHz | radio power {}\nPosition: {:.6}, {:.6} | on ground {} | ground speed {:.2} kt | AGL {:.1} ft\n\n",
         state.plan.departure,
@@ -84,6 +88,9 @@ pub fn conversation(state: &State, radio: Option<openatc_core::state::Radio>) ->
             ))
     );
     for entry in &state.transcript {
+        if entry.sequence > revealed {
+            continue;
+        }
         if radio.is_some_and(|radio| !state.transmission_on_radio(entry, radio)) {
             continue;
         }
@@ -148,7 +155,7 @@ mod tests {
         state.plan.destination = "VLVT".into();
         state.telemetry.com1_khz = 118_100;
         state.transcript.push(serde_json::from_value(serde_json::json!({"speaker":"ATC", "position":"VIENTIANE Tower", "text":"Your flight departs YMLT."})).unwrap());
-        let text = conversation(&state, None);
+        let text = conversation(&state, None, u32::MAX);
         assert!(text.contains("YMLT -> VLVT"));
         assert!(text.contains("118.100 MHz"));
         assert!(text.contains("ATC - VIENTIANE Tower: Your flight departs YMLT."));
@@ -193,7 +200,7 @@ mod tests {
             }))
             .unwrap(),
         );
-        let com1 = conversation(&state, Some(openatc_core::state::Radio::Com1));
+        let com1 = conversation(&state, Some(openatc_core::state::Radio::Com1), u32::MAX);
         assert!(com1.contains("Ground one."));
         assert!(!com1.contains("Tower two."));
         assert!(
@@ -204,17 +211,47 @@ mod tests {
             !com1.contains("Tower four."),
             "a COM2 call does not leak onto COM1"
         );
-        let com2 = conversation(&state, Some(openatc_core::state::Radio::Com2));
+        let com2 = conversation(&state, Some(openatc_core::state::Radio::Com2), u32::MAX);
         assert!(com2.contains("Tower two."));
         assert!(
             com2.contains("Tower three."),
             "frequency decides which receiver hears the call"
         );
         assert!(com2.contains("Tower four."));
-        let all = conversation(&state, None);
+        let all = conversation(&state, None, u32::MAX);
         assert!(all.contains("Ground one."));
         assert!(all.contains("Tower two."));
         assert!(all.contains("Tower three."));
         assert!(all.contains("Tower four."));
+    }
+
+    #[test]
+    fn conversation_copy_stops_at_the_revealed_sequence() {
+        let mut state = State::default();
+        state.telemetry.com1_khz = 121_900;
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "radio": "com1",
+                "sequence": 1,
+                "text": "Heard already."
+            }))
+            .unwrap(),
+        );
+        state.transcript.push(
+            serde_json::from_value(serde_json::json!({
+                "speaker": "ATC",
+                "radio": "com1",
+                "sequence": 2,
+                "text": "Still queued."
+            }))
+            .unwrap(),
+        );
+        let text = conversation(&state, Some(openatc_core::state::Radio::Com1), 1);
+        assert!(text.contains("Heard already."));
+        assert!(
+            !text.contains("Still queued."),
+            "a line that has not been spoken is not in the copy"
+        );
     }
 }
