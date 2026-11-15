@@ -439,7 +439,7 @@ fn radio_footer(ui: &imgui::Ui, interface: &mut Interface) {
 
 fn radio_assistance(ui: &imgui::Ui, settings: &mut openatc_settings::Settings) -> bool {
     let mut changed = ui.checkbox(
-        "Copilot reads back clearances",
+        "Copilot reads back clearances and traffic",
         &mut settings.copilot_replies,
     );
     let mut tunes = settings.copilot_tunes || settings.auto_tune_handoff;
@@ -951,7 +951,7 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         }
     }
     if ui.is_item_hovered_with_flags(imgui::ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
-        ui.tooltip_text("Reply to your IFR, taxi, start-up or pushback approval. Background traffic and messages with no pending instruction do not need an automatic reply.");
+        ui.tooltip_text("Reply to your IFR, taxi, start-up, pushback approval or traffic call. Messages with no pending instruction do not need an automatic reply.");
     }
     ui.same_line();
     let speech_status = interface.speech.status();

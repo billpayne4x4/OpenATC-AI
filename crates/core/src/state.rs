@@ -139,6 +139,12 @@ pub struct TrafficCall {
     pub frequency_khz: i32,
     /// The pilot has reported this traffic in sight.
     pub sighted: bool,
+    /// The pilot has answered this call, sighted or negative contact.
+    #[serde(default)]
+    pub replied: bool,
+    /// Transcript sequence of the advisory.
+    #[serde(default)]
+    pub sequence: u32,
 }
 
 /// Live simulator telemetry snapshot.

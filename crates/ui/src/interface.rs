@@ -310,6 +310,8 @@ pub struct Interface {
     pub copilot_prepared_sequence: u32,
     /// Last controller instruction submitted for an automatic readback.
     pub last_copilot_reply_sequence: u32,
+    /// Last traffic advisory answered automatically by the copilot.
+    last_traffic_reply_sequence: u32,
     /// Last handoff followed by an automatic controller check-in.
     pub last_checkin_sequence: u32,
     /// Push-to-talk armed.
@@ -554,6 +556,7 @@ impl Interface {
             copilot_reply_prepared: false,
             copilot_prepared_sequence: 0,
             last_copilot_reply_sequence: 0,
+            last_traffic_reply_sequence: 0,
             last_checkin_sequence: 0,
             ptt_armed: false,
             ptt_role: String::new(),
@@ -1128,6 +1131,7 @@ impl Interface {
                     self.copilot_reply_prepared = false;
                     self.auto_reply_pending = false;
                     self.last_copilot_reply_sequence = 0;
+                    self.last_traffic_reply_sequence = 0;
                 }
                 if !reply.success {
                     self.auto_reply_pending = false;
@@ -1273,6 +1277,8 @@ impl Interface {
                         self.auto_reply_pending = false;
                         if entry.information_only {
                             self.last_copilot_reply_sequence = 0;
+                            self.last_traffic_reply_sequence = 0;
+                            self.last_traffic_reply_sequence = 0;
                         }
                     }
                 }
@@ -1463,6 +1469,21 @@ impl Interface {
         self.update_local_airport(&state);
         self.update_arrival(&state, now);
         self.update_speech(&state);
+        if self.settings.copilot_replies
+            && !self.auto_reply_pending
+            && !self.radio_audio_busy(state.control_radio)
+            && let Some(call) = state.traffic_call.as_ref()
+            && !call.replied
+            && !call.sighted
+            && Some(call.frequency_khz) == state.control_frequency()
+            && call.sequence > self.last_traffic_reply_sequence
+        {
+            self.last_traffic_reply_sequence = call.sequence;
+            self.auto_reply_pending = true;
+            self.auto_reply_radio = state.control_radio;
+            self.engine
+                .post("/request/copilot-prepare", serde_json::json!({}));
+        }
         if self.settings.copilot_replies
             && !self.auto_reply_pending
             && !self.radio_audio_busy(state.control_radio)

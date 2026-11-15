@@ -351,7 +351,7 @@ pub struct Settings {
     pub ai_enabled: bool,
     /// Allow validated AI paraphrases of controller templates.
     pub llm_phrase_variety: bool,
-    /// Copilot voices clearance readbacks.
+    /// Copilot voices clearance readbacks and traffic sighting reports.
     pub copilot_replies: bool,
     /// Copilot writes assigned COM1 frequencies.
     pub copilot_tunes: bool,

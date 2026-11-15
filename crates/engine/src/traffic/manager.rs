@@ -2005,6 +2005,8 @@ impl TrafficManager {
                     "runwayEnd": aircraft.runway_end,
                     "holdDistance": aircraft.hold_distance,
                     "hold": aircraft.hold,
+                    "speedKnots": aircraft.speed * 1.943_844,
+                    "verticalFpm": aircraft.motion.vertical_fpm(),
                     "cleared": aircraft.cleared,
                     "takeoff": aircraft.takeoff,
                     "awaiting": aircraft.awaiting_clearance,
@@ -6195,9 +6197,6 @@ mod phase_tests {
     #[test]
     fn taxi_and_landing_lights_follow_the_phase() {
         for stage in [
-            Stage::Pushback,
-            Stage::TaxiOut,
-            Stage::TaxiIn,
             Stage::Crossing,
             Stage::Takeoff,
             Stage::Climb,
@@ -6208,6 +6207,9 @@ mod phase_tests {
             assert!(stage.landing_lights(), "{stage:?} needs the light channel");
         }
         for stage in [
+            Stage::Pushback,
+            Stage::TaxiOut,
+            Stage::TaxiIn,
             Stage::LineUp,
             Stage::Cruise,
             Stage::Parked,
@@ -6356,6 +6358,8 @@ mod phase_tests {
         // line-up grant.
         let mut cleared = false;
         let mut rolling = false;
+        let mut climb_speed_max = 0.0_f64;
+        let mut climb_vertical_max = 0.0_f64;
         let mut blocked: Option<String> = None;
         let mut peak = 0;
         let mut settled = 0;
@@ -6373,6 +6377,12 @@ mod phase_tests {
                 .aircraft
                 .iter()
                 .any(|aircraft| aircraft.kind == AmbientKind::Departure && aircraft.takeoff);
+            for aircraft in &manager.aircraft {
+                if aircraft.kind == AmbientKind::Departure && aircraft.stage() == Stage::Climb {
+                    climb_speed_max = climb_speed_max.max(aircraft.speed);
+                    climb_vertical_max = climb_vertical_max.max(aircraft.motion.vertical_fpm());
+                }
+            }
             if blocked.is_none()
                 && let Some(aircraft) = manager
                     .aircraft
@@ -6441,6 +6451,16 @@ mod phase_tests {
         assert!(
             rolling,
             "no ambient departure started its takeoff roll: {}",
+            manager.last_error
+        );
+        assert!(
+            climb_speed_max > 40.0,
+            "ambient departures never accelerated in the climb: {}",
+            manager.last_error
+        );
+        assert!(
+            climb_vertical_max > 500.0,
+            "ambient departures never established a climb: {}",
             manager.last_error
         );
         assert!(

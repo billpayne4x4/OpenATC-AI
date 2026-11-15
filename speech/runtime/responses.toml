@@ -17253,6 +17253,10 @@ say = ["{callsign}, {clock} o'clock traffic no factor.", "{callsign}, traffic pr
 slots = ["callsign", "clock"]
 say = ["{callsign}, {clock} o'clock traffic no longer observed.", "{callsign}, traffic previously at {clock} o'clock, no longer observed."]
 
+[pilot_traffic_in_sight]
+slots = ["callsign"]
+say = ["Traffic in sight, {callsign}."]
+
 [traffic_sighting_acknowledged]
 slots = ["callsign"]
 say = ["{callsign}, roger.", "{callsign}, roger, traffic in sight."]

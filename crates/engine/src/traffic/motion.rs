@@ -36,6 +36,11 @@ impl MotionController {
         self.speed
     }
 
+    /// Current vertical speed in feet per minute.
+    pub(crate) fn vertical_fpm(&self) -> f64 {
+        self.vertical_fpm
+    }
+
     /// Move the vertical speed toward a target at a fixed rate in feet per minute per second.
     pub(crate) fn update_vertical(&mut self, dt: f64, target: f64, rate: f64) -> f64 {
         if dt <= 0.0 || !dt.is_finite() || !target.is_finite() {

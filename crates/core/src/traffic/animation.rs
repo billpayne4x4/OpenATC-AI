@@ -535,19 +535,23 @@ mod tests {
     #[test]
     fn taxi_and_landing_lights_follow_the_stage() {
         for stage in [
-            Stage::Pushback,
-            Stage::TaxiOut,
             Stage::Crossing,
             Stage::Takeoff,
             Stage::Climb,
             Stage::Approach,
             Stage::MissedApproach,
             Stage::Rollout,
-            Stage::TaxiIn,
         ] {
             assert!(stage.landing_lights(), "{stage:?} needs the light channel");
         }
-        for stage in [Stage::Parked, Stage::LineUp, Stage::Turnaround] {
+        for stage in [
+            Stage::Pushback,
+            Stage::TaxiOut,
+            Stage::TaxiIn,
+            Stage::LineUp,
+            Stage::Parked,
+            Stage::Turnaround,
+        ] {
             assert!(!stage.landing_lights(), "{stage:?} must keep it off");
         }
         let handling = builtin().unwrap();
@@ -564,9 +568,9 @@ mod tests {
         let mut animation = Animation::default();
         animation.advance(input(Stage::TaxiOut), jet, 0.5);
         assert!(animation.taxi_lights);
-        assert!(animation.landing_lights);
+        assert!(!animation.landing_lights);
         assert_eq!(animation.channel(Channel::TaxiLights), 1.0);
-        assert_eq!(animation.channel(Channel::LandingLights), 1.0);
+        assert_eq!(animation.channel(Channel::LandingLights), 0.0);
         animation.advance(input(Stage::LineUp), jet, 0.5);
         assert!(!animation.taxi_lights);
         assert!(!animation.landing_lights);

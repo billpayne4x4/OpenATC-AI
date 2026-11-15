@@ -538,9 +538,25 @@ pub fn prepare(state: &State, request: &mut Request) {
     }
 }
 
-/// Construct the pilot's complete reply from the active clearance, never background traffic.
+/// Construct the pilot's reply from the active clearance or traffic call.
 #[must_use]
 pub fn auto_reply(state: &State) -> Option<Request> {
+    if !state.telemetry.on_ground
+        && let Some(call) = state.traffic_call.as_ref()
+        && !call.replied
+        && !call.sighted
+        && Some(call.frequency_khz) == state.control_frequency()
+    {
+        return Some(Request {
+            intent: "traffic_sighted".into(),
+            text: crate::dialogue::say(
+                "pilot_traffic_in_sight",
+                &[("callsign", state.plan.callsign.clone())],
+            ),
+            radio: state.control_radio,
+            ..Default::default()
+        });
+    }
     if state.taxi_clearance.stage() == crate::state::SurfaceStage::CrossingComplete
         && state.telemetry.on_ground
     {
@@ -1091,5 +1107,26 @@ mod tests {
         };
         prepare(&state, &mut taxi);
         assert_eq!(taxi.intent, "conversation", "taxi is not a readback");
+    }
+
+    #[test]
+    fn an_active_traffic_call_gets_an_automatic_sighting_reply() {
+        let mut state = State::default();
+        state.plan.callsign = "BIL1975".into();
+        state.telemetry.on_ground = false;
+        state.telemetry.com1_khz = 125_000;
+        state.control_radio = crate::state::Radio::Com1;
+        state.traffic_call = Some(crate::state::TrafficCall {
+            target_id: 24,
+            frequency_khz: 125_000,
+            sighted: false,
+            replied: false,
+            sequence: 1,
+        });
+        let reply = auto_reply(&state).expect("automatic traffic sighting");
+        assert_eq!(reply.intent, "traffic_sighted");
+        assert!(reply.text.contains("BIL1975"));
+        state.traffic_call.as_mut().unwrap().replied = true;
+        assert!(auto_reply(&state).is_none());
     }
 }

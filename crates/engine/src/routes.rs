@@ -1262,13 +1262,15 @@ fn named_auto_reply(state: &crate::EngineState) -> Option<Request> {
         session.plan.destination = name.to_owned();
     }
     openatc_core::readback::auto_reply(&session).map(|mut request| {
-        request.radio = session
-            .transcript
-            .iter()
-            .rev()
-            .find(|entry| entry.is_controller_instruction())
-            .and_then(|entry| entry.radio)
-            .unwrap_or_default();
+        if request.intent != "traffic_sighted" {
+            request.radio = session
+                .transcript
+                .iter()
+                .rev()
+                .find(|entry| entry.is_controller_instruction())
+                .and_then(|entry| entry.radio)
+                .unwrap_or_default();
+        }
         request
     })
 }

@@ -469,7 +469,7 @@ The source's complete HTTP flight replay includes a COM2 flight from clearance t
 
 Routine automatic ATC transmissions wait while the radio is occupied. Copilot readbacks play before their effects are committed; automatic tuning waits for the exchange, and check-in waits for telemetry to confirm the new frequency. An urgent short-final go-around preempts normal playback. These are separate steps so a fast model response cannot skip a pilot transmission.
 
-**ATC Auto Reply** handles the pending response once. It does not generate permission for unrelated movement or answer background traffic. Quick buttons are filtered by tuned service, flight phase and applicable state; completed start-up/pushback permissions and duplicate readback actions are not intended to clutter the list. Every quick request, including crew requests, comes from `intents.toml`.
+**ATC Auto Reply** handles the pending response once, including a traffic in sight reply when a traffic call is active. It does not generate permission for unrelated movement. Quick buttons are filtered by tuned service, flight phase and applicable state; completed start-up/pushback permissions and duplicate readback actions are not intended to clutter the list. Every quick request, including crew requests, comes from `intents.toml`.
 
 - The debug Map offers **Flight path**, showing the engine’s expanded route and installed SID/STAR fixes.
 - Hover waypoints for altitude/flight-level and speed limits.
@@ -648,13 +648,12 @@ and [X-Plane 12.4.1 TCAS II guidance](https://developer.x-plane.com/article/tcas
 
 Generated CSL models animate through every movement phase. Gear, flaps, spoilers,
 steering, wheel rotation, pitch and bank follow the current stage; beacon and
-navigation lights run with the engines. Taxiing traffic shows its taxi light, and
-landing lights follow the Airservices runway-safety guidance: on for runway
-crossings, approach, landing and takeoff, off for line-up. The Bluebell models wire
-the nose taxi light and the wing landing lights to the same dataref, so their
-landing lights also illuminate while taxiing; a model with a separate taxi-light
-channel uses that instead. That crossing practice is national guidance rather than
-an ICAO-wide rule. See
+navigation lights run with the engines. Taxiing traffic uses the separate taxi-light
+channel where the model provides it. The Bluebell models have no separate taxi-light
+animation, so they show no taxi light. Landing lights follow the Airservices
+runway-safety guidance: on for runway crossings, approach, landing and takeoff, off
+for line-up and ordinary taxiing. That crossing practice is national guidance rather
+than an ICAO-wide rule. See
 [CSL animation and runway lights](#csl-animation-and-runway-lights) for the phase
 table, configuration keys and the speed used by generated runway crossings.
 
@@ -802,10 +801,10 @@ flight acceptance remain open.
 - **Traffic advisories** use observed aircraft position, heading, speed and altitude to predict encounters up to two minutes ahead.
 - A call requires a closing conflict inside 3 NM terminal or 5 NM en-route and 1,000 ft vertically; traffic behind, diverging or already separated is not called.
 - Calls include clock position, range, direction, type when known and indicated altitude.
-- One call per aircraft per 30 seconds and at least 15 seconds between routine calls.
+- One routine call per aircraft per encounter; a new safety alert can follow if it becomes urgent. At least 15 seconds separate routine calls to different aircraft.
 - Several encounters are tracked independently, so an earlier call cannot hide a more urgent aircraft.
 - Urgent alerts can interrupt ordinary speech while preserving the outstanding clearance; routine calls wait their turn.
-- The ATC page offers **Traffic in sight** and **Negative contact** for the most recently called traffic on the tuned frequency.
+- The ATC page offers **Traffic in sight** and **Negative contact** for the most recently called traffic on the tuned frequency. With **Copilot reads back clearances and traffic** enabled, the copilot answers **Traffic in sight** once and the advisory stops.
 - Follow-up calls distinguish traffic that is no longer a factor from traffic that is no longer observed.
 - Reporting traffic in sight does not grant visual separation or acknowledge another clearance.
 - Trigger thresholds are conservative simulator heuristics, not a complete regional separation system or a replacement for TCAS.
@@ -1389,7 +1388,7 @@ turn rate, vertical speed and engine state, so models look consistent in each ph
 | Stage | Visual state |
 | --- | --- |
 | Parked, turnaround | Engines off, beacon and navigation lights off, gear down, flaps and spoilers retract |
-| Pushback, taxi-out, taxi-in | Engines running, beacon, navigation and taxi lights on, gear down, flaps up; Bluebell models also show their landing lights because the taxi light shares that channel; steering and wheels follow ground speed |
+| Pushback, taxi-out, taxi-in | Engines running, beacon and navigation lights on, gear down, flaps up, taxi light where the model supports it, landing lights off; steering and wheels follow ground speed |
 | Line-up | Takeoff flaps and strobes; landing lights stay off |
 | Takeoff, initial climb | Landing lights on, rotation pitch, gear and flaps retract after rotation |
 | Cruise | Gear and flaps up, landing lights off, beacon, navigation and strobes on |
@@ -1411,8 +1410,8 @@ Landing lights follow the Airservices Australia runway-safety guidance:
 - line up and wait: all exterior lights except landing lights;
 - take-off: landing lights on when take-off clearance is received;
 - approach and landing: landing lights on;
-- ordinary taxiing: taxi light on with the beacon and navigation lights; landing
-  lights off where the model has a separate taxi-light channel.
+- ordinary taxiing: landing lights off, beacon and navigation lights on, taxi light
+  where the model supports it.
 
 The crossing practice is national guidance, not an ICAO rule, and it is not universal.
 The FAA AIM recommends all exterior lights when taxiing on or across a runway at the

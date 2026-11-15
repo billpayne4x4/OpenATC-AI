@@ -85,8 +85,16 @@ fn refresh(state: &mut EngineState, station: &Station) -> Vec<(TrafficTarget, En
         let current = candidates
             .iter()
             .find(|(t, _)| t.id == *id && t.callsign == active.identity);
-        if current.is_some_and(|(_, e)| e.warrants_advisory(enroute)) {
-            active.clear_since = None;
+        if let Some((_, e)) = current {
+            if e.warrants_advisory(enroute) {
+                active.clear_since = None;
+            } else {
+                active.clear_since.get_or_insert_with(Instant::now);
+            }
+            active.clock = e.clock;
+            if !e.urgent() {
+                active.urgent = false;
+            }
         } else {
             active.clear_since.get_or_insert_with(Instant::now);
         }
@@ -196,6 +204,12 @@ fn announce(state: &mut EngineState, station: &Station, target: &TrafficTarget, 
         target_id: target.id,
         frequency_khz: station.khz,
         sighted: active.sighted,
+        replied: false,
+        sequence: state
+            .session
+            .transcript
+            .last()
+            .map_or(0, |entry| entry.sequence),
     });
     state.traffic.last_advisory = Some(Instant::now());
 }
@@ -252,11 +266,11 @@ pub(super) fn tick(state: &mut EngineState, station: &Station) -> bool {
         .iter()
         .filter(|(t, e)| {
             e.warrants_advisory(enroute)
-                && state.traffic.advisories.get(&t.id).is_some_and(|a| {
-                    (e.urgent() && !a.urgent)
-                        || a.at.is_none()
-                        || (!a.sighted && a.at.is_some_and(|at| at.elapsed().as_secs() >= 30))
-                })
+                && state
+                    .traffic
+                    .advisories
+                    .get(&t.id)
+                    .is_some_and(|a| (e.urgent() && !a.urgent) || a.at.is_none())
         })
         .min_by(|a, b| {
             b.1.urgent()
@@ -351,6 +365,7 @@ pub(crate) fn reply(state: &mut EngineState, station: &Station, request: &Reques
     let key = if accepted {
         let sighted = request.intent == "traffic_sighted";
         state.session.traffic_call.as_mut().unwrap().sighted = sighted;
+        state.session.traffic_call.as_mut().unwrap().replied = true;
         state
             .traffic
             .advisories
@@ -482,6 +497,17 @@ mod tests {
         (s, station)
     }
     #[test]
+    fn reported_traffic_is_not_repeated_on_a_timer() {
+        let (mut s, station) = setup();
+        assert!(tick(&mut s, &station));
+        let calls = s.session.transcript.len();
+        s.traffic.last_advisory = Some(Instant::now() - Duration::from_secs(31));
+        assert!(!tick(&mut s, &station));
+        assert_eq!(s.session.transcript.len(), calls);
+        assert!(!s.traffic.advisories[&24].sighted);
+    }
+
+    #[test]
     fn advisory_report_and_clear_scan_complete_without_radio_calls() {
         let (mut s, station) = setup();
         s.settings.hear_traffic_radio = false;
@@ -503,6 +529,11 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(reply(&mut s, &station, &r), Some(true));
+        assert!(s.session.traffic_call.as_ref().unwrap().replied);
+        assert!(
+            openatc_core::readback::auto_reply(&s.session).is_none(),
+            "a negative contact must not be replaced by an automatic sighting"
+        );
         s.session.telemetry.traffic.as_mut().unwrap()[0].altitude_feet = 10000.0;
         assert!(!tick(&mut s, &station));
         s.traffic.advisories.get_mut(&24).unwrap().clear_since =

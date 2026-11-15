@@ -52,22 +52,20 @@ pub enum Stage {
     Turnaround,
 }
 impl Stage {
-    /// Exterior lights are on for pushback, taxi, runway crossing, takeoff,
-    /// approach and landing. Line-up keeps them off so aircraft on final are not
-    /// dazzled.
+    /// Landing lights are used for runway crossing, takeoff, approach and
+    /// landing. Taxiing uses the separate taxi-light channel where the model
+    /// supports it. Line-up keeps the landing lights off so aircraft on final
+    /// are not dazzled.
     #[must_use]
     pub fn landing_lights(self) -> bool {
         matches!(
             self,
-            Self::Pushback
-                | Self::TaxiOut
-                | Self::Crossing
+            Self::Crossing
                 | Self::Takeoff
                 | Self::Climb
                 | Self::Approach
                 | Self::MissedApproach
                 | Self::Rollout
-                | Self::TaxiIn
         )
     }
 
