@@ -1001,8 +1001,17 @@ fn descend(state: &mut EngineState, station: &Station) -> bool {
         }
         preceding_floor = preceding_floor.max(fix.minimum_altitude_feet.unwrap_or(i32::MIN));
     }
+    let selected = match selected {
+        Some(selected) => Some(selected),
+        None if state.arrival_profile.is_none()
+            && (!state.session.plan.star.is_empty() || !state.session.plan.approach.is_empty()) =>
+        {
+            late_descent(&state.session.plan.fixes, next, t, c.altitude_feet)
+        }
+        None => return destination_descent(state, station),
+    };
     let Some((fix, target)) = selected else {
-        return destination_descent(state, station);
+        return false;
     };
     let slots = [
         ("callsign", state.session.plan.callsign.clone()),
@@ -1051,6 +1060,35 @@ fn descend(state: &mut EngineState, station: &Station) -> bool {
         )),
     );
     true
+}
+
+/// A late descent from the published route when the destination profile is
+/// unavailable. The constraint is a ceiling; the pilot still needs to fly it.
+fn late_descent<'a>(
+    fixes: &'a [openatc_core::state::RouteFix],
+    next: usize,
+    telemetry: &openatc_core::state::Telemetry,
+    assigned: i32,
+) -> Option<(&'a openatc_core::state::RouteFix, i32)> {
+    let mut point = [telemetry.latitude, telemetry.longitude];
+    let mut distance = 0.0;
+    for fix in fixes.iter().skip(next) {
+        let target = [fix.latitude, fix.longitude];
+        distance += openatc_core::arrival::distance_nm(point, target);
+        point = target;
+        let Some(limit) = fix.maximum_altitude_feet else {
+            continue;
+        };
+        if limit < assigned
+            && telemetry.altitude_feet > f64::from(limit) + 200.0
+            && fix.minimum_altitude_feet.unwrap_or(i32::MIN) <= limit
+            && distance > 0.5
+            && distance <= 30.0
+        {
+            return Some((fix, limit));
+        }
+    }
+    None
 }
 
 fn destination_descent(state: &mut EngineState, station: &Station) -> bool {
@@ -1171,6 +1209,37 @@ fn destination_descent(state: &mut EngineState, station: &Station) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_missing_profile_uses_the_published_route_ceiling() {
+        let fixes = vec![
+            openatc_core::state::RouteFix {
+                identifier: "TAXAT".into(),
+                latitude: 0.0,
+                longitude: 0.05,
+                maximum_altitude_feet: Some(9000),
+                ..Default::default()
+            },
+            openatc_core::state::RouteFix {
+                identifier: "SOSIJ".into(),
+                latitude: 0.0,
+                longitude: 0.15,
+                maximum_altitude_feet: Some(3000),
+                ..Default::default()
+            },
+        ];
+        let telemetry = openatc_core::state::Telemetry {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude_feet: 9000.0,
+            ..Default::default()
+        };
+        let selected = super::late_descent(&fixes, 0, &telemetry, 9000);
+        assert_eq!(
+            selected.map(|(fix, altitude)| (fix.identifier.as_str(), altitude)),
+            Some(("SOSIJ", 3000))
+        );
+    }
+
     fn speed_fixture() -> (EngineState, Station) {
         let mut state = crate::test_state();
         state

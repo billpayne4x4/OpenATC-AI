@@ -160,6 +160,12 @@ pub struct EngineState {
     pub arrival_airport: Option<Airport>,
     /// Published approach entry levels used to plan descent before final approach.
     pub arrival_profile: Option<openatc_core::arrival::ArrivalAirport>,
+    /// True while a background arrival load is in flight.
+    pub arrival_loading: bool,
+    /// Last arrival load attempt, for retry pacing.
+    pub arrival_load_at: Option<std::time::Instant>,
+    /// Last arrival load error, for diagnostics.
+    pub arrival_load_error: String,
     /// Reviewed nominal descent margins loaded when a flight plan is submitted.
     pub vertical_policy: instructions::VerticalPolicy,
     /// Installed minimum off-route grid for vectoring checks.
@@ -691,6 +697,9 @@ async fn main() {
         airports: Default::default(),
         arrival_airport: None,
         arrival_profile: None,
+        arrival_loading: false,
+        arrival_load_at: None,
+        arrival_load_error: String::new(),
         vertical_policy: Default::default(),
         mora: Default::default(),
         controllers,
@@ -859,6 +868,9 @@ fn test_state() -> EngineState {
         airports: Default::default(),
         arrival_airport: None,
         arrival_profile: None,
+        arrival_loading: false,
+        arrival_load_at: None,
+        arrival_load_error: String::new(),
         vertical_policy: Default::default(),
         mora: Default::default(),
         controllers: Controllers::default(),

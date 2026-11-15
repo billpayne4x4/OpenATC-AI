@@ -1263,9 +1263,22 @@ fn request_grid(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
 }
 
 /// ATC page: clearance card, transcript, talk box and request grid.
+fn other_radio_banner(ui: &imgui::Ui, interface: &Interface, state: &State) {
+    if let Some(entry) = interface.other_radio_instruction(state) {
+        let other = if interface.active_radio == openatc_core::state::Radio::Com2 {
+            "COM1"
+        } else {
+            "COM2"
+        };
+        let _color = ui.push_style_color(imgui::StyleColor::Text, widgets::warning(ui));
+        ui.text_wrapped(format!("{other}: {}", entry.text));
+    }
+}
+
 pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let scale = ui.current_font_size() / 18.0;
     if interface.compact {
+        other_radio_banner(ui, interface, state);
         transcript_view(
             ui,
             interface,
@@ -1280,6 +1293,7 @@ pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         draw_request_editor(ui, interface, state);
         return;
     }
+    other_radio_banner(ui, interface, state);
     let available_height = ui.content_region_avail()[1];
     let transcript_height = (available_height * interface.transcript_fraction)
         .min((available_height - 215.0 * scale).max(80.0 * scale))

@@ -67,6 +67,30 @@ fn sync_arrival_airport(state: &mut crate::EngineState) {
     state.session.taxi_clearance = Default::default();
 }
 
+/// The engine, not a UI page, owns the destination profile used for descent.
+fn arrival_load_needed(state: &crate::EngineState) -> bool {
+    let destination = state.session.plan.destination.trim();
+    if destination.len() != 4
+        || state.settings.simulator_root.is_empty()
+        || state.arrival_loading
+        || state
+            .arrival_load_at
+            .is_some_and(|at| at.elapsed() < std::time::Duration::from_secs(30))
+    {
+        return false;
+    }
+    if state
+        .arrival_airport
+        .as_ref()
+        .is_some_and(|airport| airport.icao == destination)
+        && state.arrival_profile.is_some()
+    {
+        return false;
+    }
+    state.session.has_departed
+        || !matches!(state.session.phase, openatc_core::state::PhaseCode::Parked)
+}
+
 pub async fn post_telemetry(
     AxumState(state): AxumState<Shared>,
     Json(telemetry): Json<Telemetry>,
@@ -91,6 +115,59 @@ pub async fn post_telemetry(
             if let Ok(models) = installer.models(&root, &workers).await {
                 let mut state = shared.write().await;
                 state.ambient.set_models(models);
+            }
+        });
+    }
+    let arrival_job = {
+        let mut state = shared.write().await;
+        if arrival_load_needed(&state) {
+            state.arrival_loading = true;
+            state.arrival_load_at = Some(std::time::Instant::now());
+            Some((
+                state.settings.simulator_root.clone(),
+                state.session.plan.destination.clone(),
+                state.workers.clone(),
+                state.session_generation,
+            ))
+        } else {
+            None
+        }
+    };
+    if let Some((root, icao, workers, generation)) = arrival_job {
+        let shared = shared.clone();
+        let label = icao.clone();
+        tokio::spawn(async move {
+            let loaded = workers
+                .run(move || {
+                    let exists = |path: &str| std::path::Path::new(path).is_file();
+                    let read = |path: &str| {
+                        std::fs::read_to_string(path).map_err(|error| error.to_string())
+                    };
+                    let airport = openatc_core::airport::load_airport_from_simulator(
+                        &root, &icao, &exists, &read,
+                    )?;
+                    let profile = openatc_core::arrival::ArrivalAirport::load(&root, airport)
+                        .map_err(|error| error.to_string())?;
+                    Ok::<_, String>(profile)
+                })
+                .await;
+            let mut state = shared.write().await;
+            if state.session_generation != generation
+                || state.session.plan.destination.trim() != label
+            {
+                return;
+            }
+            state.arrival_loading = false;
+            match loaded {
+                Ok(Ok(profile)) => {
+                    state.arrival_airport = Some(profile.airport.clone());
+                    state.arrival_profile = Some(profile);
+                    state.arrival_load_error.clear();
+                }
+                Ok(Err(error)) | Err(error) => {
+                    eprintln!("OpenATC engine: arrival load failed for {label}: {error}");
+                    state.arrival_load_error = error;
+                }
             }
         });
     }
@@ -577,6 +654,30 @@ mod tests {
             ground_speed_knots: 3.0,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn the_destination_profile_is_loaded_from_the_flight_not_the_page() {
+        let mut state = fixture();
+        state.session.plan.destination = "YSSY".into();
+        state.settings.simulator_root = "test".into();
+        assert!(super::arrival_load_needed(&state));
+        state.session.phase = openatc_core::state::PhaseCode::Parked;
+        state.session.has_departed = false;
+        assert!(!super::arrival_load_needed(&state));
+        state.session.phase = openatc_core::state::PhaseCode::Cruise;
+        state.arrival_loading = true;
+        assert!(!super::arrival_load_needed(&state));
+        state.arrival_loading = false;
+        state.arrival_load_at = Some(std::time::Instant::now());
+        assert!(!super::arrival_load_needed(&state));
+        state.arrival_load_at = None;
+        state.arrival_airport = Some(Airport {
+            icao: "YSSY".into(),
+            ..Default::default()
+        });
+        state.arrival_profile = Some(Default::default());
+        assert!(!super::arrival_load_needed(&state));
     }
 
     #[tokio::test]

@@ -1400,6 +1400,38 @@ impl Interface {
         state.playback_radio(entry, self.listening_radio(state))
     }
 
+    /// Latest revealed controller instruction on the radio not being viewed.
+    pub(crate) fn other_radio_instruction<'a>(&self, state: &'a State) -> Option<&'a Transmission> {
+        let other = match self.active_radio {
+            openatc_core::state::Radio::Com1 => openatc_core::state::Radio::Com2,
+            openatc_core::state::Radio::Com2 => openatc_core::state::Radio::Com1,
+        };
+        let active_index = usize::from(self.active_radio == openatc_core::state::Radio::Com2);
+        let other_index = usize::from(other == openatc_core::state::Radio::Com2);
+        let latest_active = state
+            .transcript
+            .iter()
+            .rev()
+            .filter(|entry| {
+                entry.speaker == "ATC"
+                    && !entry.background
+                    && !entry.information_only
+                    && state.transmission_on_radio(entry, self.active_radio)
+                    && self.revealed[active_index].contains(&entry.sequence)
+            })
+            .map(|entry| entry.sequence)
+            .next()
+            .unwrap_or(0);
+        state.transcript.iter().rev().find(|entry| {
+            entry.speaker == "ATC"
+                && !entry.background
+                && !entry.information_only
+                && state.transmission_on_radio(entry, other)
+                && self.revealed[other_index].contains(&entry.sequence)
+                && entry.sequence > latest_active
+        })
+    }
+
     fn reveal_mask(&self, state: &State, entry: &Transmission) -> [bool; 2] {
         [
             state.transmission_on_radio(entry, openatc_core::state::Radio::Com1),
@@ -1606,22 +1638,21 @@ impl Interface {
         self.resolve_reveals();
         if self.settings.copilot_replies
             && !self.auto_reply_pending
-            && !self.radio_audio_busy(state.control_radio, &state)
             && let Some(call) = state.traffic_call.as_ref()
             && !call.replied
             && !call.sighted
-            && Some(call.frequency_khz) == state.control_frequency()
+            && let Some(traffic_radio) = state.receiving_radio(call.frequency_khz)
             && call.sequence > self.last_traffic_reply_sequence
+            && !self.radio_audio_busy(traffic_radio, &state)
         {
             self.last_traffic_reply_sequence = call.sequence;
             self.auto_reply_pending = true;
-            self.auto_reply_radio = state.control_radio;
+            self.auto_reply_radio = traffic_radio;
             self.engine
                 .post("/request/copilot-prepare", serde_json::json!({}));
         }
         if self.settings.copilot_replies
             && !self.auto_reply_pending
-            && !self.radio_audio_busy(state.control_radio, &state)
             && let Some(last) = state
                 .transcript
                 .iter()
@@ -1631,16 +1662,24 @@ impl Interface {
                 || state.taxi_clearance.stage()
                     == openatc_core::state::SurfaceStage::CrossingComplete)
             && openatc_core::readback::auto_reply(&state).is_some()
+            && let Some(instruction_radio) = last
+                .radio
+                .or_else(|| {
+                    last.frequency
+                        .and_then(|frequency| state.receiving_radio(frequency))
+                })
+                .or(Some(state.control_radio))
+            && !self.radio_audio_busy(instruction_radio, &state)
         {
             self.last_copilot_reply_sequence = last.sequence;
             self.auto_reply_pending = true;
-            self.auto_reply_radio = state.control_radio;
+            self.auto_reply_radio = instruction_radio;
             self.engine
                 .post("/request/copilot-prepare", serde_json::json!({}));
         }
         if self.copilot_reply_prepared
             && self.last_speech_sequence >= self.copilot_prepared_sequence
-            && !self.radio_audio_busy(state.control_radio, &state)
+            && !self.radio_audio_busy(self.auto_reply_radio, &state)
         {
             self.copilot_reply_prepared = false;
             self.engine.post(
@@ -2019,9 +2058,9 @@ impl Interface {
         }
         self.page = page;
         if page == 0 {
-            self.select_radio(openatc_core::state::Radio::Com1);
+            self.active_radio = openatc_core::state::Radio::Com1;
         } else if page == 10 {
-            self.select_radio(openatc_core::state::Radio::Com2);
+            self.active_radio = openatc_core::state::Radio::Com2;
         }
         self.expand();
     }
@@ -3002,6 +3041,50 @@ mod radio_playback_tests {
         one.reveal_now(&state, &entry);
         assert!(one.revealed[0].contains(&9));
         assert!(one.revealed[1].is_empty());
+    }
+
+    #[test]
+    fn the_other_radio_shows_its_latest_spoken_instruction() {
+        let mut interface = Interface::new("http://127.0.0.1:1");
+        interface.active_radio = openatc_core::state::Radio::Com2;
+        let mut state = State::default();
+        state.telemetry.com1_khz = 118_200;
+        state.telemetry.com2_khz = Some(118_700);
+        let com1: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "frequency": 118200,
+            "sequence": 5,
+            "speaker": "ATC",
+            "text": "Descend and maintain 3000 feet."
+        }))
+        .expect("com1 entry");
+        let com2: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com2",
+            "frequency": 118700,
+            "sequence": 6,
+            "speaker": "ATC",
+            "text": "Runway 35, line up and wait."
+        }))
+        .expect("com2 entry");
+        state.transcript = vec![com1, com2];
+        interface.revealed[0].insert(5);
+        interface.revealed[1].insert(6);
+        assert!(
+            interface.other_radio_instruction(&state).is_none(),
+            "the newer COM2 instruction keeps the banner clear"
+        );
+        state.transcript.pop();
+        assert_eq!(
+            interface
+                .other_radio_instruction(&state)
+                .map(|entry| entry.sequence),
+            Some(5)
+        );
+        interface.revealed[0].clear();
+        assert!(
+            interface.other_radio_instruction(&state).is_none(),
+            "an unheard instruction stays off the banner"
+        );
     }
 
     #[test]

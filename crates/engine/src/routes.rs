@@ -428,6 +428,9 @@ fn reset_flight(state: &mut crate::EngineState) {
     state.airport = None;
     state.arrival_airport = None;
     state.arrival_profile = None;
+    state.arrival_loading = false;
+    state.arrival_load_at = None;
+    state.arrival_load_error.clear();
     state.session.next_sequence = next_sequence;
     state.session.telemetry = telemetry;
     state.session.demo = demo;
@@ -576,6 +579,9 @@ pub async fn post_plan(
     state.session.plan = plan;
     state.arrival_airport = arrival_airport;
     state.arrival_profile = profile;
+    state.arrival_loading = false;
+    state.arrival_load_at = None;
+    state.arrival_load_error.clear();
     state.vertical_policy = policy;
     state.mora = mora;
     let generated = state.settings.generated_traffic;
