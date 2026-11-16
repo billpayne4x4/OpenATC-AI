@@ -420,6 +420,76 @@ fn registry(path: &Path, runtime: &Runtime) -> Result<Value, String> {
     }
     Ok(json!({"root":root,"models":models}))
 }
+/// Desktop tray selection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrayMode {
+    /// Start only when a desktop session is available.
+    Auto,
+    /// Start even if detection fails.
+    On,
+    /// Never start.
+    Off,
+}
+
+fn desktop_session() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let display = std::env::var("DISPLAY").is_ok_and(|value| !value.is_empty())
+            || std::env::var("WAYLAND_DISPLAY").is_ok_and(|value| !value.is_empty());
+        let bus = std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_some();
+        display && bus
+    }
+    #[cfg(windows)]
+    {
+        std::env::var("SESSIONNAME").is_ok_and(|name| !name.eq_ignore_ascii_case("Services"))
+    }
+    #[cfg(target_os = "macos")]
+    {
+        true
+    }
+}
+
+fn start_tray(
+    mode: TrayMode,
+    helper: Option<&std::path::Path>,
+    origin: &str,
+) -> Option<tokio::process::Child> {
+    if mode == TrayMode::Off {
+        return None;
+    }
+    if mode == TrayMode::Auto && !desktop_session() {
+        eprintln!("Tray disabled: no desktop session");
+        return None;
+    }
+    let path = helper.map(std::path::Path::to_path_buf).unwrap_or_else(|| {
+        std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|parent| parent.join("openatc-tray")))
+            .unwrap_or_else(|| std::path::PathBuf::from("openatc-tray"))
+    });
+    if !path.is_file() {
+        eprintln!("Tray helper not found: {}", path.display());
+        return None;
+    }
+    let mut command = tokio::process::Command::new(&path);
+    command
+        .arg("--url")
+        .arg(origin)
+        .arg("--release")
+        .arg(crate::VERSION)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::inherit())
+        .kill_on_drop(true);
+    match command.spawn() {
+        Ok(child) => Some(child),
+        Err(error) => {
+            eprintln!("Tray helper failed: {error}");
+            None
+        }
+    }
+}
+
 fn router(dashboard: Arc<Dashboard>) -> Router {
     Router::new()
         .route("/",get(||async{Html(include_str!("../../../server/settings.html"))}))
@@ -488,6 +558,8 @@ pub async fn run(
     browser: bool,
     port: u16,
     host: std::net::IpAddr,
+    tray: TrayMode,
+    tray_helper: Option<std::path::PathBuf>,
 ) -> Result<(), String> {
     let path = if path.is_absolute() {
         path.to_owned()
@@ -607,6 +679,7 @@ pub async fn run(
         if browser {
             setup::open_browser(&origin);
         }
+        let _tray = start_tray(tray, tray_helper.as_deref(), &origin);
         let result = axum::serve(listener, router(d.clone()))
             .with_graceful_shutdown(async {
                 let _ = tokio::signal::ctrl_c().await;

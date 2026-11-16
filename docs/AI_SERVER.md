@@ -53,6 +53,18 @@ The management listener defaults to loopback and has no login. An explicit LAN b
 
 The manager owns its inference child and speech sidecar. Reopening the same configuration reuses its existing dashboard without changing its model load state. Unloading or applying settings stops the owned process tree; an unrelated service on the requested inference port is reported rather than terminated. A manager pipe closure also terminates its managed child tree. Desktop process shutdown and Windows/macOS native behavior still need their platform checks.
 
+### Desktop tray
+
+`tray-enabled` in `server.toml` accepts `auto`, `on` or `off`. `auto` starts the tray only when a Linux desktop session and session bus are available. Headless services log `Tray disabled: no desktop session` and continue. The tray shows the manager status and release, opens the dashboard, restarts the server, or performs Hara-kiri. The web dashboard remains the fallback and the full control surface.
+
+```sh
+openatc-ai --tray                 # force an attempt
+openatc-ai --no-tray              # force it off
+openatc-ai --tray-helper PATH     # use a specific helper
+```
+
+The Linux helper uses StatusNotifierItem/AppIndicator. GNOME needs its AppIndicator extension; KDE supports it directly. Windows and macOS currently use the web dashboard; their native tray backends are not part of this build.
+
 The dashboard header shows the manager release and the running inference child version, so an old child is visible without reading the logs. **Hara-kiri** stops the managed inference and speech processes and then exits the manager; the dashboard closes. It asks for confirmation first. Restart the service with systemd or the packaged launcher. The web page remains the control surface on headless servers.
 
 ## Compute flags

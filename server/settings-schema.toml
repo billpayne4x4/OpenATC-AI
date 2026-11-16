@@ -185,6 +185,15 @@ default = "127.0.0.1"
 help = "Use 0.0.0.0 only when clients need LAN access."
 [[field]]
 section = "Connection"
+advanced = true
+key = "tray-enabled"
+label = "Desktop tray icon"
+kind = "string"
+default = "auto"
+choices = ["auto", "on", "off"]
+help = "auto starts the tray only when a desktop session is available."
+[[field]]
+section = "Connection"
 advanced = false
 key = "port"
 label = "Port"

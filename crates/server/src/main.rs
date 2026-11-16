@@ -67,6 +67,18 @@ struct Args {
     dashboard_host: std::net::IpAddr,
     #[arg(long, hide = true)]
     managed_events: bool,
+    /// Show the desktop tray icon even when no session is detected.
+    #[arg(long)]
+    tray: bool,
+    /// Disable the desktop tray icon.
+    #[arg(long)]
+    no_tray: bool,
+    /// Tray helper executable override.
+    #[arg(long)]
+    tray_helper: Option<PathBuf>,
+    /// Desktop tray mode: auto, on or off.
+    #[arg(long, default_value = "auto")]
+    tray_enabled: String,
     /// Leave the language model unloaded until enabled in the dashboard.
     #[arg(long)]
     disable_llm: bool,
@@ -1098,6 +1110,22 @@ async fn main() -> Result<(), String> {
         .clone()
         .unwrap_or_else(|| openatc_platform::state_dir().join("server.toml"));
     if initial.configure_web || initial.manage_web {
+        let tray = if initial.no_tray {
+            manager::TrayMode::Off
+        } else if initial.tray {
+            manager::TrayMode::On
+        } else {
+            match initial.tray_enabled.as_str() {
+                "on" => manager::TrayMode::On,
+                "off" => manager::TrayMode::Off,
+                "auto" => manager::TrayMode::Auto,
+                other => {
+                    return Err(format!(
+                        "unknown --tray-enabled {other:?}; want auto, on or off"
+                    ));
+                }
+            }
+        };
         return manager::run(
             &config_path,
             initial.settings_schema.as_deref(),
@@ -1105,6 +1133,8 @@ async fn main() -> Result<(), String> {
             !initial.no_browser,
             initial.dashboard_port,
             initial.dashboard_host,
+            tray,
+            initial.tray_helper.clone(),
         )
         .await;
     }

@@ -321,7 +321,7 @@ jobs:
         if: runner.os == 'Windows' && matrix.product == 'ai-server'
         shell: pwsh
         run: |
-          cargo build --locked --release -p openatc-ai -p openatc-stt --features openatc-ai/vulkan,openatc-stt/vulkan,openatc-ai/tts-cuda
+          cargo build --locked --release -p openatc-ai -p openatc-stt -p openatc-tray --features openatc-ai/vulkan,openatc-stt/vulkan,openatc-ai/tts-cuda
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path $env:OPENATC_VULKAN_LOADER -PathType Leaf)) { throw 'Verified Vulkan x64 loader is missing' }
           Copy-Item $env:OPENATC_VULKAN_LOADER target/release/vulkan-1.dll
@@ -331,7 +331,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Linux AI server and speech sidecar
         if: runner.os == 'Linux' && matrix.product == 'ai-server'
-        run: cargo build --locked --release -p openatc-ai -p openatc-stt --features openatc-ai/vulkan,openatc-stt/vulkan,openatc-ai/tts-cuda
+        run: cargo build --locked --release -p openatc-ai -p openatc-stt -p openatc-tray --features openatc-ai/vulkan,openatc-stt/vulkan,openatc-ai/tts-cuda
       - name: Verify portable Linux speech sidecar
         if: runner.os == 'Linux' && matrix.product == 'ai-server'
         run: |
@@ -343,7 +343,7 @@ jobs:
           fi
       - name: Build macOS AI server and speech sidecar
         if: runner.os == 'macOS' && matrix.product == 'ai-server'
-        run: cargo build --locked --release -p openatc-ai -p openatc-stt --features openatc-ai/tts-coreml,openatc-stt/metal
+        run: cargo build --locked --release -p openatc-ai -p openatc-stt -p openatc-tray --features openatc-ai/tts-coreml,openatc-stt/metal
       - name: Exercise Windows companion engine
         if: runner.os == 'Windows' && matrix.product == 'plugin'
         shell: pwsh

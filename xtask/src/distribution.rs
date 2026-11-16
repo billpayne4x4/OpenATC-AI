@@ -213,14 +213,14 @@ fn espeak_data(release: &Path) -> Result<PathBuf> {
 pub(crate) fn install_ai(destination: &Path) -> Result {
     let release = repo().join("target/release");
     let data = espeak_data(&release)?;
-    for name in ["openatc-ai", "openatc-stt"] {
+    for name in ["openatc-ai", "openatc-stt", "openatc-tray"] {
         let binary = release.join(executable(name));
         if !binary.is_file() {
             return Err(format!("Missing build artifact: {}", binary.display()).into());
         }
     }
     let bin = destination.join("bin");
-    for name in ["openatc-ai", "openatc-stt"] {
+    for name in ["openatc-ai", "openatc-stt", "openatc-tray"] {
         copy(&release.join(executable(name)), &bin.join(executable(name)))?;
     }
     tree(&data, &bin.join("espeak-ng-data"))?;
@@ -284,7 +284,7 @@ pub(crate) fn collect(product: &str, output: &Path) -> Result {
             )?;
         }
         "ai-server" => {
-            for name in ["openatc-ai", "openatc-stt"] {
+            for name in ["openatc-ai", "openatc-stt", "openatc-tray"] {
                 copy(
                     &release.join(executable(name)),
                     &output.join(executable(name)),

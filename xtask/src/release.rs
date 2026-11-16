@@ -396,7 +396,7 @@ pub fn package(product: &str, platform: &str, requested_version: &str) -> Result
     }
     write(&bundle.join("product.txt"), product)?;
     if product == "ai-server" {
-        for name in ["openatc-ai", "openatc-stt"] {
+        for name in ["openatc-ai", "openatc-stt", "openatc-tray"] {
             run(Command::new(
                 bundle
                     .join("bin")
@@ -652,7 +652,7 @@ fn sign_payload(bundle: &Path) -> Result {
 
 #[cfg(target_os = "linux")]
 fn bundle_linux_libraries(bin: &Path) -> Result {
-    for name in ["openatc-ai", "openatc-stt"] {
+    for name in ["openatc-ai", "openatc-stt", "openatc-tray"] {
         let result = Command::new("ldd").arg(bin.join(name)).output()?;
         if !result.status.success() {
             return Err("Cannot inspect AI runtime dependencies".into());
