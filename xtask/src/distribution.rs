@@ -249,6 +249,13 @@ fn shared_libraries(source: &Path, target: &Path) -> Result {
             let library =
                 name.ends_with(".dll") || name.ends_with(".dylib") || name.contains(".so");
             let provider = name.contains("onnxruntime_providers_");
+            if provider && path.is_symlink() && !path.exists() {
+                return Err(format!(
+                    "{} is a dangling link; rebuild so ONNX Runtime downloads its libraries",
+                    path.display()
+                )
+                .into());
+            }
             if path.is_file()
                 && library
                 && !name.contains("openatc_plugin")
@@ -501,6 +508,22 @@ mod tests {
         assert!(target.join("onnxruntime_providers_shared.dll").is_file());
         assert!(!target.join("libserde_derive-1234.so").exists());
         assert!(!target.join("libopenatc_plugin.so").exists());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_provider_links_are_reported() -> Result {
+        let temp = tempfile::tempdir()?;
+        let release = temp.path().join("release");
+        fs::create_dir_all(&release)?;
+        std::os::unix::fs::symlink(
+            release.join("missing.so"),
+            release.join("libonnxruntime_providers_cuda.so"),
+        )?;
+        let target = temp.path().join("bin");
+        fs::create_dir_all(&target)?;
+        assert!(shared_libraries(&release, &target).is_err());
         Ok(())
     }
 

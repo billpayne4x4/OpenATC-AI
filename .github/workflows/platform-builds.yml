@@ -299,6 +299,16 @@ jobs:
                  target/release/.fingerprint/whisper-rs-sys-* target/release/.fingerprint/whisper-rs-* \
                  target/release/deps/*whisper_rs_sys* target/release/deps/*whisper_rs-*
 
+      - name: Refresh ONNX Runtime build
+        if: matrix.product == 'ai-server'
+        shell: bash
+        run: |
+          rm -rf target/release/build/ort-sys-* target/release/.fingerprint/ort-sys-* \
+                 target/release/deps/*ort_sys* \
+                 target/release/libonnxruntime_providers_* \
+                 target/release/deps/libonnxruntime_providers_* \
+                 target/release/examples/libonnxruntime_providers_*
+
       - name: Refresh eSpeak data
         if: matrix.product == 'ai-server'
         run: |
