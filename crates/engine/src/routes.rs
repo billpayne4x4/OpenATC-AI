@@ -20,7 +20,7 @@ use openatc_core::apply::{
 use openatc_core::catalog::render_template;
 use openatc_core::identify::interpret_text;
 use openatc_core::intents::{Realism, discipline_preset};
-use openatc_core::ops::{delivery_preset, parse_voice_pool, validate_flight_plan};
+use openatc_core::ops::{delivery_preset, validate_flight_plan};
 use openatc_core::regions::{region_for, units_for_region};
 use openatc_core::simbrief::parse_simbrief;
 use openatc_core::speech::{PromptContext, SpeechPool, parse_ai_output, sample_slots};
@@ -3179,14 +3179,6 @@ pub async fn post_suggest(
             Json(json!({"transmission": transmission, "effect": effect})).into_response()
         }
         Err(error) => bad_request(error),
-    }
-}
-
-fn chance(settings: &Settings) -> i32 {
-    if settings.congestion == Congestion::Busy {
-        35
-    } else {
-        15
     }
 }
 

@@ -1,5 +1,6 @@
 //! Stand availability can change between a taxi clearance and reaching the gate.
 use crate::EngineState;
+#[cfg(test)]
 use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::{apply::add_transmission, dialogue::say, state::PhaseCode, stations};
 use std::time::{Duration, Instant};

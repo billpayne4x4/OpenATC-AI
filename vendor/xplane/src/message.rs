@@ -113,6 +113,8 @@ impl MessageId {
     }
 }
 
+/// A message sent to or received from X-Plane.
 pub struct Message {
+    /// Message identifier.
     pub id: MessageId,
 }

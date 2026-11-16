@@ -2,6 +2,7 @@
 
 #![allow(clippy::default_trait_access)]
 use crate::EngineState;
+#[cfg(test)]
 use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::{
     airport::{Runway, airport_point},

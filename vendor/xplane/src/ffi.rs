@@ -5,7 +5,7 @@
 //! Foreign function interface utilities
 //!
 
-use std::{ffi::CString, iter, str::Utf8Error, string::FromUtf8Error};
+use std::{ffi::CString, str::Utf8Error, string::FromUtf8Error};
 
 use std::ffi::c_char;
 

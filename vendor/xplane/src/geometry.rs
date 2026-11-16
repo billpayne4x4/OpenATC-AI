@@ -48,15 +48,19 @@ impl<N> Rect<N> {
         (self.left, self.top, self.bottom, self.right)
     }
 
+    /// Sets the top coordinate.
     pub fn set_top(&mut self, top: N) {
         self.top = top;
     }
+    /// Sets the left coordinate.
     pub fn set_left(&mut self, left: N) {
         self.left = left;
     }
+    /// Sets the bottom coordinate.
     pub fn set_bottom(&mut self, bottom: N) {
         self.bottom = bottom;
     }
+    /// Sets the right coordinate.
     pub fn set_right(&mut self, right: N) {
         self.right = right;
     }
@@ -75,15 +79,19 @@ impl<N> Rect<N> {
 }
 
 impl<N: Clone> Rect<N> {
+    /// Returns the top coordinate.
     pub fn top(&self) -> N {
         self.top.clone()
     }
+    /// Returns the bottom coordinate.
     pub fn bottom(&self) -> N {
         self.bottom.clone()
     }
+    /// Returns the left coordinate.
     pub fn left(&self) -> N {
         self.left.clone()
     }
+    /// Returns the right coordinate.
     pub fn right(&self) -> N {
         self.right.clone()
     }
@@ -103,21 +111,26 @@ impl<N> Point<N> {
     pub fn from_xy(x: N, y: N) -> Self {
         Point { x, y }
     }
+    /// Sets the X coordinate.
     pub fn set_x(&mut self, x: N) {
         self.x = x;
     }
+    /// Sets the Y coordinate.
     pub fn set_y(&mut self, y: N) {
         self.y = y;
     }
+    /// Consumes the point and returns its X and Y coordinates.
     pub fn into_xy(self) -> (N, N) {
         (self.x, self.y)
     }
 }
 
 impl<N: Clone> Point<N> {
+    /// Returns the X coordinate.
     pub fn x(&self) -> N {
         self.x.clone()
     }
+    /// Returns the Y coordinate.
     pub fn y(&self) -> N {
         self.y.clone()
     }

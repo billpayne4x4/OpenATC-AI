@@ -1762,7 +1762,6 @@ mod tests {
             super::super::parse_operations(include_str!("../../../../traffic/operations.toml"))
                 .unwrap();
         let handling = animation::builtin().unwrap();
-        let profiles = profiles::Profiles::builtin().unwrap();
         let mora = Default::default();
         let reserved = BTreeSet::new();
         let variation = weather.variation;
@@ -1890,7 +1889,6 @@ mod tests {
             super::super::parse_operations(include_str!("../../../../traffic/operations.toml"))
                 .unwrap();
         let handling = animation::builtin().unwrap();
-        let profiles = profiles::Profiles::builtin().unwrap();
         let mora = Default::default();
         let reserved = BTreeSet::new();
         let mut failures = Vec::new();

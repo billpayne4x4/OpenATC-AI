@@ -12,6 +12,7 @@ use axum::{
     extract::State as AxumState,
     response::{IntoResponse, Response},
 };
+#[cfg(test)]
 use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::{
     apply::add_transmission,
@@ -2880,7 +2881,6 @@ mod conversation_routing_tests {
 
     #[tokio::test]
     async fn ramp_interphone_disconnects_for_actual_taxi_and_flight_not_pushback_permission() {
-        use openatc_core::state::PhaseCode;
         let mut state = crate::test_state();
         state.session.telemetry.position_valid = true;
         state.session.telemetry.on_ground = true;

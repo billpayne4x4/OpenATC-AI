@@ -3063,7 +3063,6 @@ fn entry_waypoint(airport: &Airport, runway: &str, point: Point) -> Option<Waypo
 #[derive(Clone, Debug)]
 pub(crate) struct ArrivalExitPlan {
     pub chosen: openatc_core::airport::ArrivalExit,
-    pub fallback: Option<openatc_core::airport::ArrivalExit>,
 }
 
 /// Shared arrival exit rule for the player and ambient traffic.
@@ -3094,10 +3093,7 @@ pub(crate) fn choose_arrival_exit(
         })
         .filter(|exit| !exit_blocked(airport, exit, targets, self_id));
     let chosen = viable.next()?;
-    Some(ArrivalExitPlan {
-        chosen,
-        fallback: viable.next(),
-    })
+    Some(ArrivalExitPlan { chosen })
 }
 
 /// A stopped aircraft inside the turn-off throat blocks the exit.

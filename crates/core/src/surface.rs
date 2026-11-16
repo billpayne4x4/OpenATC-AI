@@ -10,9 +10,19 @@ pub enum SurfaceError {
     /// No points were supplied.
     Empty,
     /// A sampled point is outside the rendered pavement.
-    OffPavement { east: f64, north: f64 },
+    OffPavement {
+        /// East offset of the rejected sample, in metres.
+        east: f64,
+        /// North offset of the rejected sample, in metres.
+        north: f64,
+    },
     /// A path crosses runway pavement without the matching clearance.
-    UnauthorizedRunway { east: f64, north: f64 },
+    UnauthorizedRunway {
+        /// East offset of the rejected sample, in metres.
+        east: f64,
+        /// North offset of the rejected sample, in metres.
+        north: f64,
+    },
 }
 
 /// A surface path whose samples have all been validated.

@@ -5,6 +5,7 @@ use axum::{
     extract::State as AxumState,
     response::{IntoResponse, Response},
 };
+#[cfg(test)]
 use openatc_core::aircraft::AircraftBehaviour;
 use openatc_core::{
     apply::add_transmission,

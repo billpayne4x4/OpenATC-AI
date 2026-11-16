@@ -355,7 +355,10 @@ mod tests {
         register_handler_ctx.expect().once().return_once_st(
             move |cmd_ref, handler, before, refcon| {
                 assert_eq!(cmd_ref, expected_ptr);
-                assert!(handler == Some(command_handler));
+                assert_eq!(
+                    handler.map(|handler| handler as *const () as usize),
+                    Some(command_handler as *const () as usize)
+                );
                 assert_eq!(before, 1);
                 *refcon_cell_1.borrow_mut() = refcon;
             },
@@ -365,7 +368,10 @@ mod tests {
         unregister_handler_ctx.expect().once().return_once_st(
             move |cmd_ref, handler, before, refcon| {
                 assert_eq!(cmd_ref, expected_ptr);
-                assert!(handler == Some(command_handler));
+                assert_eq!(
+                    handler.map(|handler| handler as *const () as usize),
+                    Some(command_handler as *const () as usize)
+                );
                 assert_eq!(before, 1);
                 assert_eq!(refcon, *refcon_cell_1.borrow());
             },

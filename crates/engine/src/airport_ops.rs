@@ -1,6 +1,7 @@
 //! Airport-local runway, taxi and resource state. Weather and traffic stay outside.
 
 use openatc_core::airport::Airport;
+#[cfg(test)]
 use openatc_core::state::Point;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;

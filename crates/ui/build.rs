@@ -1,3 +1,4 @@
+//! Build stamp for the UI.
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {

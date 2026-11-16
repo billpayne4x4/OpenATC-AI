@@ -1,3 +1,4 @@
+//! Build stamp for the companion engine.
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {

@@ -77,14 +77,6 @@ impl SimpleRng {
         value ^ (value >> 14)
     }
 
-    /// Uniform index below `bound`.
-    fn below(&mut self, bound: usize) -> usize {
-        let bound = bound.max(1);
-        let cap = u32::try_from(bound).unwrap_or(u32::MAX).max(1);
-        let reduced = self.next_u32() % cap;
-        usize::try_from(reduced).unwrap_or(usize::MAX) % bound
-    }
-
     /// Uniform speed in [low, high], swapping reversed bounds.
     /// Resolution is 1/65536, plenty for a voice pace.
     fn pace(&mut self, low: f32, high: f32) -> f32 {

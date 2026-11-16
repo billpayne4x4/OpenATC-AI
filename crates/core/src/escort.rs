@@ -1,4 +1,5 @@
 //! Follow-me movement along an acknowledged surface route.
+#[cfg(test)]
 use crate::aircraft::AircraftBehaviour;
 use crate::state::{PhaseCode, Point, State};
 

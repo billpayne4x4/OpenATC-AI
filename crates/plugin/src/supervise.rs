@@ -331,7 +331,6 @@ fn engine_log_path() -> String {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 mod lifecycle_tests {
     use super::*;
 
@@ -391,6 +390,7 @@ mod lifecycle_tests {
     }
 }
 
+#[cfg(test)]
 mod heartbeat_tests {
     use super::*;
     use std::io::{Read, Write};

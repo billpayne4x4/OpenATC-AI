@@ -561,6 +561,7 @@ fn revealed_for(
     }
 }
 
+#[cfg(test)]
 fn transcript_revealed(interface: &Interface, scope: TranscriptScope, sequence: u32) -> bool {
     revealed_for(interface, scope).is_none_or(|revealed| revealed.contains(&sequence))
 }
@@ -1275,6 +1276,7 @@ fn other_radio_banner(ui: &imgui::Ui, interface: &Interface, state: &State) {
     }
 }
 
+/// Render the ATC page for the selected radio and crew scope.
 pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let scale = ui.current_font_size() / 18.0;
     if interface.compact {
@@ -3726,7 +3728,7 @@ mod tests {
 
     #[test]
     fn a_shared_frequency_appears_on_both_radios() {
-        use openatc_core::state::{Radio, Transmission};
+        use openatc_core::state::Transmission;
         let mut state = State::default();
         state.telemetry.com1_khz = 121_900;
         state.telemetry.com2_khz = Some(118_700);
@@ -4022,7 +4024,7 @@ mod tests {
 
     #[test]
     fn quick_requests_follow_phase_controller_and_combined_duties() {
-        use openatc_core::state::{Clearance, PhaseCode};
+        use openatc_core::state::Clearance;
         use openatc_core::stations::Station;
         let mut state = State::default();
         let delivery = Station {

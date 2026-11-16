@@ -114,9 +114,17 @@ impl AircraftState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HoldReason {
     /// Another aircraft is occupying the path ahead.
-    Traffic { blocker: u32, gap_meters: u32 },
+    Traffic {
+        /// Aircraft ahead on the path.
+        blocker: u32,
+        /// Separation to maintain, in metres.
+        gap_meters: u32,
+    },
     /// A runway crossing or line-up needs a controller clearance.
-    Runway { runway: String },
+    Runway {
+        /// Runway awaiting clearance.
+        runway: String,
+    },
     /// The aircraft is waiting for a radio clearance.
     Clearance,
     /// The destination stand is occupied.
@@ -129,9 +137,17 @@ pub enum SurfaceDecision {
     /// Proceed along the assigned route.
     Continue,
     /// Follow the aircraft ahead at a safe gap.
-    Follow { leader: u32, gap_meters: u32 },
+    Follow {
+        /// Aircraft to follow.
+        leader: u32,
+        /// Separation to maintain, in metres.
+        gap_meters: u32,
+    },
     /// Hold for traffic or a runway clearance.
-    Hold { reason: HoldReason },
+    Hold {
+        /// Why the aircraft is holding.
+        reason: HoldReason,
+    },
 }
 
 /// Events that can be delivered to an aircraft.
