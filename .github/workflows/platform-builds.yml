@@ -340,15 +340,6 @@ jobs:
             echo 'openatc-stt contains AVX-512 instructions and will not run on most CPUs'
             exit 1
           fi
-      - name: Inspect ONNX Runtime files
-        if: runner.os == 'Linux' && matrix.product == 'ai-server'
-        run: |
-          echo 'release files:'
-          find target/release -maxdepth 2 -name 'libonnxruntime_providers*' -printf '%p -> %l\n' || true
-          echo 'cache files:'
-          find "$HOME/.cache/ort.pyke.io" -maxdepth 6 -name 'libonnxruntime_providers*' -printf '%p\n' 2>/dev/null | head -8 || true
-          echo 'ort-sys directories:'
-          ls -d target/release/build/ort-sys-* 2>/dev/null || true
       - name: Build macOS AI server and speech sidecar
         if: runner.os == 'macOS' && matrix.product == 'ai-server'
         run: cargo build --locked --release -p openatc-ai -p openatc-stt --features openatc-ai/tts-coreml,openatc-stt/metal

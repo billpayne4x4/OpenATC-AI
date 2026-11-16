@@ -231,13 +231,14 @@ pub(crate) fn install_ai(destination: &Path) -> Result {
     Ok(())
 }
 fn shared_libraries(source: &Path, target: &Path) -> Result {
-    // ONNX Runtime puts its provider libraries in deps or examples depending
-    // on the build. Copy the top level in full, then only those providers from
-    // the subdirectories.
+    // ONNX Runtime puts its provider libraries in deps, examples or build
+    // depending on the build. Copy the top level in full, then only those
+    // providers from the subdirectories.
     let directories = [
         source.to_path_buf(),
         source.join("deps"),
         source.join("examples"),
+        source.join("build"),
     ];
     for (index, directory) in directories.iter().enumerate() {
         if !directory.is_dir() {
@@ -489,6 +490,7 @@ mod tests {
         let release = temp.path().join("release");
         fs::create_dir_all(release.join("deps"))?;
         fs::create_dir_all(release.join("examples"))?;
+        fs::create_dir_all(release.join("build"))?;
         fs::write(release.join("libvulkan.so.1"), "vulkan")?;
         fs::write(release.join("libopenatc_plugin.so"), "plugin")?;
         fs::write(
@@ -500,13 +502,24 @@ mod tests {
             release.join("examples/onnxruntime_providers_shared.dll"),
             "shared",
         )?;
+        fs::write(
+            release.join("build/libonnxruntime_providers_tensorrt.so"),
+            "tensorrt",
+        )?;
+        fs::write(release.join("build/libother.so"), "other")?;
         let target = temp.path().join("bin");
         fs::create_dir_all(&target)?;
         shared_libraries(&release, &target)?;
         assert!(target.join("libvulkan.so.1").is_file());
         assert!(target.join("libonnxruntime_providers_cuda.so").is_file());
         assert!(target.join("onnxruntime_providers_shared.dll").is_file());
+        assert!(
+            target
+                .join("libonnxruntime_providers_tensorrt.so")
+                .is_file()
+        );
         assert!(!target.join("libserde_derive-1234.so").exists());
+        assert!(!target.join("libother.so").exists());
         assert!(!target.join("libopenatc_plugin.so").exists());
         Ok(())
     }
