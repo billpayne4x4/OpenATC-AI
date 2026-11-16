@@ -1,0 +1,59 @@
+# Deviation monitoring policy.
+#
+# Modes are presets. Regional tables below override only the values that differ.
+# The selected mode is in [policy]. Spoken wording lives in
+# speech/runtime/responses.toml.
+
+[policy]
+mode = "realistic"
+
+[modes.loose]
+ground_warnings = 5
+flight_warnings = 5
+cooldown_seconds = 30
+off_plan_tolerance_nm = 4.0
+serious_immediate = false
+runway_entry_immediate = false
+serious_strikes = 2
+airspace_classes = ["P", "R"]
+diversion_enabled = false
+diversion_range_nm = 250
+
+[modes.realistic]
+ground_warnings = 3
+flight_warnings = 3
+cooldown_seconds = 15
+off_plan_tolerance_nm = 2.0
+serious_immediate = false
+runway_entry_immediate = true
+serious_strikes = 2
+airspace_classes = ["P", "R"]
+diversion_enabled = true
+diversion_range_nm = 200
+
+[modes.strict]
+ground_warnings = 1
+flight_warnings = 1
+cooldown_seconds = 5
+off_plan_tolerance_nm = 1.0
+serious_immediate = true
+runway_entry_immediate = true
+serious_strikes = 1
+airspace_classes = ["P", "R", "D"]
+diversion_enabled = true
+diversion_range_nm = 200
+
+[rules]
+hold_short_passed = true
+airspace = true
+off_plan = true
+
+[regions.australia]
+airspace_classes = ["P", "R"]
+
+[regions.us]
+airspace_classes = ["P", "R", "D"]
+
+[number_for_you]
+enabled = false
+number = "5318008"

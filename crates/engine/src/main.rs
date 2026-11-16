@@ -9,6 +9,7 @@ mod config_cache;
 mod context;
 mod crew;
 mod debug_jump;
+mod deviations;
 mod discipline;
 mod flight;
 mod generated;
@@ -43,7 +44,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Product version with the compile timestamp.
-pub const VERSION: &str = concat!("0.2.1 (", env!("OPENATC_BUILD"), ")");
+pub const VERSION: &str = concat!(env!("OPENATC_RELEASE"), " (", env!("OPENATC_BUILD"), ")");
 
 /// A fresh, non-zero seed for one generated-traffic session.
 ///
@@ -121,6 +122,8 @@ pub struct EngineState {
     pub crew: crew::CrewSession,
     /// Automatic station transitions and arrival permissions.
     pub flow: flight::FlightFlow,
+    /// Deviation warnings, diversions and the optional number exchange.
+    pub deviations: deviations::Manager,
     /// Live session (plan, telemetry, phase, transcript, ...).
     pub session: State,
     /// Operator settings.
@@ -651,6 +654,7 @@ async fn main() {
     if let Err(error) = traffic_profiles.get(&config_dir, &workers, false).await {
         eprintln!("Traffic profiles rejected: {error}");
     }
+    let deviations = deviations::Manager::load(&config_dir, &exe_dir);
     let mut engine = EngineState {
         workers,
         model_installer: Default::default(),
@@ -678,6 +682,7 @@ async fn main() {
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
         flow: flight::FlightFlow::default(),
+        deviations,
         session: State::default(),
         settings,
         stations: Vec::new(),
@@ -849,6 +854,7 @@ fn test_state() -> EngineState {
         phrase_history: radio::PhraseHistory::load(&config_dir),
         crew: crew::CrewSession::default(),
         flow: flight::FlightFlow::default(),
+        deviations: Default::default(),
         session: State::default(),
         settings,
         stations: Vec::new(),

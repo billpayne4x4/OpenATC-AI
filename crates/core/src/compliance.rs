@@ -197,16 +197,26 @@ mod tests {
 }
 
 /// Count consecutive unresolved deviations before escalating the correction.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct WarningCount {
     /// Number of corrective calls for the current unresolved deviation.
     pub corrections: u8,
+    /// Corrections allowed before escalation.
+    pub limit: u8,
+}
+impl Default for WarningCount {
+    fn default() -> Self {
+        Self {
+            corrections: 0,
+            limit: 3,
+        }
+    }
 }
 impl WarningCount {
-    /// Record a continuing deviation; true means the fourth call cancels permission.
+    /// Record a continuing deviation; true means the limit was exceeded.
     pub fn continuing(&mut self) -> bool {
         self.corrections = self.corrections.saturating_add(1);
-        self.corrections > 3
+        self.corrections > self.limit
     }
     /// Compliance resets the warning sequence.
     pub fn resolved(&mut self) {

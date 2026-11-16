@@ -22,6 +22,9 @@ fn main() {
         (remainder % 3_600) / 60
     );
     println!("cargo:rustc-env=OPENATC_BUILD={stamp}");
+    let release = std::env::var("OPENATC_RELEASE").unwrap_or_else(|_| "dev".to_owned());
+    println!("cargo:rustc-env=OPENATC_RELEASE={release}");
+    println!("cargo:rerun-if-env-changed=OPENATC_RELEASE");
 }
 
 /// Convert days since 1970-01-01 to a Gregorian date.

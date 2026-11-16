@@ -125,6 +125,7 @@ scratch/
 # Markdown notes stay local; public product guides remain distributable.
 *.md
 !README.md
+!/custom-restrictions/README.md
 !/docs/AI_SERVER.md
 !/docs/INSTALL.md
 !/docs/RELEASE_PACKAGING.md

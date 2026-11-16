@@ -436,7 +436,7 @@ fn router(dashboard: Arc<Dashboard>) -> Router {
         }))
         .route("/status",get(|State(d):State<Arc<Dashboard>>|async move{
             let state=d.runtime.read().await;
-            Json(json!({"instance":d.instance,"machine":{"hostname":sysinfo::System::host_name(),"os":sysinfo::System::long_os_version(),"arch":std::env::consts::ARCH},"runtime":*state,"catalogue":registry(&d.path,&state).unwrap_or_else(|e|json!({"error":e})),"configPath":d.path}))
+            Json(json!({"instance":d.instance,"managerVersion":crate::VERSION,"machine":{"hostname":sysinfo::System::host_name(),"os":sysinfo::System::long_os_version(),"arch":std::env::consts::ARCH},"runtime":*state,"catalogue":registry(&d.path,&state).unwrap_or_else(|e|json!({"error":e})),"configPath":d.path}))
         }))
         .route("/models/state",post(|State(d):State<Arc<Dashboard>>,headers:HeaderMap,Json(change):Json<ModelState>|async move{
             origin_allowed(&headers,&d.origin)?;
@@ -454,8 +454,16 @@ fn router(dashboard: Arc<Dashboard>) -> Router {
         }))
         .route("/action/{action}",post(|State(d):State<Arc<Dashboard>>,RoutePath(action):RoutePath<String>,headers:HeaderMap|async move{
             origin_allowed(&headers,&d.origin)?;
-            if !["start","stop","restart","unload-all"].contains(&action.as_str()){return Err((StatusCode::BAD_REQUEST,"Unknown server action".into()));}
+            if !["start","stop","restart","unload-all","shutdown"].contains(&action.as_str()){return Err((StatusCode::BAD_REQUEST,"Unknown server action".into()));}
             let _apply=d.apply.lock().await;
+            if action=="shutdown" {
+                request(&d,"stop").await?;
+                tokio::spawn(async {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    std::process::exit(0);
+                });
+                return Ok::<_,ApiError>(Json(json!({"stopping":true})));
+            }
             let mut action=action;
             if action=="unload-all" {
                 let mut values=setup::values(&d.path).map_err(|e|(StatusCode::BAD_REQUEST,e))?;

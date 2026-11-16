@@ -1039,6 +1039,8 @@ The developer fast-forward icon offers explicit test checkpoints rather than cyc
 | --- | --- |
 | `aircraft/*.toml` | Aircraft matching, supported commands/datarefs and checklist definitions. |
 | `regions.toml` | Regional unit and procedure references. |
+| `deviations.toml` | Deviation mode, warning counts, ground/air consequences and the optional number call. |
+| `custom-restrictions/` | Optional player-supplied airspace polygons missing from the X-Plane database, with a README and example. |
 | `radio-stations.toml` | Optional combined-duty overrides for existing published stations. |
 | `intents.toml` | Request names, aliases and examples. |
 | `traffic/behaviour.toml` | Pilot conversation conditions, timing, probability, range, history and personality. |
@@ -1057,6 +1059,8 @@ Alternatives must retain required placeholders and operational facts. With wordi
 Displayed identifiers remain compact. Speech expands controller abbreviations such as GND to Ground, uses known airport names, spells registration callsigns phonetically for the player and all traffic, and applies aviation number pronunciation. Airline codes stay on the flight-number path. A regional policy can leave a home registration prefix unspoken: with **Use regional registration abbreviations** enabled, `VH-EUA` is spoken as “Echo Uniform Alfa” in Australia and as the full “Victor Hotel Echo Uniform Alfa” elsewhere. The setting is off by default, so the full registration remains the standard. IFR/VFR/ILS remain spoken letters. Missing airport-name data can still require an identifier fallback.
 
 Adding TOML text does not implement a new operational permission or simulator action. Add the associated request handling, validation and monitoring before connecting a new scenario to live operations. Regional examples are a starting point and require local procedure review.
+
+Deviation monitoring is configured in `deviations.toml`. `mode` selects `off`, `loose`, `realistic` (the default) or `strict`; the mode sets warning counts, tolerances, airspace classes and the diversion threshold. Regional tables override only their differences. Airspace comes from X-Plane's `Resources/default data/airspaces/airspace.txt`. `custom-restrictions/` is only for sourced areas missing from that database; it ships empty. Warning, recovery, diversion and the optional number exchange use the wording in `speech/runtime/responses.toml`. The number exchange is off by default.
 
 `intents.toml` now supplies the request-button labels/order, matching aliases and slot-recognition patterns. The engine and plugin load installed catalogues; a personal engine `intents.toml` can override them. Older catalogues retain bundled missing definitions and button order. Invalid grammar is rejected before activation. Mission phase/probability/choice logic and conversation equality/list/numeric-range conditions are declarative TOML; clearance authority and simulator safety remain validated by Rust.
 

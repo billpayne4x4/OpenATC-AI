@@ -39,7 +39,7 @@ pub struct FlightFlow {
     pub(crate) vacate_reported: bool,
     pub(crate) vacate_ground_khz: Option<i32>,
     pub(crate) wake_warned: bool,
-    warning: openatc_core::compliance::WarningCount,
+    pub(crate) warning: openatc_core::compliance::WarningCount,
     clearance_sequence: u32,
     last_correction: Option<std::time::Instant>,
     /// When the player first reached the departure hold for the current route.

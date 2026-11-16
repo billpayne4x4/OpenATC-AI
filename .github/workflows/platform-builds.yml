@@ -145,6 +145,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+      OPENATC_RELEASE: v${{ needs.prepare.outputs.version }}
     defaults:
       run:
         shell: bash

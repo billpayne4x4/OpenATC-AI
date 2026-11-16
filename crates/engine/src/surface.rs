@@ -294,6 +294,9 @@ pub async fn post_telemetry(
         if state.session.next_sequence != sequence {
             return Json(json!({"accepted":true})).into_response();
         }
+        if super::deviations::tick(&mut state) {
+            return Json(json!({"accepted":true})).into_response();
+        }
         super::cabin::follow_up(&mut state);
         if state.session.next_sequence != sequence {
             return Json(json!({"accepted":true})).into_response();
@@ -406,10 +409,11 @@ pub async fn post_telemetry(
         if !eligible {
             return Json(json!({"accepted":true})).into_response();
         }
-        if state
-            .airport
-            .as_ref()
-            .is_none_or(|a| !openatc_core::airport::taxi_hold_reached(a, route, &telemetry))
+        if !route.hold_short_passed
+            && state
+                .airport
+                .as_ref()
+                .is_none_or(|a| !openatc_core::airport::taxi_hold_reached(a, route, &telemetry))
         {
             return Json(json!({"accepted":true})).into_response();
         }

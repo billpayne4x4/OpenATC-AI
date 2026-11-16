@@ -844,6 +844,9 @@ pub struct TaxiClearance {
     pub waiting_seconds: f64,
     /// Guidance ends at the authorized hold point; clearance remains recorded.
     pub guidance_complete: bool,
+    /// A forward recovery was issued after the aircraft passed the holding point.
+    #[serde(default)]
+    pub hold_short_passed: bool,
     /// Runway at the next authorized hold point (may precede destination).
     pub hold_short_runway: String,
     /// Clearance sequence number.

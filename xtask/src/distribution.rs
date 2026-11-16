@@ -93,6 +93,7 @@ pub(crate) fn install_plugin(sim: &Path, backup: bool) -> Result {
         "radio-stations.toml",
         "regions.toml",
         "intents.toml",
+        "deviations.toml",
         "README.md",
     ] {
         entries.push((root.join(name), plugin.join(name)));
@@ -104,6 +105,7 @@ pub(crate) fn install_plugin(sim: &Path, backup: bool) -> Result {
         "missions",
         "cabin",
         "traffic",
+        "custom-restrictions",
         "assets/taxi-arrow",
         "assets/licenses",
         "assets/branding",

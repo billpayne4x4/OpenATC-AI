@@ -1,0 +1,13 @@
+# Copy this file, uncomment the area and replace the values with a published boundary.
+#
+# [[airspace]]
+# name = "Example restricted area"
+# class = "R"
+# lower_ft = 0
+# upper_ft = 4500
+# points = [
+#   [-35.0000, 149.0000],
+#   [-35.0000, 149.0100],
+#   [-35.0100, 149.0100],
+#   [-35.0100, 149.0000],
+# ]

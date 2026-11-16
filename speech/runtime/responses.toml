@@ -18082,3 +18082,98 @@ say = ["{callsign}, vacate runway {runway}, contact {station} {frequency}.", "{c
 [flight_hold_short_traffic]
 slots = ["callsign", "runway"]
 say = ["{callsign}, hold short of runway {runway}, traffic holding in position.", "{callsign}, hold short runway {runway}, traffic lined up and waiting."]
+
+[deviation_hold_short]
+slots = ["callsign", "runway"]
+say = [
+  "{callsign}, you passed the holding point for runway {runway} without clearance. Hold position.",
+  "{callsign}, stop. You crossed the holding point for runway {runway} without a clearance. Hold position.",
+]
+
+[deviation_continue]
+slots = ["callsign", "runway"]
+say = [
+  "{callsign}, the runway is clear. Continue taxi to runway {runway} and report ready.",
+  "{callsign}, continue to runway {runway}. The runway is clear; report ready.",
+]
+
+[deviation_airspace]
+slots = ["callsign", "airspace"]
+say = [
+  "{callsign}, you are entering restricted airspace {airspace}. Leave the area immediately.",
+  "{callsign}, restricted airspace {airspace}. Turn away now.",
+]
+
+[deviation_off_plan]
+slots = ["callsign"]
+say = [
+  "{callsign}, you are off the cleared route. Rejoin the flight plan.",
+  "{callsign}, you have left the cleared route. Return to the planned track.",
+]
+
+[deviation_divert]
+slots = ["callsign", "airport"]
+say = [
+  "{callsign}, please land at the closest suitable airport, {airport}.",
+  "{callsign}, divert to {airport}, the closest suitable airport for your aircraft.",
+]
+
+[pilot_airspace_readback]
+slots = ["callsign"]
+say = ["Leaving the area, {callsign}.", "Wilco, {callsign}."]
+
+[pilot_off_plan_readback]
+slots = ["callsign"]
+say = ["Rejoining the route, {callsign}.", "Back on the planned track, {callsign}."]
+
+[pilot_continue_readback]
+slots = ["callsign", "runway"]
+say = [
+  "Continuing to runway {runway}, {callsign}.",
+  "Runway {runway}, continuing, {callsign}.",
+]
+
+[pilot_divert_readback]
+slots = ["callsign", "airport"]
+say = [
+  "Landing at {airport}, {callsign}.",
+  "Proceeding to {airport}, {callsign}.",
+]
+
+[atc_number_for_you]
+slots = ["callsign"]
+say = [
+  "{callsign}, I have a number for you to call.",
+  "{callsign}, I have a phone number for you to copy.",
+]
+
+[pilot_ready_for_number]
+slots = ["callsign"]
+say = ["Roger, ready to receive, {callsign}.", "Ready for the number, {callsign}."]
+
+[atc_number_for_you_number]
+slots = ["number"]
+say = ["The number is {number}.", "Copy {number}."]
+
+[pilot_number_readback]
+slots = ["number", "callsign"]
+say = ["{number}, {callsign}."]
+
+[deviation_vacate]
+slots = ["callsign", "runway"]
+say = [
+  "{callsign}, continue to the end of runway {runway} and vacate when able.",
+  "{callsign}, continue and vacate runway {runway} when able.",
+]
+
+[pilot_vacate_readback]
+slots = ["callsign", "runway"]
+say = ["Continuing and vacating runway {runway}, {callsign}.", "Vacating runway {runway}, {callsign}."]
+
+[deviation_hold_position]
+slots = ["callsign"]
+say = ["{callsign}, hold position.", "{callsign}, stop and hold position."]
+
+[pilot_hold_position_readback]
+slots = ["callsign"]
+say = ["Holding position, {callsign}."]

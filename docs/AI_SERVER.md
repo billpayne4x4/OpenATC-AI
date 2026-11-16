@@ -53,6 +53,8 @@ The management listener defaults to loopback and has no login. An explicit LAN b
 
 The manager owns its inference child and speech sidecar. Reopening the same configuration reuses its existing dashboard without changing its model load state. Unloading or applying settings stops the owned process tree; an unrelated service on the requested inference port is reported rather than terminated. A manager pipe closure also terminates its managed child tree. Desktop process shutdown and Windows/macOS native behavior still need their platform checks.
 
+The dashboard header shows the manager release and the running inference child version, so an old child is visible without reading the logs. **Hara-kiri** stops the managed inference and speech processes and then exits the manager; the dashboard closes. It asks for confirmation first. Restart the service with systemd or the packaged launcher. The web page remains the control surface on headless servers.
+
 ## Compute flags
 
 GPU is preferred when the build has a suitable backend and the runtime can initialize it. CPU remains available for every component.

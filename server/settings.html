@@ -444,6 +444,7 @@
             Checking the local server manager…
           </div>
           <small id="machine" class="muted"></small>
+          <small id="release" class="muted"></small>
         </div>
       </div>
       <p id="error" class="error-box" role="alert" hidden></p>
@@ -470,6 +471,7 @@
           <div class="actions">
             <button id="start">Load models</button
             ><button id="stop" disabled>Unload models</button
+            ><button id="hara-kiri" style="border-color: var(--error); color: var(--error)" disabled>Hara-kiri</button
             ><button id="edit-open" class="primary" disabled>
               Edit settings</button
             ><button id="wizard-open" disabled>Run setup wizard</button>
@@ -1052,6 +1054,23 @@
             "/action/" + (action === "stop" ? "unload-all" : action),
             {},
           );
+      $("hara-kiri").onclick = async () => {
+        if (
+          !confirm(
+            "Hara-kiri stops the AI server manager and its speech child. The dashboard will close. Restart with systemd or the launcher.",
+          )
+        )
+          return;
+        $("hara-kiri").disabled = true;
+        try {
+          await api("/action/shutdown", {});
+        } catch {}
+        set("badge", "Stopped");
+        set(
+          "status-detail",
+          "The server manager has stopped. Restart it with systemd or the launcher.",
+        );
+      };
       function render(data) {
         lastData = data;
         updateOperation(data.runtime, data.instance);
@@ -1066,6 +1085,13 @@
         const r = data.runtime,
           resource = r.resources || {},
           gpu = r.gpu || {};
+        set(
+          "release",
+          "Manager " +
+            (data.managerVersion || "unknown") +
+            " · Inference " +
+            (r.health?.version || "not running"),
+        );
         const stage = r.stage || "stopped";
         const components = r.health?.components;
         const count = components
@@ -1101,6 +1127,7 @@
         $("start").disabled = busy || (!!r.pid && !partial) || !loadedSettings;
         $("stop").disabled =
           busy || !r.pid || (stage === "ready" && count === 0);
+        $("hara-kiri").disabled = busy;
         set("cpu", percent(resource.cpuPercent));
         set(
           "cpu-detail",

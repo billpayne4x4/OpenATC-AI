@@ -1299,6 +1299,7 @@ fn calculate_taxi_route_with(
         takeoff_state: crate::state::TakeoffState::Idle,
         waiting_seconds: 0.0,
         guidance_complete: false,
+        hold_short_passed: false,
         hold_short_runway: hold_short,
         sequence: 0,
         reference_latitude: airport.reference_latitude,
@@ -2827,6 +2828,49 @@ pub fn taxi_hold_geometry_reached(airport: &Airport, route: &TaxiClearance, here
         })
 }
 
+/// How far beyond the route end counts as passing the holding point.
+const HOLD_PASSED_MARGIN_METRES: f64 = 12.0;
+/// Maximum lateral offset from the final route leg.
+const HOLD_PASSED_LATERAL_METRES: f64 = 40.0;
+
+/// Whether the aircraft moved beyond a route that ends at a runway holding point.
+#[must_use]
+pub fn taxi_hold_passed(airport: &Airport, route: &TaxiClearance, telemetry: &Telemetry) -> bool {
+    if !telemetry.position_valid
+        || !telemetry.on_ground
+        || telemetry.paused
+        || !route.approved
+        || route.to_parking
+        || route.hold_short_runway.is_empty()
+        || !route.crossing_runway.is_empty()
+    {
+        return false;
+    }
+    let here = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    hold_passed_geometry(&route.points, here)
+}
+
+fn hold_passed_geometry(points: &[Point], here: Point) -> bool {
+    let Some(end) = points.last() else {
+        return false;
+    };
+    let Some(previous) = points.get(points.len().saturating_sub(2)) else {
+        return false;
+    };
+    let dx = end.east - previous.east;
+    let dn = end.north - previous.north;
+    let length_squared = dx * dx + dn * dn;
+    if length_squared < 1.0 {
+        return false;
+    }
+    let length = length_squared.sqrt();
+    let east = here.east - previous.east;
+    let north = here.north - previous.north;
+    let along = (east * dx + north * dn) / length_squared;
+    let lateral = (east * dn - north * dx).abs() / length;
+    (along - 1.0) * length > HOLD_PASSED_MARGIN_METRES && lateral < HOLD_PASSED_LATERAL_METRES
+}
+
 /// Recognize the route endpoint or its nearby painted holding line on approach.
 #[must_use]
 pub fn taxi_hold_reached(airport: &Airport, route: &TaxiClearance, telemetry: &Telemetry) -> bool {
@@ -3766,6 +3810,59 @@ mod taxi_pavement_tests {
                 north: 500.0,
                 height: 0.0
             },
+        ));
+    }
+}
+
+#[cfg(test)]
+mod hold_passed_tests {
+    use super::*;
+
+    #[test]
+    fn hold_passed_requires_moving_beyond_the_route_end() {
+        let points = [
+            Point {
+                east: 0.0,
+                north: 0.0,
+                height: 0.0,
+            },
+            Point {
+                east: 100.0,
+                north: 0.0,
+                height: 0.0,
+            },
+        ];
+        assert!(!hold_passed_geometry(
+            &points,
+            Point {
+                east: 50.0,
+                north: 0.0,
+                height: 0.0,
+            }
+        ));
+        assert!(!hold_passed_geometry(
+            &points,
+            Point {
+                east: 105.0,
+                north: 0.0,
+                height: 0.0,
+            }
+        ));
+        assert!(hold_passed_geometry(
+            &points,
+            Point {
+                east: 120.0,
+                north: 2.0,
+                height: 0.0,
+            }
+        ));
+        assert!(!hold_passed_geometry(
+            &points,
+            Point {
+                east: 120.0,
+                north: 60.0,
+                height: 0.0,
+            }
         ));
     }
 }

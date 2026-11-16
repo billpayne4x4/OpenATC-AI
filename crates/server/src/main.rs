@@ -9,7 +9,7 @@
 //! only owned data (`String`, numbers) ever crosses threads.
 
 /// Product version reported by `/health`.
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &str = concat!(env!("OPENATC_RELEASE"), " (", env!("OPENATC_BUILD"), ")");
 
 mod compute;
 mod config;

@@ -73,13 +73,25 @@ fn file_progress(completed: usize, total: usize, name: &str) {
 
 // These are the distributed plugin configuration locations, not the user's whole config tree.
 const FOLDERS: &[&str] = &[
-    "aircraft", "prompts", "speech", "missions", "cabin", "traffic",
+    "aircraft",
+    "prompts",
+    "speech",
+    "missions",
+    "cabin",
+    "traffic",
+    "custom-restrictions",
 ];
-const ROOT_FILES: &[&str] = &["intents.toml", "regions.toml", "radio-stations.toml"];
+const ROOT_FILES: &[&str] = &[
+    "intents.toml",
+    "regions.toml",
+    "radio-stations.toml",
+    "deviations.toml",
+];
 const BUNDLED: &[&str] = &[
     include_str!("../../../intents.toml"),
     include_str!("../../../regions.toml"),
     include_str!("../../../radio-stations.toml"),
+    include_str!("../../../deviations.toml"),
     include_str!("../../../speech/runtime/responses.toml"),
     include_str!("../../../prompts/prompts.toml"),
     include_str!("../../../prompts/interaction.toml"),
@@ -97,6 +109,7 @@ const BUNDLED: &[&str] = &[
     include_str!("../../../traffic/vertical.toml"),
     include_str!("../../../aircraft/callouts.toml"),
     include_str!("../../../aircraft/transponder.toml"),
+    include_str!("../../../custom-restrictions/example.toml"),
 ];
 fn roots(config: &Path, executable: &Path) -> Vec<PathBuf> {
     let mut roots = Vec::new();

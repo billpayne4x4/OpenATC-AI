@@ -3,6 +3,7 @@
 
 pub mod aircraft;
 pub mod airport;
+pub mod airspace;
 pub mod apply;
 pub mod arrival;
 mod atc;
@@ -12,6 +13,7 @@ pub mod compliance;
 pub mod configuration;
 pub mod crew;
 pub mod debug_jump;
+pub mod deviations;
 pub mod dialogue;
 pub mod escort;
 pub mod hazards;
