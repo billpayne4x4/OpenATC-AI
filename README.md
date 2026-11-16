@@ -86,7 +86,7 @@ The AI server still launches a bundled `openatc-stt` helper. The language and re
 
 ### Install the plugin
 
-For release downloads, follow the complete [installation and removal guide](docs/INSTALL.md). Windows offers Setup.exe and ZIP; macOS offers native app/DMG and ZIP; Linux plugin downloads contain terminal install.sh/uninstall.sh scripts in the ZIP. The AI server additionally offers Linux AppImage, DEB, RPM and Flatpak formats. Native Linux AI-server packages require glibc 2.39 or newer (Ubuntu 24.04 or equivalent); the plugin retains its Ubuntu 22.04 build baseline. Flatpak uses its packaged runtime.
+For release downloads, follow the complete [installation and removal guide](docs/INSTALL.md). Windows offers Setup.exe and ZIP; macOS offers native app/DMG and ZIP; Linux plugin downloads contain terminal install.sh/uninstall.sh scripts in the ZIP. The AI server additionally offers Linux AppImage, DEB, RPM and Flatpak formats. Native Linux AI-server packages require glibc 2.39 or newer (Ubuntu 24.04 or equivalent); the plugin retains its Ubuntu 22.04 build baseline. AI-server binaries use a portable x86-64 CPU baseline and select optimized speech kernels at runtime, so AVX-512 is not required. Flatpak uses its packaged runtime.
 
 Close X-Plane before replacing plugin files. A packaged plugin installer asks for the **X-Plane root folder**, not the aircraft folder. A complete plugin payload can also be copied into `X-Plane 12/Resources/plugins/OpenATC`.
 

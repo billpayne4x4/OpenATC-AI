@@ -23,7 +23,7 @@ pub const MAX_PHONEMES: usize = 510;
 /// Longest accepted input, matching the engine-side limit.
 pub const MAX_TEXT: usize = 4000;
 
-/// `OpenAI` voice name to kokoro voice, mirroring the gateway map.
+/// `OpenAI` voice name to kokoro voice.
 const VOICE_MAP: [(&str, &str); 6] = [
     ("alloy", "af_alloy"),
     ("echo", "am_echo"),
@@ -32,7 +32,7 @@ const VOICE_MAP: [(&str, &str); 6] = [
     ("nova", "af_nova"),
     ("shimmer", "af_sky"),
 ];
-/// Voice proven in local tests, mirroring the gateway default.
+/// Fallback voice for empty or unknown requests.
 const DEFAULT_VOICE: &str = "af_bella";
 
 /// Resolve a requested voice name to a kokoro voice id.
@@ -224,7 +224,7 @@ impl TtsEngine {
     }
 }
 
-/// Seconds of silence after a batch, mirroring the gateway pause logic.
+/// Seconds of silence after a batch.
 fn pause_after(batch: &str, sentence: f32, clause: f32) -> f32 {
     match batch.trim_end().chars().last() {
         Some(mark) if mark == '.' || mark == '!' || mark == '?' => sentence,

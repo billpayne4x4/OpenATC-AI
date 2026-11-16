@@ -291,6 +291,14 @@ jobs:
         if: matrix.product == 'ai-server'
         run: mkdir -p target/release/build/examples target/release/build/deps target/release/examples target/release/deps
 
+      - name: Refresh Whisper build
+        if: matrix.product == 'ai-server'
+        shell: bash
+        run: |
+          rm -rf target/release/build/whisper-rs-sys-* target/release/build/whisper-rs-* \
+                 target/release/.fingerprint/whisper-rs-sys-* target/release/.fingerprint/whisper-rs-* \
+                 target/release/deps/*whisper_rs_sys* target/release/deps/*whisper_rs-*
+
       - name: Refresh eSpeak data
         if: matrix.product == 'ai-server'
         run: |
@@ -313,6 +321,15 @@ jobs:
       - name: Build Linux AI server and speech sidecar
         if: runner.os == 'Linux' && matrix.product == 'ai-server'
         run: cargo build --locked --release -p openatc-ai -p openatc-stt --features openatc-ai/vulkan,openatc-stt/vulkan,openatc-ai/tts-cuda
+      - name: Verify portable Linux speech sidecar
+        if: runner.os == 'Linux' && matrix.product == 'ai-server'
+        run: |
+          set -euo pipefail
+          objdump -d target/release/openatc-stt > "$RUNNER_TEMP/openatc-stt.asm"
+          if grep -q '%zmm' "$RUNNER_TEMP/openatc-stt.asm"; then
+            echo 'openatc-stt contains AVX-512 instructions and will not run on most CPUs'
+            exit 1
+          fi
       - name: Build macOS AI server and speech sidecar
         if: runner.os == 'macOS' && matrix.product == 'ai-server'
         run: cargo build --locked --release -p openatc-ai -p openatc-stt --features openatc-ai/tts-coreml,openatc-stt/metal
@@ -367,6 +384,12 @@ jobs:
       - name: Package Linux and macOS releases
         if: runner.os != 'Windows'
         run: cargo xtask release-package ${{ matrix.product }} ${{ matrix.platform }} "$RELEASE_VERSION"
+      - name: Verify packaged Linux speech providers
+        if: runner.os == 'Linux' && matrix.product == 'ai-server'
+        run: |
+          set -euo pipefail
+          zip=$(ls packages/openatc-ai-server-*-linux-x64.zip)
+          unzip -l "$zip" | grep -q 'bin/libonnxruntime_providers_cuda\.so'
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: packages-${{ matrix.platform }}-${{ matrix.product }}

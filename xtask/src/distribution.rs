@@ -231,14 +231,31 @@ pub(crate) fn install_ai(destination: &Path) -> Result {
     Ok(())
 }
 fn shared_libraries(source: &Path, target: &Path) -> Result {
-    for entry in fs::read_dir(source)? {
-        let p = entry?.path();
-        let name = p.file_name().unwrap().to_string_lossy();
-        if p.is_file()
-            && !name.contains("openatc_plugin")
-            && (name.ends_with(".dll") || name.ends_with(".dylib") || name.contains(".so"))
-        {
-            copy(&p, &target.join(p.file_name().unwrap()))?;
+    // ONNX Runtime puts its provider libraries in deps or examples depending
+    // on the build. Copy the top level in full, then only those providers from
+    // the subdirectories.
+    let directories = [
+        source.to_path_buf(),
+        source.join("deps"),
+        source.join("examples"),
+    ];
+    for (index, directory) in directories.iter().enumerate() {
+        if !directory.is_dir() {
+            continue;
+        }
+        for entry in fs::read_dir(directory)? {
+            let path = entry?.path();
+            let name = path.file_name().unwrap().to_string_lossy();
+            let library =
+                name.ends_with(".dll") || name.ends_with(".dylib") || name.contains(".so");
+            let provider = name.contains("onnxruntime_providers_");
+            if path.is_file()
+                && library
+                && !name.contains("openatc_plugin")
+                && (index == 0 || provider)
+            {
+                copy(&path, &target.join(path.file_name().unwrap()))?;
+            }
         }
     }
     Ok(())
@@ -456,6 +473,34 @@ mod tests {
         fs::write(data.join("phontab"), "test")?;
         let found = espeak_data(&release)?;
         assert_eq!(found, data);
+        Ok(())
+    }
+
+    #[test]
+    fn shared_libraries_include_providers_from_dependency_directories() -> Result {
+        let temp = tempfile::tempdir()?;
+        let release = temp.path().join("release");
+        fs::create_dir_all(release.join("deps"))?;
+        fs::create_dir_all(release.join("examples"))?;
+        fs::write(release.join("libvulkan.so.1"), "vulkan")?;
+        fs::write(release.join("libopenatc_plugin.so"), "plugin")?;
+        fs::write(
+            release.join("deps/libonnxruntime_providers_cuda.so"),
+            "cuda",
+        )?;
+        fs::write(release.join("deps/libserde_derive-1234.so"), "macro")?;
+        fs::write(
+            release.join("examples/onnxruntime_providers_shared.dll"),
+            "shared",
+        )?;
+        let target = temp.path().join("bin");
+        fs::create_dir_all(&target)?;
+        shared_libraries(&release, &target)?;
+        assert!(target.join("libvulkan.so.1").is_file());
+        assert!(target.join("libonnxruntime_providers_cuda.so").is_file());
+        assert!(target.join("onnxruntime_providers_shared.dll").is_file());
+        assert!(!target.join("libserde_derive-1234.so").exists());
+        assert!(!target.join("libopenatc_plugin.so").exists());
         Ok(())
     }
 

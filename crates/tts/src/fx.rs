@@ -88,7 +88,7 @@ pub fn apply_fx(samples: &[f32], rate: u32, fx: Fx, seed_key: &str) -> Vec<f32> 
     x.into_iter().map(|sample| sample as f32).collect()
 }
 
-/// In-place soft-edge 300-3400 Hz filter via FFT, mirroring the gateway mask.
+/// In-place soft-edge 300-3400 Hz filter via FFT.
 ///
 /// Length casts below are safe: audio buffers never approach 2^52 samples.
 #[allow(

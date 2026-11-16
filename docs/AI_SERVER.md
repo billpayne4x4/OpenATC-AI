@@ -129,6 +129,8 @@ Intel Macs additionally need an appropriate ONNX Runtime library and the `ORT_LI
 
 Native Linux server packages use an Ubuntu 24.04 build baseline and require glibc 2.39 or newer. The pinned ONNX Runtime 1.28 archive references C23 libc and newer C++ runtime symbols unavailable on Ubuntu 22.04. The plugin's separate Ubuntu 22.04 build baseline is unchanged. AppImage does not remove the host glibc requirement; Flatpak uses its own runtime. Building for older distributions requires compatible native inference libraries built for that distribution.
 
+The release binaries keep a portable x86-64 CPU baseline. whisper.cpp otherwise compiles with `-march=native`, which ties the sidecar to the machine that built it; the workspace config sets `GGML_NATIVE=OFF` and ggml selects AVX2 and other kernels at runtime. AVX-512 is not required.
+
 ### CPU-compatible source build
 
 ```sh

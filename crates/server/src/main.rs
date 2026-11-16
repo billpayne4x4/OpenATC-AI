@@ -191,8 +191,9 @@ fn sidecar_path(explicit: Option<&std::path::Path>) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Start the sidecar and wait for `/health`, returning its base URL and backend.
-/// Fails fast when the model cannot load, mirroring the inference loop.
+/// Start the sidecar and wait for `/health`.
+/// Returns its base URL and backend; a sidecar that exits while loading the
+/// model is reported immediately.
 async fn start_sidecar(
     bin: &std::path::Path,
     model: &std::path::Path,
@@ -221,10 +222,8 @@ async fn start_sidecar(
     let client = reqwest::Client::new();
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     loop {
-        if let Ok(exit) = child.try_wait()
-            && exit.is_some()
-        {
-            return Err("STT sidecar exited during load".to_owned());
+        if let Ok(Some(status)) = child.try_wait() {
+            return Err(format!("STT sidecar exited during load ({status})"));
         }
         if let Ok(response) = client
             .get(format!("{base_url}/health"))
@@ -252,8 +251,7 @@ async fn start_sidecar(
     }
 }
 
-/// Handle to the TTS worker thread (the session lives there, mirroring the
-/// gateway's single-inference lock).
+/// Handle to the TTS worker thread. The ONNX session stays on that thread.
 struct TtsHandle {
     jobs: mpsc::Sender<TtsJob>,
 }
@@ -811,7 +809,7 @@ fn unloaded(component: &str) -> (StatusCode, Json<ErrorBody>) {
 }
 
 /// Speech-to-text: multipart `file` (16 kHz mono WAV) plus ignored `model`.
-/// Answers `{"text"}` exactly like the gateway it replaces.
+/// Returns `{"text"}`.
 async fn transcriptions(
     State(state): State<Arc<AppState>>,
     mut multipart: Multipart,
@@ -873,7 +871,7 @@ async fn transcriptions(
 }
 
 /// Text-to-speech: gateway-compatible JSON in, 16-bit PCM WAV bytes out.
-/// Validation mirrors the gateway it replaces.
+/// Request validation matches the endpoint it replaces.
 async fn speech(
     State(state): State<Arc<AppState>>,
     Json(body): Json<serde_json::Value>,

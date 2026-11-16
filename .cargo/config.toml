@@ -1,5 +1,11 @@
 [target.'cfg(target_os = "linux")']
 rustflags = ["-C", "link-args=-Wl,-rpath,$ORIGIN"]
 
+# whisper.cpp builds with -march=native unless told otherwise, which ties the
+# speech sidecar to the build machine's CPU. Keep the portable baseline; ggml
+# selects optimized kernels at runtime.
+[env]
+GGML_NATIVE = "OFF"
+
 [alias]
 xtask = "run --locked --package xtask --"
