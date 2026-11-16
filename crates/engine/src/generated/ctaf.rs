@@ -588,7 +588,7 @@ fn local_frame(
 
 /// Ambient taxi-out traffic for the opening scene.
 ///
-/// This layer deliberately does not require a complete flight plan, SID/STAR or terrain
+/// This layer does not require a complete flight plan, SID/STAR or terrain
 /// check. It only needs a compatible stand, a surface route to the active runway and a CSL
 /// model, so the airport looks alive even when the full route catalogue cannot release a
 /// city pair.

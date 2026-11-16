@@ -1143,6 +1143,7 @@ See [Architecture](docs/ARCHITECTURE.md), [Rust workspace](docs/RUST_WORKSPACE.m
 | Copilot does not tune/check in | Enable the relevant copilot settings, let queued speech finish, and verify COM1 actually changes in telemetry. |
 | Own text is silent | Enable Speak my transmitted requests and check pilot volume/output. |
 | TTS failed | Inspect `engine.log` and AI-server output for the exact text, voice and error. Refresh voices after changing providers. Keep eSpeak data and shared libraries with the runtime. |
+| STT sidecar exits during load | Read the exit status in the message. `signal: 4` means the speech binary does not run on this CPU; install a release built with the portable x86-64 baseline. |
 | GPU not used | Check `/health`, startup logs, build features and drivers. CUDA speech additionally needs compatible CUDA/cuDNN libraries. Remove force-CPU flags only if GPU use is intended. |
 | LAN connection fails | Use the server's LAN address, bind with `--host 0.0.0.0`, and check the firewall. URLs should not end in `/v1`. |
 | Aircraft action was not confirmed | Inspect the mapped control's availability and live indication. A custom aircraft may require a corrected TOML mapping. |

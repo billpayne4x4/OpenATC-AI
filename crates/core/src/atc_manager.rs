@@ -1,6 +1,6 @@
 //! Aircraft registry and ATC frequency lifecycle.
 //!
-//! The manager deliberately separates aircraft identity from frequency membership. Removing an
+//! The manager keeps aircraft identity separate from frequency membership. Removing an
 //! aircraft from the registry does not silently remove it from a frequency; call
 //! [`AtcManager::leave_all`] when the aircraft no longer exists.
 

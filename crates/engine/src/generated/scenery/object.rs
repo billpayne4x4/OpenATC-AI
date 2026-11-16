@@ -326,7 +326,7 @@ mod tests {
         assert_eq!(tilted[0].low, [-12.0, 0.0, -12.0]);
         assert_eq!(tilted[0].high, [14.0, 12.0, 15.0]);
         // An animated part is contained by a box around the object's static reach. The fourth
-        // vertex is deliberately far away, so the envelope has to include it.
+        // vertex is far away, so the envelope has to include it.
         let animated = parse(&format!("{OBJECT}ANIM_rotate 0 1 0 0 90 0 1 sim/test\n")).unwrap();
         assert_eq!(animated.len(), 1);
         let reach = 900.0 * 3.0_f64.sqrt();

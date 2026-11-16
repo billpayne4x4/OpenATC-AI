@@ -42,7 +42,7 @@ struct PromptFile {
     copilot_chat: String,
 }
 
-/// Role prompts a catalogue must define. `crew_response` is deliberately not
+/// Role prompts a catalogue must define. `crew_response` is not
 /// listed: older catalogues predate it and a bundled default covers its absence.
 const REQUIRED_ROLE_PROMPTS: [&str; 7] = [
     "atc_reply",

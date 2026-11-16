@@ -3062,7 +3062,7 @@ impl Scene {
             seeded.insert(id);
         }
         // Seed any local arrivals as needed after the planned departure positions. The counter
-        // deliberately excludes parked local departures, which must get their own radio call.
+        // excludes parked local departures, which must get their own radio call.
         let mut taxi_seeded = 0usize;
         let mut local_arrival_slot = 0usize;
         for (ordinal, id) in ids.iter().copied().enumerate() {

@@ -56,7 +56,7 @@ pub struct Aircraft {
     pub wingspan: f64,
     /// Metres, used to keep the tail clear of intersections.
     pub length: f64,
-    /// L, M, H or J; approach category is deliberately separate.
+    /// L, M, H or J; approach category is tracked separately.
     pub wake: char,
     /// FAA consolidated wake category, separate from ICAO wake and approach category.
     #[serde(default)]

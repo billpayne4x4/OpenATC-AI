@@ -47,7 +47,7 @@ pub const VERSION: &str = concat!("0.2.1 (", env!("OPENATC_BUILD"), ")");
 
 /// A fresh, non-zero seed for one generated-traffic session.
 ///
-/// The engine deliberately does not reproduce yesterday's airport on every launch. The seed is
+/// The engine does not reproduce yesterday's airport on every launch. The seed is
 /// logged with the first traffic status so an unusual scene can still be reproduced when needed.
 pub(crate) fn traffic_seed() -> u64 {
     use std::sync::atomic::{AtomicU64, Ordering};
