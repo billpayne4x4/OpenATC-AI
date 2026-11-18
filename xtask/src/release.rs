@@ -595,28 +595,27 @@ fn sign_payload(bundle: &Path) -> Result {
             continue;
         }
         let path = entry.path();
-        if let Some(thumbprint) = &windows {
-            if path
+        if let Some(thumbprint) = &windows
+            && path
                 .extension()
                 .is_some_and(|ext| ["exe", "dll", "xpl"].iter().any(|e| ext == *e))
-            {
-                run(Command::new("signtool.exe")
-                    .args([
-                        "sign",
-                        "/sha1",
-                        thumbprint,
-                        "/fd",
-                        "SHA256",
-                        "/tr",
-                        "http://timestamp.digicert.com",
-                        "/td",
-                        "SHA256",
-                    ])
-                    .arg(path))?;
-                run(Command::new("signtool.exe")
-                    .args(["verify", "/pa"])
-                    .arg(path))?;
-            }
+        {
+            run(Command::new("signtool.exe")
+                .args([
+                    "sign",
+                    "/sha1",
+                    thumbprint,
+                    "/fd",
+                    "SHA256",
+                    "/tr",
+                    "http://timestamp.digicert.com",
+                    "/td",
+                    "SHA256",
+                ])
+                .arg(path))?;
+            run(Command::new("signtool.exe")
+                .args(["verify", "/pa"])
+                .arg(path))?;
         }
         if let Some(identity) = &apple {
             use std::io::Read;

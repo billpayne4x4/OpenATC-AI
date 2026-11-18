@@ -356,7 +356,7 @@ impl Runtime {
         );
         if self.status != status {
             crate::debug_log(&format!("OpenATC callouts: {status}\n"));
-            self.status = status.clone();
+            self.status.clone_from(&status);
         }
         interface.callout_status = status;
         self.active = state.phase == PhaseCode::Departure
@@ -499,11 +499,10 @@ fn log_entries(policy: &Policy, speeds: [Option<f64>; 3], clip: usize) -> Vec<St
         .iter()
         .filter_map(|index| {
             let speed = speeds.get(*index).copied().flatten()?;
-            let label = policy
-                .log_labels
-                .get(*index)
-                .map(String::as_str)
-                .unwrap_or_else(|| bundled["log_labels"][*index].as_str().unwrap());
+            let label = policy.log_labels.get(*index).map_or_else(
+                || bundled["log_labels"][*index].as_str().unwrap(),
+                String::as_str,
+            );
             Some(
                 template
                     .replace("{callout}", label)

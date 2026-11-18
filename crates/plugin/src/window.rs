@@ -321,7 +321,9 @@ impl WindowState {
                 ];
             }
             let current_bounds = [left, top, right, bottom];
-            if drag_delta != [0.0, 0.0] {
+            if drag_delta == [0.0, 0.0] {
+                self.drag_remainder = [0.0, 0.0];
+            } else {
                 self.drag_remainder[0] += drag_delta[0] * pixel_scale[0];
                 self.drag_remainder[1] += drag_delta[1] * pixel_scale[1];
                 let horizontal = self.drag_remainder[0].round() as i32;
@@ -332,8 +334,6 @@ impl WindowState {
                 right += horizontal;
                 top -= vertical;
                 bottom -= vertical;
-            } else {
-                self.drag_remainder = [0.0, 0.0];
             }
             right += (resize_delta[0] * pixel_scale[0]).round() as i32;
             bottom -= (resize_delta[1] * pixel_scale[1]).round() as i32;

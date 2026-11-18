@@ -19,6 +19,7 @@ pub struct RunwayAssignment {
 }
 
 /// Airport data kept only while the player or a live aircraft still needs it.
+#[derive(Default)]
 pub struct AirportManager {
     contexts: BTreeMap<String, AirportContext>,
 }
@@ -38,14 +39,6 @@ struct End<'a> {
     course: f64,
     length: f64,
     physical: usize,
-}
-
-impl Default for AirportManager {
-    fn default() -> Self {
-        Self {
-            contexts: BTreeMap::new(),
-        }
-    }
 }
 
 impl AirportManager {
@@ -253,8 +246,8 @@ fn runway_ends(airport: &Airport) -> Vec<End<'_>> {
     ends
 }
 
-fn choose_departure<'a>(
-    ends: &[End<'a>],
+fn choose_departure(
+    ends: &[End<'_>],
     planned: &str,
     wind_from: f64,
     wind_knots: f64,

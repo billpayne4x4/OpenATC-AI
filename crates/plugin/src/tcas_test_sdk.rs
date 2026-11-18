@@ -137,8 +137,8 @@ pub unsafe fn XPLMSetDatavi(reference: XPLMDataRef, data: *mut i32, offset: i32,
         assert_eq!(s.owner, MY_ID);
         let data = unsafe { std::slice::from_raw_parts(data, count as usize) };
         match reference as usize {
-            IDS => s.ids[1..1 + data.len()].copy_from_slice(data),
-            MODES => s.modes[1..1 + data.len()].copy_from_slice(data),
+            IDS => s.ids[1..=data.len()].copy_from_slice(data),
+            MODES => s.modes[1..=data.len()].copy_from_slice(data),
             14 => {}
             _ => panic!("Unexpected array"),
         }

@@ -77,7 +77,7 @@ impl AirspaceIndex {
                 continue;
             };
             if let Some(name) = line.strip_prefix("AN ") {
-                area.name = name.trim().to_owned();
+                name.trim().clone_into(&mut area.name);
             } else if let Some(limit) = line.strip_prefix("AL ") {
                 area.lower_ft = parse_altitude(limit).unwrap_or(0);
             } else if let Some(limit) = line.strip_prefix("AH ") {
@@ -193,7 +193,12 @@ fn parse_altitude(text: &str) -> Option<i32> {
     let number = text
         .trim_end_matches(|c: char| c.is_ascii_alphabetic() || c.is_whitespace())
         .trim();
-    number.parse::<f64>().ok().map(|value| value as i32)
+    number.parse::<f64>().ok().map(|value| {
+        // Airspace limits are whole feet and are capped well inside the range.
+        #[allow(clippy::cast_possible_truncation)]
+        let feet = value as i32;
+        feet
+    })
 }
 
 fn contains(points: &[[f64; 2]], latitude: f64, longitude: f64) -> bool {

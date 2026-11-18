@@ -242,6 +242,8 @@ impl Runtime {
         }
     }
 
+    // Keeps runtime.log(...) at call sites; output goes to the module traffic log.
+    #[allow(clippy::unused_self)]
     fn log(&self, level: openatc_settings::TrafficLog, message: impl AsRef<str>) {
         traffic_log(level, message);
     }
@@ -2698,6 +2700,7 @@ impl Scene {
     /// lone released aircraft is left untouched so the full ground-to-parking path is still
     /// exercised. Seeded aircraft hold only the resources of the segment they occupy, and a
     /// later boundary still requires its own controller clearance.
+    #[allow(clippy::too_many_arguments)]
     fn seed_population(
         &mut self,
         own: [f64; 2],
@@ -2740,8 +2743,7 @@ impl Scene {
                         airborne_seed(&plan.route, true).and_then(|index| plan.route.segment(index))
                     })
                     .and_then(|segment| segment.points.first())
-                    .map(|point| [point.latitude, point.longitude])
-                    .unwrap_or(own)
+                    .map_or(own, |point| [point.latitude, point.longitude])
             };
             openatc_core::arrival::distance_nm(own, position(*first))
                 .total_cmp(&openatc_core::arrival::distance_nm(own, position(*second)))
@@ -3035,12 +3037,13 @@ impl Scene {
                 continue;
             };
             let prepared = self.flights.get(&id).cloned();
-            if *role == "taxi to gate"
+            if (*role == "taxi to gate"
                 || prepared
                     .as_ref()
-                    .is_some_and(|prepared| Arc::ptr_eq(route, &prepared.route))
+                    .is_some_and(|prepared| Arc::ptr_eq(route, &prepared.route)))
+                && let Some(prepared) = &prepared
             {
-                if let Some(prepared) = &prepared {
+                {
                     let station = prepared
                         .clearances
                         .range(..=*index)
@@ -4379,7 +4382,7 @@ pub async fn prepare(shared: Shared) {
                 "Traffic airports selected; waiting for simulator airport weather".into();
             traffic_log(
                 openatc_settings::TrafficLog::Summary,
-                format!("{}", state.generated.status),
+                state.generated.status.clone(),
             );
         }
         Ok(PreparedJob::Scene(scene)) if scene.weather_fresh() => {
@@ -4415,7 +4418,7 @@ pub async fn prepare(shared: Shared) {
             state.generated.network_pending = local_only;
             traffic_log(
                 openatc_settings::TrafficLog::Summary,
-                format!("{}", state.generated.status),
+                state.generated.status.clone(),
             );
         }
         Ok(PreparedJob::Scene(_)) => {
@@ -4424,7 +4427,7 @@ pub async fn prepare(shared: Shared) {
                     .into();
             traffic_log(
                 openatc_settings::TrafficLog::Summary,
-                format!("{}", state.generated.status),
+                state.generated.status.clone(),
             );
         }
         Err(error) => {
@@ -5054,12 +5057,10 @@ fn external_targets(
     targets
 }
 
-fn session_phase(
-    stage: openatc_core::traffic::motion::Stage,
-) -> Option<crate::traffic_runtime::Phase> {
+fn session_phase(stage: openatc_core::traffic::motion::Stage) -> crate::traffic_runtime::Phase {
     use crate::traffic_runtime::Phase;
     use openatc_core::traffic::motion::Stage;
-    Some(match stage {
+    match stage {
         Stage::Parked => Phase::AtGate,
         Stage::Pushback => Phase::Pushback,
         Stage::TaxiOut => Phase::Taxi,
@@ -5071,7 +5072,7 @@ fn session_phase(
         Stage::Rollout => Phase::Landing,
         Stage::TaxiIn => Phase::TaxiIn,
         Stage::Turnaround => Phase::AtGateIn,
-    })
+    }
 }
 
 fn update_sessions(runtime: &mut Runtime, seconds: f64) {
@@ -5088,13 +5089,9 @@ fn update_sessions(runtime: &mut Runtime, seconds: f64) {
         let Some(pose) = poses.iter().find(|pose| pose.id == frame.target.id) else {
             continue;
         };
-        let Some(phase) = session_phase(pose.stage) else {
-            continue;
-        };
+        let phase = session_phase(pose.stage);
         let frequency = frame.target.com1_khz.unwrap_or(0);
-        if !runtime.sessions.contains(pose.id) {
-            runtime.sessions.add(pose.id, frequency, phase, seconds);
-        } else {
+        if runtime.sessions.contains(pose.id) {
             runtime.sessions.phase(pose.id, phase, seconds);
             // A speed above zero is not progress: a stopped crossing can still vibrate or
             // creep on the spot. Only a new segment or a real position change resets health.
@@ -5112,6 +5109,8 @@ fn update_sessions(runtime: &mut Runtime, seconds: f64) {
             if runtime.session_segments.get(&pose.id) != Some(&pose.segment) || moved {
                 runtime.sessions.progress(pose.id, seconds);
             }
+        } else {
+            runtime.sessions.add(pose.id, frequency, phase, seconds);
         }
         runtime.session_segments.insert(pose.id, pose.segment);
         runtime
@@ -5199,7 +5198,9 @@ fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) ->
             runtime.world.remove(id);
             runtime.log(
                 openatc_settings::TrafficLog::Summary,
-                format!("removed orphan generated pose {id} with no frame, flight plan or station assignment"),
+                format!(
+                    "removed orphan generated pose {id} with no frame, flight plan or station assignment"
+                ),
             );
         }
         // Advisory traffic at an untowered field is flown by the published procedure, so it
@@ -5773,9 +5774,10 @@ pub fn animation_channels(config: &std::path::Path) -> BTreeMap<String, animatio
 pub fn animation_handling(
     config: &std::path::Path,
 ) -> BTreeMap<animation::Kind, animation::Handling> {
-    policy::load(config)
-        .map(|(handling, _, _)| handling)
-        .unwrap_or_else(|_| animation::builtin().unwrap_or_default())
+    policy::load(config).map_or_else(
+        |_| animation::builtin().unwrap_or_default(),
+        |(handling, _, _)| handling,
+    )
 }
 
 /// Publish the most recent complete worker sample without waiting for simulation.
@@ -6127,6 +6129,83 @@ pub(crate) async fn prepare_turnaround(shared: Shared) {
     turnaround::prepare(shared).await;
 }
 
+/// Read-only generated-traffic state for diagnosing stalled aircraft.
+pub async fn debug_generated(
+    axum::extract::State(shared): axum::extract::State<Shared>,
+) -> axum::Json<serde_json::Value> {
+    use serde_json::json;
+    let state = shared.read().await;
+    let runtime = &state.generated;
+    let poses: Vec<serde_json::Value> = runtime
+        .world
+        .snapshot()
+        .into_iter()
+        .map(|pose| {
+            json!({
+                "id": pose.id,
+                "stage": format!("{:?}", pose.stage),
+                "segment": pose.segment,
+                "awaitingClearance": pose.awaiting_clearance,
+                "complete": pose.complete,
+                "knots": pose.knots,
+                "latitude": pose.position.latitude,
+                "longitude": pose.position.longitude,
+            })
+        })
+        .collect();
+    let sessions: Vec<serde_json::Value> = runtime
+        .sessions
+        .sessions()
+        .map(|(&id, session)| {
+            json!({
+                "id": id,
+                "frequency": session.frequency,
+                "phase": format!("{:?}", session.phase),
+                "lastProgress": session.last_progress,
+            })
+        })
+        .collect();
+    let exchange = runtime.exchange.as_ref().map(|exchange| {
+        json!({
+            "id": exchange.id,
+            "callsign": exchange.callsign,
+            "segment": exchange.segment,
+            "grant": exchange.grant,
+            "next": exchange.next,
+            "messages": exchange.messages,
+        })
+    });
+    let delivery_exchange = runtime.delivery_exchange.as_ref().map(|exchange| {
+        json!({
+            "id": exchange.id,
+            "callsign": exchange.callsign,
+            "segment": exchange.segment,
+            "grant": exchange.grant,
+            "next": exchange.next,
+        })
+    });
+    axum::Json(json!({
+        "epoch": runtime.epoch,
+        "sessionGeneration": state.session_generation,
+        "frames": runtime.frames.len(),
+        "flights": runtime.flights.len(),
+        "sessions": sessions,
+        "poses": poses,
+        "approvedOrders": runtime.approved_orders.iter().collect::<Vec<_>>(),
+        "reportedHolds": runtime.reported_holds.iter().collect::<Vec<_>>(),
+        "exchange": exchange,
+        "deliveryExchange": delivery_exchange,
+        "departureWaits": runtime.departure_waits.iter().map(|(id, (reason, at))| json!({"id": id, "reason": reason, "forSeconds": at.elapsed().as_secs_f64()})).collect::<Vec<_>>(),
+        "towerReady": runtime.tower_ready.iter().collect::<Vec<_>>(),
+        "towerNotified": runtime.tower_notified.iter().collect::<Vec<_>>(),
+        "activeFlights": runtime.active_flights.iter().collect::<Vec<_>>(),
+        "held": runtime.held.iter().map(|(id, blocker)| json!({"id": id, "blocker": blocker})).collect::<Vec<_>>(),
+        "surfaceBlockers": runtime.world.snapshot().into_iter().filter_map(|pose| runtime.world.surface_blocker(pose.id).map(|blocker| json!({"id": pose.id, "blocker": blocker}))).collect::<Vec<_>>(),
+        "networkPending": runtime.network_pending,
+        "orders": runtime.orders.iter().map(|(id, orders)| json!({"id": id, "segments": orders.iter().map(|(segment, _)| *segment).collect::<Vec<_>>()})).collect::<Vec<_>>(),
+    }))
+}
+
 #[cfg(test)]
 #[allow(clippy::float_cmp)]
 mod tests {
@@ -6163,11 +6242,13 @@ mod tests {
 
     #[test]
     fn a_scene_for_another_airport_replaces_the_live_world() {
-        let mut runtime = Runtime::default();
-        runtime.airport = Some(Arc::new(Airport {
-            icao: "LFMN".into(),
+        let runtime = Runtime {
+            airport: Some(Arc::new(Airport {
+                icao: "LFMN".into(),
+                ..Default::default()
+            })),
             ..Default::default()
-        }));
+        };
         assert!(replaces_airport(
             &runtime,
             &Airport {
@@ -6619,8 +6700,8 @@ mod tests {
                 segments.push(Segment {
                     stage: Stage::TaxiOut,
                     points: vec![
-                        point(step as f64 * 0.005, 0.0),
-                        point((step + 1) as f64 * 0.005, 0.0),
+                        point(f64::from(step) * 0.005, 0.0),
+                        point(f64::from(step + 1) * 0.005, 0.0),
                     ],
                     knots: 12.0,
                     resources: vec![format!("OUT/{id}/{step}")],
@@ -7280,6 +7361,19 @@ mod tests {
     }
 
     fn installed_bidirectional_lifecycles(counts: [u8; 4]) {
+        struct RefreshWeather {
+            stop: Arc<std::sync::atomic::AtomicBool>,
+            worker: Option<std::thread::JoinHandle<()>>,
+        }
+        impl Drop for RefreshWeather {
+            fn drop(&mut self) {
+                self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                if let Some(worker) = self.worker.take() {
+                    worker.join().unwrap();
+                }
+            }
+        }
+
         let expected = counts
             .iter()
             .map(|count| usize::from(*count))
@@ -7314,18 +7408,6 @@ mod tests {
             .collect();
         let observations: environment::Observations =
             Arc::new(std::sync::RwLock::new(weather.clone()));
-        struct RefreshWeather {
-            stop: Arc<std::sync::atomic::AtomicBool>,
-            worker: Option<std::thread::JoinHandle<()>>,
-        }
-        impl Drop for RefreshWeather {
-            fn drop(&mut self) {
-                self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
-                if let Some(worker) = self.worker.take() {
-                    worker.join().unwrap();
-                }
-            }
-        }
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let _refresh = RefreshWeather {
             stop: stop.clone(),
@@ -7391,9 +7473,14 @@ mod tests {
         let mut inbound = input.clone();
         std::mem::swap(&mut inbound.origin, &mut inbound.destination);
         std::mem::swap(&mut inbound.runway, &mut inbound.arrival_runway);
-        for index in 0..4 {
-            input.counts[index] = counts[index].div_ceil(2);
-            inbound.counts[index] = counts[index] / 2;
+        for ((input_count, inbound_count), count) in input
+            .counts
+            .iter_mut()
+            .zip(inbound.counts.iter_mut())
+            .zip(counts.iter())
+        {
+            *input_count = count.div_ceil(2);
+            *inbound_count = count / 2;
         }
         let scene = prepare_direction(input).unwrap();
         scene.observe_prepared(&mut inbound);
@@ -7646,19 +7733,23 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires installed scenery and Bluebell"]
     async fn installed_preparation_worker_revalidates_live_weather() {
-        installed_network_lifecycles(false, InstalledNetwork::Filed).await;
+        Box::pin(installed_network_lifecycles(false, InstalledNetwork::Filed)).await;
     }
 
     #[tokio::test]
     #[ignore = "requires installed scenery and Bluebell"]
     async fn installed_network_airline_regional_lifecycles_reach_parking() {
-        installed_network_lifecycles(true, InstalledNetwork::Filed).await;
+        Box::pin(installed_network_lifecycles(true, InstalledNetwork::Filed)).await;
     }
 
     #[tokio::test]
     #[ignore = "requires installed scenery and Bluebell"]
     async fn installed_unfiled_player_network_lifecycles_reach_parking() {
-        installed_network_lifecycles(true, InstalledNetwork::Unfiled).await;
+        Box::pin(installed_network_lifecycles(
+            true,
+            InstalledNetwork::Unfiled,
+        ))
+        .await;
     }
 
     #[test]
@@ -7752,13 +7843,21 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires installed scenery and Bluebell"]
     async fn installed_mixed_cargo_ga_network_lifecycles_reach_parking() {
-        installed_network_lifecycles(true, InstalledNetwork::MixedCargo).await;
+        Box::pin(installed_network_lifecycles(
+            true,
+            InstalledNetwork::MixedCargo,
+        ))
+        .await;
     }
 
     #[tokio::test]
     #[ignore = "requires installed scenery and Bluebell"]
     async fn installed_production_network_lifecycles_reach_parking() {
-        installed_network_lifecycles(true, InstalledNetwork::Production).await;
+        Box::pin(installed_network_lifecycles(
+            true,
+            InstalledNetwork::Production,
+        ))
+        .await;
     }
 
     #[tokio::test]
@@ -7767,7 +7866,11 @@ mod tests {
         // This fixture checks the opening cast and the merge path. The network movement
         // lifecycle is covered by the production and bidirectional fixtures; running it here
         // only reaches the known crossing-hold stall.
-        installed_network_lifecycles(false, InstalledNetwork::Population).await;
+        Box::pin(installed_network_lifecycles(
+            false,
+            InstalledNetwork::Population,
+        ))
+        .await;
     }
 
     enum InstalledNetwork {
@@ -9657,81 +9760,4 @@ mod tests {
             "the opening cast must replace the seed frames even when every category cap is zero"
         );
     }
-}
-
-/// Read-only generated-traffic state for diagnosing stalled aircraft.
-pub async fn debug_generated(
-    axum::extract::State(shared): axum::extract::State<Shared>,
-) -> axum::Json<serde_json::Value> {
-    use serde_json::json;
-    let state = shared.read().await;
-    let runtime = &state.generated;
-    let poses: Vec<serde_json::Value> = runtime
-        .world
-        .snapshot()
-        .into_iter()
-        .map(|pose| {
-            json!({
-                "id": pose.id,
-                "stage": format!("{:?}", pose.stage),
-                "segment": pose.segment,
-                "awaitingClearance": pose.awaiting_clearance,
-                "complete": pose.complete,
-                "knots": pose.knots,
-                "latitude": pose.position.latitude,
-                "longitude": pose.position.longitude,
-            })
-        })
-        .collect();
-    let sessions: Vec<serde_json::Value> = runtime
-        .sessions
-        .sessions()
-        .map(|(&id, session)| {
-            json!({
-                "id": id,
-                "frequency": session.frequency,
-                "phase": format!("{:?}", session.phase),
-                "lastProgress": session.last_progress,
-            })
-        })
-        .collect();
-    let exchange = runtime.exchange.as_ref().map(|exchange| {
-        json!({
-            "id": exchange.id,
-            "callsign": exchange.callsign,
-            "segment": exchange.segment,
-            "grant": exchange.grant,
-            "next": exchange.next,
-            "messages": exchange.messages,
-        })
-    });
-    let delivery_exchange = runtime.delivery_exchange.as_ref().map(|exchange| {
-        json!({
-            "id": exchange.id,
-            "callsign": exchange.callsign,
-            "segment": exchange.segment,
-            "grant": exchange.grant,
-            "next": exchange.next,
-        })
-    });
-    axum::Json(json!({
-        "epoch": runtime.epoch,
-        "sessionGeneration": state.session_generation,
-        "frames": runtime.frames.len(),
-        "flights": runtime.flights.len(),
-        "sessions": sessions,
-        "poses": poses,
-        "approvedOrders": runtime.approved_orders.iter().collect::<Vec<_>>(),
-        "reportedHolds": runtime.reported_holds.iter().collect::<Vec<_>>(),
-        "exchange": exchange,
-        "deliveryExchange": delivery_exchange,
-        "departureWaits": runtime.departure_waits.iter().map(|(id, (reason, at))| json!({"id": id, "reason": reason, "forSeconds": at.elapsed().as_secs_f64()})).collect::<Vec<_>>(),
-        "towerReady": runtime.tower_ready.iter().collect::<Vec<_>>(),
-        "towerNotified": runtime.tower_notified.iter().collect::<Vec<_>>(),
-        "activeFlights": runtime.active_flights.iter().collect::<Vec<_>>(),
-        "held": runtime.held.iter().map(|(id, blocker)| json!({"id": id, "blocker": blocker})).collect::<Vec<_>>(),
-        "surfaceBlockers": runtime.world.snapshot().into_iter().filter_map(|pose| runtime.world.surface_blocker(pose.id).map(|blocker| json!({"id": pose.id, "blocker": blocker}))).collect::<Vec<_>>(),
-        "networkPending": runtime.network_pending,
-        "orders": runtime.orders.iter().map(|(id, orders)| json!({"id": id, "segments": orders.iter().map(|(segment, _)| *segment).collect::<Vec<_>>()})).collect::<Vec<_>>(),
-    }))
 }

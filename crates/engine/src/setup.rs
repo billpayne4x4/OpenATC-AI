@@ -221,6 +221,8 @@ fn finish(result: Result<usize, String>, reset: bool) {
     match result {
         Ok(files) => {
             status.files = files;
+            status.first_run = false;
+            status.reset = false;
             status.phase=if reset {"Setup caches rebuilt. Scenery rebuilds on demand. Restart the plugin to reload all active policies."} else {"TOML setup cache ready"}.into();
             status.errors.clear();
             status.current_file.clear();

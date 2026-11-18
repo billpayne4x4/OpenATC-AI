@@ -119,7 +119,7 @@ impl Manager {
                 .filter(|rule| policy.rule(rule.id()))
                 .find_map(|rule| rule.evaluate(&context))
         };
-        finding.is_some_and(|finding| self.handle(state, &policy, finding))
+        finding.is_some_and(|finding| self.handle(state, &policy, &finding))
     }
 
     fn reset_if_needed(&mut self, generation: u64) {
@@ -175,7 +175,7 @@ impl Manager {
         self.airspace = Some(index);
     }
 
-    fn handle(&mut self, state: &mut EngineState, policy: &Policy, finding: Finding) -> bool {
+    fn handle(&mut self, state: &mut EngineState, policy: &Policy, finding: &Finding) -> bool {
         let now = Instant::now();
         if self.last.get(finding.rule).is_some_and(|last| {
             now.duration_since(*last) < Duration::from_secs(policy.settings.cooldown_seconds)
@@ -617,7 +617,7 @@ points = [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
         )
         .unwrap();
         std::fs::write(directory.join("broken.toml"), "not valid toml").unwrap();
-        let areas = custom_areas(&[directory.clone()]);
+        let areas = custom_areas(std::slice::from_ref(&directory));
         assert_eq!(areas.len(), 1);
         assert_eq!(areas[0].name, "Test area");
         std::fs::remove_dir_all(directory).ok();

@@ -29,6 +29,7 @@ use openatc_core::{
     dialogue::say,
     state::{PhaseCode, SpeechTag, TrafficTarget},
     stations::{Station, nearby, tuned},
+    traffic::sequencing::{self, Decision},
 };
 use serde_json::{Value, json};
 use std::{
@@ -128,12 +129,12 @@ pub fn observe(state: &mut EngineState) {
         if !openatc_core::traffic::advisory::valid(target) {
             continue;
         }
-        if !state.traffic.pilot_voices.contains_key(&target.callsign)
-            && !state
+        if !(state.traffic.pilot_voices.contains_key(&target.callsign)
+            || state
                 .traffic
                 .pilots
                 .get(&target.id)
-                .is_some_and(|pilot| pilot.target.callsign == target.callsign)
+                .is_some_and(|pilot| pilot.target.callsign == target.callsign))
         {
             pilot_voice_for_callsign(state, &target.callsign);
         }
@@ -708,7 +709,7 @@ pub(crate) fn spacing(state: &mut EngineState, station: &Station) -> bool {
         &t.aircraft_icao
     };
     let mut observed = t.clone();
-    observed.aircraft_icao = aircraft.clone();
+    observed.aircraft_icao.clone_from(aircraft);
     let fixes = state
         .session
         .plan
@@ -723,7 +724,6 @@ pub(crate) fn spacing(state: &mut EngineState, station: &Station) -> bool {
     let maximum = fixes
         .filter_map(|f| f.maximum_speed_knots)
         .min_by(f64::total_cmp);
-    use openatc_core::traffic::sequencing::{self, Decision};
     let decision = sequencing::assess(
         airport,
         &state.session.plan.arrival_runway,

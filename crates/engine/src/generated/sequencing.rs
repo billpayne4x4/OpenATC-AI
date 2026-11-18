@@ -565,7 +565,7 @@ mod tests {
                 id: 1,
                 callsign: "TEST1".into(),
                 aircraft: "A320".into(),
-                com1_khz: Some(123100),
+                com1_khz: Some(123_100),
                 ..Default::default()
             },
             vertical_speed_fpm: 0.0,
@@ -593,7 +593,7 @@ mod tests {
             station: Station {
                 service: "Approach".into(),
                 name: "Test Approach".into(),
-                khz: 123100,
+                khz: 123_100,
                 ..Default::default()
             },
             callsign: "TEST1".into(),
@@ -626,13 +626,13 @@ mod tests {
         assert!(state.generated.approved_orders.is_empty());
         state.generated.world.advance(1.0, false);
         assert!((state.generated.world.snapshot()[0].knots - 219.5).abs() < 1e-6);
-        let mut stale = instruction;
-        stale.plan = Arc::new((*stale.plan).clone());
+        let mut outdated = instruction;
+        outdated.plan = Arc::new((*outdated.plan).clone());
         assert!(!accept(
             &mut state.generated,
             &state.session.telemetry,
             1,
-            &stale
+            &outdated
         ));
         state.session.telemetry.traffic = None;
         let missing_feed = Instruction {

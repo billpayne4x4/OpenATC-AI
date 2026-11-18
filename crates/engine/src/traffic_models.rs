@@ -73,7 +73,7 @@ impl Installer {
         if self.running.load(Ordering::Acquire) {
             return Err("Model installation is running".into());
         }
-        let path = location(root)?;
+        let path = model_source(root)?;
         let mut cache = self.catalogue.lock().await;
         if cache.as_ref().is_none_or(|cached| cached.root != path) {
             let source = path.clone();
@@ -110,12 +110,31 @@ impl Installer {
         }
     }
 }
+/// Writable model store outside the simulator folder.
 fn location(root: &str) -> Result<PathBuf, String> {
     let root = Path::new(root);
     if !root.join("Resources/plugins").is_dir() {
         return Err("Set the X-Plane folder before installing traffic models.".into());
     }
-    Ok(root.join("Resources/plugins/OpenATC/Resources/CSL"))
+    Ok(crate::data_dir().join("csl"))
+}
+
+/// Older installs kept models in the simulator folder; keep reading them.
+fn legacy_location(root: &str) -> PathBuf {
+    Path::new(root).join("Resources/plugins/OpenATC/Resources/CSL")
+}
+
+/// The installed catalogue, preferring the writable store.
+fn model_source(root: &str) -> Result<PathBuf, String> {
+    let current = location(root)?;
+    if current.join("Bluebell").is_dir() {
+        return Ok(current);
+    }
+    let legacy = legacy_location(root);
+    if legacy.join("Bluebell").is_dir() {
+        return Ok(legacy);
+    }
+    Ok(current)
 }
 fn failure(message: &str) -> Response {
     (
@@ -132,14 +151,15 @@ pub async fn status(AxumState(shared): AxumState<crate::Shared>, Json(_): Json<V
     if !installer.running.load(Ordering::Acquire) && installer.snapshot().stage == "installed" {
         let snapshot = installer.snapshot();
         if !Path::new(&snapshot.path).join(RECEIPT).is_file()
-            || location(&root).is_ok_and(|base| base.join("Bluebell") != Path::new(&snapshot.path))
+            || model_source(&root)
+                .is_ok_and(|base| base.join("Bluebell") != Path::new(&snapshot.path))
         {
             installer.update(|p| *p = Progress::default());
         }
     }
     if !installer.running.load(Ordering::Acquire)
         && installer.snapshot().stage.is_empty()
-        && let Ok(base) = location(&root)
+        && let Ok(base) = model_source(&root)
         && let Ok(bytes) = tokio::fs::read(base.join("Bluebell").join(RECEIPT)).await
         && let Ok(mut saved) = serde_json::from_slice::<Progress>(&bytes)
     {
@@ -162,7 +182,7 @@ pub async fn index(
             s.workers.clone(),
         )
     };
-    let path = match location(&root) {
+    let path = match model_source(&root) {
         Ok(v) => v,
         Err(e) => return failure(&e),
     };

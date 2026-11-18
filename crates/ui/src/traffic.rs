@@ -780,6 +780,7 @@ pub(crate) fn scenery_setup(
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod map_tests {
     use super::*;
     use openatc_core::state::{GeneratedTraffic, TrafficTarget};
@@ -813,7 +814,7 @@ mod map_tests {
             }),
             vertical_speed_fpm: 0.0,
             body_heading_degrees: None,
-            animation: Default::default(),
+            animation: openatc_core::traffic::animation::Animation::default(),
         });
         let shown: Vec<_> = targets(&state).collect();
         assert_eq!(shown.len(), 1);
@@ -848,7 +849,7 @@ mod map_tests {
             }),
             vertical_speed_fpm: 0.0,
             body_heading_degrees: None,
-            animation: Default::default(),
+            animation: openatc_core::traffic::animation::Animation::default(),
         });
         let shown: Vec<_> = targets(&state).collect();
         assert_eq!(shown.len(), 2);

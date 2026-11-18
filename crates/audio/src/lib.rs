@@ -81,6 +81,7 @@ struct Capture {
 
 /// Live master level shared with the audio callback. The callback reads it every block, so a
 /// volume change also affects the utterance that is already playing.
+static REPORTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
 static LIVE_MASTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F4C_CCCD);
 
 /// Shared playback state read by the audio callback.
@@ -953,7 +954,6 @@ unsafe extern "C" fn render_callback(ud: *mut c_void, out: *mut c_float, frames:
     let dest = unsafe { std::slice::from_raw_parts_mut(out, frames * 2) };
     if let Ok(mut locked) = playback.lock() {
         let master = f32::from_bits(LIVE_MASTER.load(std::sync::atomic::Ordering::Relaxed));
-        static REPORTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(u32::MAX);
         if REPORTED.swap(master.to_bits(), std::sync::atomic::Ordering::Relaxed) != master.to_bits()
         {
             eprintln!("OpenATC audio: playing at master level {master:.2}");

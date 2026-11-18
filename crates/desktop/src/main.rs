@@ -47,15 +47,13 @@ fn main() {
     }
     // Explicit debug-only scenery fixture for reproducible visual review.
     #[cfg(debug_assertions)]
-    if let Ok(path) = std::env::var("OPENATC_TERRAIN_PREVIEW") {
-        if let Ok(text) = std::fs::read_to_string(path) {
-            if let Ok(mut profile) =
-                serde_json::from_str::<openatc_core::arrival::TerrainProfile>(&text)
-            {
-                profile.source = "PREVIEW terrain fixture".into();
-                interface.arrival_terrain = profile;
-            }
-        }
+    if let Ok(path) = std::env::var("OPENATC_TERRAIN_PREVIEW")
+        && let Ok(text) = std::fs::read_to_string(path)
+        && let Ok(mut profile) =
+            serde_json::from_str::<openatc_core::arrival::TerrainProfile>(&text)
+    {
+        profile.source = "PREVIEW terrain fixture".into();
+        interface.arrival_terrain = profile;
     }
     let mut last_frame = std::time::Instant::now();
     let mut applied_ui_scale = 1.0f32;
@@ -210,13 +208,12 @@ fn create_window() -> (
     #[cfg(debug_assertions)]
     let mut preview_size = preview_size;
     #[cfg(debug_assertions)]
-    if let Ok(size) = std::env::var("OPENATC_PREVIEW_SIZE") {
-        if let Some((w, h)) = size
+    if let Ok(size) = std::env::var("OPENATC_PREVIEW_SIZE")
+        && let Some((w, h)) = size
             .split_once('x')
             .and_then(|(w, h)| w.parse::<u32>().ok().zip(h.parse::<u32>().ok()))
-        {
-            preview_size = (w.clamp(520, 1920), h.clamp(460, 1080));
-        }
+    {
+        preview_size = (w.clamp(520, 1920), h.clamp(460, 1080));
     }
     let window_attributes = WindowAttributes::default()
         .with_title(

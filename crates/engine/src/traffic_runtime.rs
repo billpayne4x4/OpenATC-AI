@@ -235,7 +235,7 @@ impl StationSupervisor {
         let events = station.events.clone();
         let join = thread::Builder::new()
             .name(format!("openatc-station-{frequency}"))
-            .spawn(move || run_station(frequency, receiver, events, thread_gate))
+            .spawn(move || run_station(frequency, &receiver, &events, &thread_gate))
             .expect("station thread");
         let restore = station
             .watch
@@ -343,9 +343,9 @@ fn apply_command(
 
 fn run_station(
     frequency: i32,
-    commands: Receiver<StationCommand>,
-    events: Sender<StationEvent>,
-    gate: Arc<Mutex<bool>>,
+    commands: &Receiver<StationCommand>,
+    events: &Sender<StationEvent>,
+    gate: &Arc<Mutex<bool>>,
 ) {
     let _ = events.send(StationEvent::Started { frequency });
     let mut watch = BTreeMap::new();
@@ -377,19 +377,18 @@ fn run_station(
             let mut worked = false;
             let mut stop = false;
             while let Ok(command) = commands.try_recv() {
-                match apply_command(
+                if let Some(queued) = apply_command(
                     frequency,
                     command,
                     &mut watch,
                     &mut triggers,
                     &mut transmissions,
-                    &events,
+                    events,
                 ) {
-                    Some(queued) => worked |= queued,
-                    None => {
-                        stop = true;
-                        break;
-                    }
+                    worked |= queued;
+                } else {
+                    stop = true;
+                    break;
                 }
             }
             if stop || (!worked && triggers.is_empty() && transmissions.is_empty()) {
@@ -401,8 +400,10 @@ fn run_station(
         }
         let wait = transmissions
             .front()
-            .map(|transmission| transmission.due.saturating_duration_since(now))
-            .unwrap_or(Duration::from_millis(50))
+            .map_or_else(
+                || Duration::from_millis(50),
+                |transmission| transmission.due.saturating_duration_since(now),
+            )
             .min(Duration::from_millis(50));
         match commands.recv_timeout(wait) {
             Ok(StationCommand::Shutdown) | Err(RecvTimeoutError::Disconnected) => {
@@ -418,7 +419,7 @@ fn run_station(
                     &mut watch,
                     &mut triggers,
                     &mut transmissions,
-                    &events,
+                    events,
                 );
             }
             Err(RecvTimeoutError::Timeout) => {}
@@ -677,7 +678,7 @@ impl TrafficHealth {
     /// player is never retired.
     pub(crate) fn check(&self, registry: &mut SessionRegistry, at: f64) -> Vec<HealthAction> {
         let mut actions = Vec::new();
-        for (&id, session) in registry.sessions.iter_mut() {
+        for (&id, session) in &mut registry.sessions {
             if id == 0 || !at.is_finite() || at < session.last_progress {
                 continue;
             }
@@ -697,6 +698,88 @@ impl TrafficHealth {
             session.last_progress = at;
         }
         actions
+    }
+}
+
+impl openatc_core::aircraft::AircraftBehaviour for SessionState {
+    fn state(&self) -> &openatc_core::aircraft::AircraftState {
+        &self.aircraft
+    }
+
+    fn state_mut(&mut self) -> &mut openatc_core::aircraft::AircraftState {
+        &mut self.aircraft
+    }
+
+    fn on_event(
+        &mut self,
+        event: openatc_core::aircraft::AircraftEvent,
+    ) -> openatc_core::aircraft::AircraftOutcome {
+        use openatc_core::aircraft::{AircraftEvent, AircraftOutcome, AircraftPhase};
+        match event {
+            AircraftEvent::IfrClearanceReceived => {
+                self.phase = Phase::IfrClearance;
+                self.aircraft.phase = AircraftPhase::IfrClearance;
+                AircraftOutcome::Advanced(AircraftPhase::IfrClearance)
+            }
+            AircraftEvent::StartupComplete => {
+                self.phase = Phase::AtGate;
+                self.aircraft.phase = AircraftPhase::Startup;
+                AircraftOutcome::Advanced(AircraftPhase::Startup)
+            }
+            AircraftEvent::PushbackComplete => {
+                self.phase = Phase::Pushback;
+                self.aircraft.phase = AircraftPhase::Pushback;
+                AircraftOutcome::Advanced(AircraftPhase::Pushback)
+            }
+            AircraftEvent::Taxi => {
+                self.phase = Phase::Taxi;
+                self.aircraft.phase = AircraftPhase::Taxi;
+                AircraftOutcome::Advanced(AircraftPhase::Taxi)
+            }
+            AircraftEvent::TaxiIn => {
+                self.phase = Phase::TaxiIn;
+                self.aircraft.phase = AircraftPhase::TaxiIn;
+                AircraftOutcome::Advanced(AircraftPhase::TaxiIn)
+            }
+            AircraftEvent::Approach => {
+                self.phase = Phase::Approach;
+                self.aircraft.phase = AircraftPhase::Approach;
+                AircraftOutcome::Advanced(AircraftPhase::Approach)
+            }
+            AircraftEvent::Finished => {
+                self.aircraft.phase = AircraftPhase::Finished;
+                AircraftOutcome::Advanced(AircraftPhase::Finished)
+            }
+            AircraftEvent::Arrival => {
+                self.aircraft.phase = AircraftPhase::Arrival;
+                AircraftOutcome::Advanced(AircraftPhase::Arrival)
+            }
+            AircraftEvent::Departure => {
+                self.aircraft.phase = AircraftPhase::Departure;
+                AircraftOutcome::Advanced(AircraftPhase::Departure)
+            }
+            AircraftEvent::Cruise => {
+                self.aircraft.phase = AircraftPhase::Cruise;
+                AircraftOutcome::Advanced(AircraftPhase::Cruise)
+            }
+            AircraftEvent::Landed => {
+                self.phase = Phase::Landing;
+                self.aircraft.phase = AircraftPhase::Landed;
+                AircraftOutcome::Advanced(AircraftPhase::Landed)
+            }
+            AircraftEvent::Parked => {
+                self.phase = Phase::AtGate;
+                self.aircraft.phase = AircraftPhase::Parked;
+                AircraftOutcome::Advanced(AircraftPhase::Parked)
+            }
+            _ => AircraftOutcome::None,
+        }
+    }
+
+    fn advance(&mut self, seconds: f64) -> openatc_core::aircraft::AircraftOutcome {
+        self.last_progress = seconds;
+        self.aircraft.last_progress_seconds = seconds;
+        openatc_core::aircraft::AircraftOutcome::None
     }
 }
 
@@ -886,7 +969,7 @@ mod tests {
         let mut heard = false;
         while !(started && heard) {
             match receive(&received, Duration::from_secs(1)) {
-                StationEvent::Started { frequency } if frequency == 121_705 => started = true,
+                StationEvent::Started { frequency: 121_705 } => started = true,
                 StationEvent::Transmitted { transmission, .. } => {
                     assert_eq!(transmission.text, "taxi via A");
                     heard = true;
@@ -1083,87 +1166,5 @@ mod tests {
         }
         assert_eq!(heard, BTreeSet::from([118_700, 121_705]));
         supervisor.shutdown();
-    }
-}
-
-impl openatc_core::aircraft::AircraftBehaviour for SessionState {
-    fn state(&self) -> &openatc_core::aircraft::AircraftState {
-        &self.aircraft
-    }
-
-    fn state_mut(&mut self) -> &mut openatc_core::aircraft::AircraftState {
-        &mut self.aircraft
-    }
-
-    fn on_event(
-        &mut self,
-        event: openatc_core::aircraft::AircraftEvent,
-    ) -> openatc_core::aircraft::AircraftOutcome {
-        use openatc_core::aircraft::{AircraftEvent, AircraftOutcome, AircraftPhase};
-        match event {
-            AircraftEvent::IfrClearanceReceived => {
-                self.phase = Phase::IfrClearance;
-                self.aircraft.phase = AircraftPhase::IfrClearance;
-                AircraftOutcome::Advanced(AircraftPhase::IfrClearance)
-            }
-            AircraftEvent::StartupComplete => {
-                self.phase = Phase::AtGate;
-                self.aircraft.phase = AircraftPhase::Startup;
-                AircraftOutcome::Advanced(AircraftPhase::Startup)
-            }
-            AircraftEvent::PushbackComplete => {
-                self.phase = Phase::Pushback;
-                self.aircraft.phase = AircraftPhase::Pushback;
-                AircraftOutcome::Advanced(AircraftPhase::Pushback)
-            }
-            AircraftEvent::Taxi => {
-                self.phase = Phase::Taxi;
-                self.aircraft.phase = AircraftPhase::Taxi;
-                AircraftOutcome::Advanced(AircraftPhase::Taxi)
-            }
-            AircraftEvent::TaxiIn => {
-                self.phase = Phase::TaxiIn;
-                self.aircraft.phase = AircraftPhase::TaxiIn;
-                AircraftOutcome::Advanced(AircraftPhase::TaxiIn)
-            }
-            AircraftEvent::Approach => {
-                self.phase = Phase::Approach;
-                self.aircraft.phase = AircraftPhase::Approach;
-                AircraftOutcome::Advanced(AircraftPhase::Approach)
-            }
-            AircraftEvent::Finished => {
-                self.aircraft.phase = AircraftPhase::Finished;
-                AircraftOutcome::Advanced(AircraftPhase::Finished)
-            }
-            AircraftEvent::Arrival => {
-                self.aircraft.phase = AircraftPhase::Arrival;
-                AircraftOutcome::Advanced(AircraftPhase::Arrival)
-            }
-            AircraftEvent::Departure => {
-                self.aircraft.phase = AircraftPhase::Departure;
-                AircraftOutcome::Advanced(AircraftPhase::Departure)
-            }
-            AircraftEvent::Cruise => {
-                self.aircraft.phase = AircraftPhase::Cruise;
-                AircraftOutcome::Advanced(AircraftPhase::Cruise)
-            }
-            AircraftEvent::Landed => {
-                self.phase = Phase::Landing;
-                self.aircraft.phase = AircraftPhase::Landed;
-                AircraftOutcome::Advanced(AircraftPhase::Landed)
-            }
-            AircraftEvent::Parked => {
-                self.phase = Phase::AtGate;
-                self.aircraft.phase = AircraftPhase::Parked;
-                AircraftOutcome::Advanced(AircraftPhase::Parked)
-            }
-            _ => AircraftOutcome::None,
-        }
-    }
-
-    fn advance(&mut self, seconds: f64) -> openatc_core::aircraft::AircraftOutcome {
-        self.last_progress = seconds;
-        self.aircraft.last_progress_seconds = seconds;
-        openatc_core::aircraft::AircraftOutcome::None
     }
 }

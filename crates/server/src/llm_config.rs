@@ -59,7 +59,9 @@ pub fn custom_manifest(source: &str) -> Result<openatc_ai_core::Manifest, String
     }
     let model = &manifest.model[0];
     let safe_path = model.path.starts_with("llm/")
-        && model.path.ends_with(".gguf")
+        && std::path::Path::new(&model.path)
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("gguf"))
         && !model.path.contains('\\')
         && std::path::Path::new(&model.path)
             .components()

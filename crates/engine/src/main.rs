@@ -55,7 +55,9 @@ pub(crate) fn traffic_seed() -> u64 {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos() as u64);
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+        });
     let seed = nanos
         ^ u64::from(std::process::id()).wrapping_mul(0x9E37_79B9_7F4A_7C15)
         ^ COUNTER
@@ -570,12 +572,11 @@ async fn main() {
                         settings.llm_phrase_variety
                     );
                     if !speech_source.is_empty()
-                        && let Err(error) = openatc_core::dialogue::load(
+                        && let Some(repair) = openatc_core::dialogue::load(
                             &std::path::Path::new(&speech_source).join("runtime/responses.toml"),
                         )
                     {
-                        eprintln!("Operational speech rejected: {error}");
-                        std::process::exit(1);
+                        eprintln!("Speech library repaired: {repair}");
                     }
                     let speech = if speech_source.is_empty() {
                         openatc_core::speech::SpeechPool::default()

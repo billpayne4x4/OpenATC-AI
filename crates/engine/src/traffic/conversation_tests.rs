@@ -25,7 +25,7 @@ fn prepared(aircraft: &str) -> EngineState {
                 on_ground: false,
                 altitude_feet: 10000.0,
                 ground_speed_knots: Some(150.0),
-                com1_khz: Some(123450),
+                com1_khz: Some(123_450),
                 ..Default::default()
             },
             seen: Instant::now(),
@@ -117,7 +117,7 @@ async fn casual_chat_respects_settings_critical_phases_and_operational_replies()
                     Instant::now().checked_sub(Duration::from_secs(31)).unwrap();
             }
             "frequency" => {
-                state.traffic.pilots.get_mut(&42).unwrap().target.com1_khz = Some(122800);
+                state.traffic.pilots.get_mut(&42).unwrap().target.com1_khz = Some(122_800);
             }
             _ => unreachable!(),
         }

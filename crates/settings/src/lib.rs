@@ -229,7 +229,7 @@ pub struct Settings {
     pub traffic_circuit_turboprop_nm: f64,
     /// Keep an airport alive this far from a light aircraft flying a local circuit.
     pub traffic_circuit_ga_nm: f64,
-    /// Wake-separation table: auto, icao, recat_eu, faa_cwt or mats.
+    /// Wake-separation table: `auto`, `icao`, `recat_eu`, `faa_cwt` or `mats`.
     pub wake_standard: String,
     /// Allow departure wake-separation waits.
     #[serde(default = "yes")]
@@ -695,7 +695,10 @@ impl Settings {
             ("GA circuit radius", self.traffic_circuit_ga_nm),
         ] {
             if !value.is_finite() || !(1.0..=200.0).contains(&value) {
-                return Err(ValidationError::OutOfRange(name, value as f32));
+                // The range check bounds the value well inside f32 precision.
+                #[allow(clippy::cast_possible_truncation)]
+                let bounded = value as f32;
+                return Err(ValidationError::OutOfRange(name, bounded));
             }
         }
         if self.cpu_workers > 16 {

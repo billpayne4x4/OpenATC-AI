@@ -55,7 +55,7 @@ impl TerrainSampler {
             if changed {
                 *output = TerrainProfile::default();
             }
-            self.key = key.clone();
+            self.key.clone_from(&key);
             self.origin = own;
             self.started = Instant::now();
             self.at = 0;

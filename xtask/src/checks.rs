@@ -245,12 +245,10 @@ fn serve(
             } else if request
                 .pointer("/response_format/json_schema/schema/properties/control_targets")
                 .is_some()
-            {
-                proposal.lock().unwrap().clone().unwrap_or(answer)
-            } else if request["messages"][0]["content"]
-                .as_str()
-                .unwrap_or("")
-                .contains("Allowed controls:")
+                || request["messages"][0]["content"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("Allowed controls:")
             {
                 proposal.lock().unwrap().clone().unwrap_or(answer)
             } else if let Ok(value) = serde_json::from_str::<Value>(&answer) {

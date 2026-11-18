@@ -521,10 +521,10 @@ fn change_with(sim: &Path, payload: Option<&Path>, check: fn() -> Result) -> Res
                 if changed || legacy_override {
                     println!("Preserved customised file: {name}");
                 }
-                if let Some(baseline) = old.get(&name) {
-                    if payload.is_some() {
-                        owned.insert(name, baseline.clone());
-                    }
+                if let Some(baseline) = old.get(&name)
+                    && payload.is_some()
+                {
+                    owned.insert(name, baseline.clone());
                 }
             }
         }

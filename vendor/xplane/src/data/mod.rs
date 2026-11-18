@@ -257,7 +257,7 @@ impl DataApi {
     /// Creates a new dataref with the provided name containing the default value of `T`.
     /// # Errors
     /// Errors if there is a NUL character in the dataref name, or if a dataref with that name already exists.
-    pub fn new_owned<T: DataType + Default + ?Sized, A: Access, S: AsRef<str>>(
+    pub fn new_owned<T: DataType + Default, A: Access, S: AsRef<str>>(
         &mut self,
         name: S,
     ) -> Result<OwnedData<T, A>, CreateError> {

@@ -288,7 +288,7 @@ impl From<LoopResult> for f32 {
             LoopResult::Deactivate => 0f32,
             LoopResult::Seconds(secs) => secs,
             LoopResult::NextLoop => -1.0f32,
-            LoopResult::Loops(loops) => -1.0f32 * (loops as f32),
+            LoopResult::Loops(loops) => -(loops as f32),
         }
     }
 }

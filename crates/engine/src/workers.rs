@@ -41,7 +41,7 @@ impl Workers {
                         };
                         // A failed import must not permanently remove a worker.
                         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            crate::config_cache::on_worker(job)
+                            crate::config_cache::on_worker(job);
                         }));
                     }
                 })

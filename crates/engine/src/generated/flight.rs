@@ -1492,10 +1492,8 @@ pub(super) fn lineup_ahead(
     let rank = |pose: &openatc_core::traffic::motion::Pose| {
         if matches!(pose.stage, Stage::LineUp | Stage::Takeoff) {
             2
-        } else if pose.stage == Stage::TaxiOut && pose.complete {
-            1
         } else {
-            0
+            i32::from(pose.stage == Stage::TaxiOut && pose.complete)
         }
     };
     let own_pose = runtime
@@ -1715,9 +1713,8 @@ fn exchange_filtered(
                 pose.seconds_to_limit
             }
         };
-        let ground = |pose: &openatc_core::traffic::motion::Pose| {
-            if pose.stage.on_ground() { 0 } else { 1 }
-        };
+        let ground =
+            |pose: &openatc_core::traffic::motion::Pose| i32::from(!pose.stage.on_ground());
         ground(left)
             .cmp(&ground(right))
             .then_with(|| deadline(left).total_cmp(&deadline(right)))
@@ -2365,9 +2362,8 @@ fn exchange_filtered(
                 ));
             }
             continue;
-        } else {
-            state.generated.hold_reasons.remove(&(pose.id, index));
         }
+        state.generated.hold_reasons.remove(&(pose.id, index));
         if !current_handoff && state.generated.approved_orders.contains(&(pose.id, index)) {
             continue;
         }

@@ -86,7 +86,7 @@ impl Capture {
         let mut file = std::fs::File::create(&self.path).expect("capture file");
         write!(file, "P6\n{width} {height}\n255\n").unwrap();
         for row in pixels.chunks_exact((width * 4) as usize).rev() {
-            for pixel in row.chunks_exact(4) {
+            for pixel in row.as_chunks::<4>().0 {
                 file.write_all(&pixel[..3]).unwrap();
             }
         }

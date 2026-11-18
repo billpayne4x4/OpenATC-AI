@@ -83,10 +83,8 @@ fn find_model(
             .map(|entry| {
                 if paints.contains(entry.operator.as_str()) {
                     3
-                } else if entry.operator.is_empty() {
-                    1
                 } else {
-                    0
+                    i32::from(entry.operator.is_empty())
                 }
             })
             .max()
@@ -145,6 +143,20 @@ fn airport_runway_length(airport: &Airport, runway: &str) -> f64 {
         })
 }
 
+type GroundCall = (
+    openatc_core::state::Radio,
+    i32,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+);
+
+type PathProfile = (Vec<Waypoint>, f64, f64, f64, f64, f64, f64);
+
+#[allow(clippy::too_many_arguments)]
 fn airline_candidates(
     profiles: &Profiles,
     models: &Catalogue,
@@ -165,7 +177,7 @@ fn airline_candidates(
             Category::Airline => airline_weight,
             Category::Regional => regional_weight,
             Category::Cargo => cargo_weight,
-            _ => continue,
+            Category::GeneralAviation => continue,
         };
         if category_weight == 0 {
             continue;
@@ -199,9 +211,11 @@ fn airline_candidates(
             let Some(model) = find_model(models, kind, profile, airline, seed) else {
                 continue;
             };
-            let Some(callsign) =
-                scheduled_callsign(airline, airport, seed.wrapping_add(*fleet_weight as u64))
-            else {
+            let Some(callsign) = scheduled_callsign(
+                airline,
+                airport,
+                seed.wrapping_add(u64::from(*fleet_weight)),
+            ) else {
                 continue;
             };
             if used.contains(&callsign) || callsign.eq_ignore_ascii_case(player) {
@@ -250,9 +264,11 @@ fn ga_candidates(
         let Some(model) = find_model(models, kind, profile, airline, seed) else {
             continue;
         };
-        let Some(callsign) =
-            scheduled_callsign(airline, airport, seed.wrapping_add(*fleet_weight as u64))
-        else {
+        let Some(callsign) = scheduled_callsign(
+            airline,
+            airport,
+            seed.wrapping_add(u64::from(*fleet_weight)),
+        ) else {
             continue;
         };
         if used.contains(&callsign) || callsign.eq_ignore_ascii_case(player) {
@@ -273,6 +289,7 @@ fn ga_candidates(
 }
 
 /// Choose an airline or GA aircraft that has an installed model and fits the runway.
+#[allow(clippy::too_many_arguments)]
 fn ambient_identity(
     profiles: &Profiles,
     models: &Catalogue,
@@ -306,7 +323,7 @@ fn ambient_identity(
             cargo_weight,
         );
     }
-    if candidates.is_empty() && profiles.hubs.get(airport).is_none() {
+    if candidates.is_empty() && !profiles.hubs.contains_key(airport) {
         candidates = airline_candidates(
             profiles,
             models,
@@ -1123,7 +1140,7 @@ impl TrafficManager {
             } else {
                 None
             };
-            let right_blocked = right_blocker.is_some();
+            let right_held = right_blocker.is_some();
             let hold_for_clearance = self.aircraft[index].kind == AmbientKind::Departure
                 && distance >= self.aircraft[index].hold_distance
                 && !self.aircraft[index].cleared;
@@ -1297,7 +1314,7 @@ impl TrafficManager {
                     self.aircraft[index].takeoff = true;
                 }
             }
-            let runway_blocker = if player_on_runway {
+            let runway_conflict = if player_on_runway {
                 Some(0)
             } else {
                 traffic
@@ -1312,7 +1329,7 @@ impl TrafficManager {
             } else if let Some(id) = right_blocker {
                 Some(id)
             } else if runway_blocked {
-                runway_blocker
+                runway_conflict
             } else {
                 None
             };
@@ -1321,15 +1338,15 @@ impl TrafficManager {
                 && ahead.is_some_and(|leader| leader.id == 0);
             let own_progress = distance - self.aircraft[index].runway_start;
             let flight_leader = climb_leader(&self.aircraft, index);
-            let blocked = runway_blocked
-                || right_blocked
+            let held = runway_blocked
+                || right_held
                 || physical_blocked
                 || overlap_stop.is_some()
                 || hold_for_clearance
                 || surface_invalid;
             let aircraft = &mut self.aircraft[index];
             aircraft.last = now;
-            aircraft.blocked = blocked;
+            aircraft.blocked = held;
             aircraft.blocker = blocker;
             aircraft.awaiting_clearance = hold_for_clearance;
             aircraft.yield_to = right_blocker;
@@ -1348,7 +1365,7 @@ impl TrafficManager {
                 aircraft.taxi_turn_knots,
                 braking,
             );
-            let (target_speed, target_acceleration) = if blocked {
+            let (target_speed, target_acceleration) = if held {
                 (0.0, braking)
             } else if aircraft.kind == AmbientKind::Departure
                 && aircraft.distance >= aircraft.runway_start
@@ -1442,8 +1459,8 @@ impl TrafficManager {
             } else {
                 0.0
             };
-            let stage = aircraft.stage();
-            let target_vertical = match stage {
+            let current_stage = aircraft.stage();
+            let target_vertical = match current_stage {
                 Stage::Climb => aircraft.climb_fpm,
                 Stage::Approach => -aircraft.descent_fpm,
                 _ => 0.0,
@@ -1453,13 +1470,13 @@ impl TrafficManager {
                 .update_vertical(dt, target_vertical, 1_200.0);
             aircraft.animation.advance(
                 animation::Input {
-                    stage,
+                    stage: current_stage,
                     knots: aircraft.speed * 1.943_844,
                     turn_degrees_sec: turn_rate,
                     vertical_fpm,
                     engines_running: true,
                     fixed_gear: aircraft.profile.fixed_gear,
-                    landing_lights: stage.landing_lights(),
+                    landing_lights: current_stage.landing_lights(),
                 },
                 &aircraft.handling,
                 dt,
@@ -1522,16 +1539,7 @@ impl TrafficManager {
         }
         self.ground_calls(state);
         self.player_give_way(state, &traffic);
-        let mut calls: Vec<(
-            openatc_core::state::Radio,
-            i32,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-        )> = Vec::new();
+        let mut calls: Vec<GroundCall> = Vec::new();
         for aircraft in &mut self.aircraft {
             if aircraft.frequency_khz.is_none() {
                 aircraft.frequency_khz = state
@@ -2102,16 +2110,16 @@ impl TrafficManager {
         state: &crate::EngineState,
         target: usize,
     ) {
-        let (wind_from, wind_knots) = state
-            .sim_weather
-            .get(&airport.icao)
-            .map(|(sample, _)| {
-                (
-                    sample["windDegrees"].as_f64().unwrap_or(0.0),
-                    sample["windKnots"].as_f64().unwrap_or(0.0),
-                )
-            })
-            .unwrap_or((0.0, 0.0));
+        let (wind_from, wind_knots) =
+            state
+                .sim_weather
+                .get(&airport.icao)
+                .map_or((0.0, 0.0), |(sample, _)| {
+                    (
+                        sample["windDegrees"].as_f64().unwrap_or(0.0),
+                        sample["windKnots"].as_f64().unwrap_or(0.0),
+                    )
+                });
         let fallback = airport
             .runways
             .first()
@@ -2148,7 +2156,7 @@ impl TrafficManager {
             })
             .map(|station| station.khz)
         else {
-            self.last_error = "waiting for a Tower frequency".to_owned();
+            "waiting for a Tower frequency".clone_into(&mut self.last_error);
             return;
         };
         if models.models.is_empty() {
@@ -2185,11 +2193,9 @@ impl TrafficManager {
             + u64::from(state.settings.regional_traffic)
             + u64::from(state.settings.cargo_traffic)
             + u64::from(state.settings.ga_traffic);
-        let ga_percent = if mix_total == 0 {
-            0
-        } else {
-            u64::from(state.settings.ga_traffic) * 100 / mix_total
-        };
+        let ga_percent = (u64::from(state.settings.ga_traffic) * 100)
+            .checked_div(mix_total)
+            .unwrap_or(0);
         let mut used_nodes: BTreeSet<i64> = self
             .aircraft
             .iter()
@@ -2281,7 +2287,7 @@ impl TrafficManager {
                     position.0 < 0.0 && -position.0 < 8.0 * 1852.0 && position.1.abs() < 500.0
                 })
             {
-                self.last_error = "arrival slot waits for the player on final".to_owned();
+                "arrival slot waits for the player on final".clone_into(&mut self.last_error);
                 slot += 1;
                 node_attempts = 0;
                 continue;
@@ -2307,7 +2313,7 @@ impl TrafficManager {
             });
             let Some(identity) = identity else {
                 self.rejected_model = self.rejected_model.saturating_add(1);
-                self.last_error = "no fitted airline or GA model".to_owned();
+                "no fitted airline or GA model".clone_into(&mut self.last_error);
                 slot += 1;
                 node_attempts = 0;
                 continue;
@@ -2361,7 +2367,7 @@ impl TrafficManager {
                 .flatten();
             if kind == AmbientKind::Arrival && arrival_exit.is_none() {
                 self.rejected_route = self.rejected_route.saturating_add(1);
-                self.last_error = "no clear arrival exit".to_owned();
+                "no clear arrival exit".clone_into(&mut self.last_error);
                 slot += 1;
                 node_attempts = 0;
                 continue;
@@ -2381,11 +2387,11 @@ impl TrafficManager {
                 continue;
             };
             let surface_points =
-                phases::ground::round_taxi_path(&airport, &surface_points, &handling);
+                phases::ground::round_taxi_path(airport, &surface_points, &handling);
             let entry_points = (kind == AmbientKind::Departure)
                 .then(|| {
                     runway_entry_points(
-                        &airport,
+                        airport,
                         surface_points.last().copied(),
                         &departure_runway,
                         size,
@@ -2494,7 +2500,8 @@ impl TrafficManager {
                     let positions = seed_distances(hold_distance, departures_requested);
                     let Some(raw) = positions.get(slot).copied() else {
                         self.rejected_route = self.rejected_route.saturating_add(1);
-                        self.last_error = "no safe taxiway length for another departure".to_owned();
+                        "no safe taxiway length for another departure"
+                            .clone_into(&mut self.last_error);
                         self.rejected_spawn_nodes.insert((size, node.id));
                         tried_nodes.insert((size, node.id));
                         continue;
@@ -2502,7 +2509,8 @@ impl TrafficManager {
                     let distance = hold_clear_of_runway(airport, &points, &cumulative, raw);
                     if distance <= 0.0 {
                         self.rejected_route = self.rejected_route.saturating_add(1);
-                        self.last_error = "seeded departure would start on the runway".to_owned();
+                        "seeded departure would start on the runway"
+                            .clone_into(&mut self.last_error);
                         self.rejected_spawn_nodes.insert((size, node.id));
                         tried_nodes.insert((size, node.id));
                         continue;
@@ -2518,7 +2526,7 @@ impl TrafficManager {
                     .is_some_and(|distance| distance <= RUNWAY_EDGE_MARGIN)
             {
                 self.rejected_route = self.rejected_route.saturating_add(1);
-                self.last_error = "seed point too close to a runway edge".to_owned();
+                "seed point too close to a runway edge".clone_into(&mut self.last_error);
                 self.rejected_spawn_nodes.insert((size, node.id));
                 tried_nodes.insert((size, node.id));
                 continue;
@@ -2540,7 +2548,7 @@ impl TrafficManager {
                     < 80.0
             }) {
                 self.rejected_route = self.rejected_route.saturating_add(1);
-                self.last_error = "spawn point too close to another aircraft".to_owned();
+                "spawn point too close to another aircraft".clone_into(&mut self.last_error);
                 tried_nodes.insert((size, node.id));
                 continue;
             }
@@ -2555,7 +2563,7 @@ impl TrafficManager {
                     < 100.0
             {
                 self.rejected_route = self.rejected_route.saturating_add(1);
-                self.last_error = "spawn point too close to the player".to_owned();
+                "spawn point too close to the player".clone_into(&mut self.last_error);
                 tried_nodes.insert((size, node.id));
                 continue;
             }
@@ -2616,13 +2624,12 @@ impl TrafficManager {
                 runway_end,
                 hold_distance,
                 hold,
-                animation: {
-                    let mut animation = Animation::default();
-                    animation.engine = 1.0;
-                    animation.propeller_rpm = handling.propeller_rpm;
-                    animation.beacon = true;
-                    animation.navigation_lights = true;
-                    animation
+                animation: Animation {
+                    engine: 1.0,
+                    propeller_rpm: handling.propeller_rpm,
+                    beacon: true,
+                    navigation_lights: true,
+                    ..Default::default()
                 },
                 handling,
                 taxi_knots,
@@ -2752,6 +2759,7 @@ fn seed_distances(hold_distance: f64, requested: usize) -> Vec<f64> {
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_node<'a>(
     airport: &'a Airport,
     size: char,
@@ -3071,6 +3079,7 @@ pub(crate) struct ArrivalExitPlan {
 /// speed is skipped, and a stopped queue inside the exit throat moves the plan to
 /// the next exit. A moving queue is assumed to clear.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn choose_arrival_exit(
     airport: &Airport,
     runway: &str,
@@ -3163,6 +3172,7 @@ fn runway_entry_points(
     (points.len() > 1).then_some(points)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn departure_path(
     airport: &Airport,
     points: &[Point],
@@ -3173,7 +3183,7 @@ fn departure_path(
     climb_speed: f64,
     climb_fpm: f64,
     turn: Option<f64>,
-) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64, f64)> {
+) -> Option<PathProfile> {
     let mut combined = points.to_vec();
     if let Some(entry) = entry {
         for point in entry {
@@ -3315,7 +3325,7 @@ fn arrival_path(
     runway: &str,
     stand: Waypoint,
     minimum_rollout: f64,
-) -> Option<(Vec<Waypoint>, f64, f64, f64, f64, f64, f64)> {
+) -> Option<PathProfile> {
     let (_, threshold, far) = runway_ends(airport, runway, None)?;
     let bearing = openatc_core::arrival::bearing(
         [threshold.latitude, threshold.longitude],
@@ -3781,6 +3791,7 @@ fn ambient_frame(aircraft: &AmbientAircraft) -> Option<GeneratedTraffic> {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
 
@@ -3817,6 +3828,7 @@ mod tests {
 }
 
 #[cfg(test)]
+#[allow(clippy::float_cmp)]
 mod phase_tests {
     use super::*;
     use openatc_core::traffic::csl::{Match, Model};
@@ -6203,7 +6215,7 @@ mod phase_tests {
             90.0,
             aircraft.profile.length,
             1,
-            &[ahead.clone()],
+            std::slice::from_ref(&ahead),
         ));
         let behind = TrafficTarget {
             longitude: -0.0002,

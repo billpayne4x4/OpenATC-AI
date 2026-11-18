@@ -100,7 +100,7 @@ impl Plugin for DataRefPlugin {
     }
 
     fn disable(&mut self, _xpapi: &mut xplane::XPAPI) {
-        todo!()
+        panic!("data ref example does not implement disable")
     }
 }
 

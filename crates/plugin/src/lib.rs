@@ -2,6 +2,18 @@
 //! SDK calls run on the simulator thread; the companion engine handles dialogue.
 
 #![allow(unsafe_code)]
+// SDK calls use C integers and raw float telemetry. Checked conversions here
+// add noise without preventing a real failure.
+#![allow(
+    clippy::borrow_as_ptr,
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::float_cmp,
+    clippy::unreadable_literal
+)]
 
 mod arrival;
 mod atis;
@@ -174,12 +186,10 @@ fn update_panel(
     } else {
         "CABIN".to_owned()
     };
-    let profile = locked
-        .panel
-        .profile
-        .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| "Standard simulator controls".to_owned());
+    let profile = locked.panel.profile.as_ref().map_or_else(
+        || "Standard simulator controls".to_owned(),
+        |p| p.name.clone(),
+    );
     let Some(interface) = locked.interface.as_mut() else {
         return;
     };
@@ -361,7 +371,7 @@ fn update_autopilot(shared: &Arc<Mutex<Shared>>) {
             "copilot_altitude_set",
             &[
                 ("altitude", altitude.to_string()),
-                ("callsign", callsign.to_owned()),
+                ("callsign", callsign.clone()),
             ],
         ),
         sequence: 0,
@@ -446,8 +456,7 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         let root = locked
             .interface
             .as_ref()
-            .map(|interface| interface.settings.simulator_root.as_str())
-            .unwrap_or("");
+            .map_or("", |interface| interface.settings.simulator_root.as_str());
         let path =
             std::path::Path::new(root).join("Resources/plugins/OpenATC/aircraft/transponder.toml");
         let result = openatc_core::transponder::Controls::load(&path)
@@ -455,7 +464,7 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         if let Some(interface) = locked.interface.as_mut() {
             interface.radio_notice = result.map_or_else(
                 |error| error,
-                |_| format!("Squawk {code:04} selected; mode selector unchanged."),
+                |()| format!("Squawk {code:04} selected; mode selector unchanged."),
             );
         }
     }
@@ -499,7 +508,11 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
         t.com1_khz = radio.get();
     }
     if let Some(t) = telemetry.as_mut() {
-        t.com2_khz = locked.com2.as_ref().map(|radio| radio.get()).or(t.com2_khz);
+        t.com2_khz = locked
+            .com2
+            .as_ref()
+            .map(xplane::data::DataRead::get)
+            .or(t.com2_khz);
         t.wingspan_meters = locked
             .panel
             .profile
@@ -563,11 +576,7 @@ fn flight_tick(shared: &Arc<Mutex<Shared>>, xpapi: &mut xplane::XPAPI) {
             });
             if arrived || started.elapsed().as_secs() > 150 {
                 // Drop the shared borrow before accessing the interface again.
-                let token = locked
-                    .debug_air_target
-                    .take()
-                    .map(|(_, token)| token)
-                    .unwrap_or(0);
+                let token = locked.debug_air_target.take().map_or(0, |(_, token)| token);
                 let interface = locked.interface.as_mut().unwrap();
                 interface.engine.post(
                     "/debug/jump/finish",
@@ -813,10 +822,10 @@ impl Plugin for OpenAtc {
             && let Some(root) = std::path::Path::new(&file)
                 .parent()
                 .and_then(|p| p.parent())
-            && let Err(error) =
+            && let Some(repair) =
                 openatc_core::dialogue::load(&root.join("speech/runtime/responses.toml"))
         {
-            debug_log(&format!("OpenATC AI: operational speech rejected: {error}"));
+            debug_log(&format!("OpenATC AI: speech library repaired: {repair}"));
         }
         if let Some(file) = supervise::plugin_file_path()
             && let Some(root) = std::path::Path::new(&file)
@@ -984,11 +993,8 @@ impl Plugin for OpenAtc {
                 // Consume immutable HTTP snapshots independently of the slower telemetry tick.
                 if let Some(interface) = shared.interface.as_ref() {
                     let state = interface.engine.state();
-                    let root = std::path::Path::new(&interface.settings.simulator_root)
-                        .join("Resources/plugins/OpenATC/Resources/CSL");
                     shared.generated_traffic.receive(
                         &state.generated_traffic,
-                        &root,
                         &state.generated_animation_channels,
                         state.telemetry.paused,
                         state.generated_traffic_clock,

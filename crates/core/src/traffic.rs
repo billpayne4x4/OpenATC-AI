@@ -98,6 +98,7 @@ pub struct RunwayClearance {
 
 /// Compare an aircraft footprint with the exact published runway width and length.
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn runway_clearance(
     airport: &Airport,
     runway: &str,
@@ -387,9 +388,7 @@ pub fn ahead_on_same_taxi_route(
     if gap > 150.0 {
         return false;
     }
-    let same_direction =
-        ((target.track_degrees - route_heading + 180.0).rem_euclid(360.0) - 180.0).abs() < 45.0;
-    same_direction
+    ((target.track_degrees - route_heading + 180.0).rem_euclid(360.0) - 180.0).abs() < 45.0
 }
 
 /// Magnitude and side of the surface crosswind, using true wind and true runway bearing.
@@ -526,8 +525,8 @@ mod tests {
         };
         let over =
             runway_clearance(&airport, "09", 0.00027, 0.0, 90.0, "A320", Some(36.0), 0.0).unwrap();
-        assert_eq!(over.width_meters, 45.0);
-        assert_eq!(over.lateral_half_meters, 18.0);
+        assert!((over.width_meters - 45.0).abs() < f64::EPSILON);
+        assert!((over.lateral_half_meters - 18.0).abs() < f64::EPSILON);
         assert!(
             over.over_runway,
             "a wingtip 30 m from the centreline is over a 45 m runway"

@@ -1,4 +1,4 @@
-//! Publish generated targets only while OpenATC owns the SDK traffic slots.
+//! Publish generated targets only while `OpenATC` owns the SDK traffic slots.
 use openatc_core::state::GeneratedTraffic;
 use std::{
     ffi::CStr,
@@ -132,7 +132,7 @@ impl Tcas {
             self.source.clear();
             return;
         }
-        if self.owned && !self.still_owned() {
+        if self.owned && !Self::still_owned() {
             self.forget();
             self.attempted = false;
         }
@@ -208,7 +208,7 @@ impl Tcas {
                     &raw mut x,
                     &raw mut y,
                     &raw mut z,
-                )
+                );
             };
             let speed = target
                 .ground_speed_knots
@@ -274,7 +274,7 @@ impl Tcas {
         if !self.owned {
             return;
         }
-        if !self.still_owned() {
+        if !Self::still_owned() {
             self.forget();
             self.attempted = false;
             return;
@@ -329,7 +329,7 @@ impl Tcas {
         self.release();
         self.attempted = false;
     }
-    fn still_owned(&self) -> bool {
+    fn still_owned() -> bool {
         let (mut total, mut active, mut owner) = (0, 0, 0);
         unsafe { xp::XPLMCountAircraft(&raw mut total, &raw mut active, &raw mut owner) };
         owner == unsafe { xp::XPLMGetMyID() }

@@ -1,4 +1,4 @@
-//! Desktop tray helper for the OpenATC AI server manager.
+//! Desktop tray helper for the `OpenATC` AI server manager.
 //!
 //! The server starts this only when a desktop session is available. It reads
 //! the manager status over the dashboard HTTP API and offers the same actions
@@ -6,8 +6,6 @@
 
 #[cfg(target_os = "linux")]
 use ksni::blocking::TrayMethods;
-#[cfg(target_os = "linux")]
-use std::process::Command;
 #[cfg(target_os = "linux")]
 use std::time::Duration;
 
@@ -34,16 +32,8 @@ impl ksni::Tray for Tray {
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        use ksni::menu::*;
+        use ksni::menu::{MenuItem, StandardItem};
         vec![
-            StandardItem {
-                label: "Open dashboard".to_owned(),
-                icon_name: "applications-internet".to_owned(),
-                activate: Box::new(|tray: &mut Self| open_dashboard(&tray.url)),
-                ..Default::default()
-            }
-            .into(),
-            MenuItem::Separator,
             StandardItem {
                 label: format!("Status: {}", self.status),
                 enabled: false,
@@ -63,15 +53,6 @@ impl ksni::Tray for Tray {
             }
             .into(),
             MenuItem::Separator,
-            StandardItem {
-                label: "Restart server".to_owned(),
-                icon_name: "view-refresh".to_owned(),
-                activate: Box::new(|tray: &mut Self| {
-                    post(&tray.url, "restart");
-                }),
-                ..Default::default()
-            }
-            .into(),
             StandardItem {
                 label: "Hara-kiri".to_owned(),
                 icon_name: "application-exit".to_owned(),
@@ -150,14 +131,11 @@ fn main() {
 
 #[cfg(target_os = "linux")]
 fn fetch_status(url: &str) -> (String, String) {
-    let response = match ureq::get(format!("{url}/status")).call() {
-        Ok(response) => response,
-        Err(_) => {
-            return (
-                "unreachable".to_owned(),
-                "Dashboard not reachable".to_owned(),
-            );
-        }
+    let Ok(response) = ureq::get(format!("{url}/status")).call() else {
+        return (
+            "unreachable".to_owned(),
+            "Dashboard not reachable".to_owned(),
+        );
     };
     let mut response = response;
     let Ok(text) = response.body_mut().read_to_string() else {
@@ -192,11 +170,6 @@ fn post(url: &str, action: &str) {
         .header("Origin", url)
         .header("Content-Type", "application/json")
         .send_empty();
-}
-
-#[cfg(target_os = "linux")]
-fn open_dashboard(url: &str) {
-    let _ = Command::new("xdg-open").arg(url).spawn();
 }
 
 #[cfg(not(target_os = "linux"))]

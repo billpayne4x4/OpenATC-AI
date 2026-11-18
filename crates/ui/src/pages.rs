@@ -3124,11 +3124,11 @@ fn realism_tab(ui: &imgui::Ui, interface: &mut Interface) {
     let mut chat_chance = i32::from(interface.settings.pilot_chat_chance_percent);
     widgets::muted_wrapped(ui, "Chance per eligible opportunity (%)");
     ui.set_next_item_width(-1.0);
-    let _chat_disabled = ui.begin_disabled(!interface.settings.pilots_call_me);
+    let chat_disabled = ui.begin_disabled(!interface.settings.pilots_call_me);
     if ui.slider("##pilot-chat-chance", 0, 100, &mut chat_chance) {
         interface.settings.pilot_chat_chance_percent = chat_chance as u8;
     }
-    drop(_chat_disabled);
+    drop(chat_disabled);
     ui.text_wrapped("Checks for a current reason before rolling: recent strong wind or reduced visibility near the other pilot can prompt a request for a weather report. No reason means no call, even at 100%. Checks are spaced by the conversation interval; 0% disables unsolicited calls. Operational questions remain available independently of informal chat.");
     widgets::section_title(ui, "TAXI GUIDANCE");
     ui.checkbox(
@@ -3255,11 +3255,11 @@ fn readbacks_row(ui: &imgui::Ui, interface: &mut Interface) {
     let mut chance = i32::from(interface.settings.atc_shortcut_chance_percent);
     widgets::muted_wrapped(ui, "Chance per eligible opportunity (%)");
     ui.set_next_item_width(-1.0);
-    let _disabled = ui.begin_disabled(!interface.settings.atc_shortcut_offers);
+    let shortcut_disabled = ui.begin_disabled(!interface.settings.atc_shortcut_offers);
     if ui.slider("##shortcut-chance", 0, 100, &mut chance) {
         interface.settings.atc_shortcut_chance_percent = chance as u8;
     }
-    drop(_disabled);
+    drop(shortcut_disabled);
     ui.text_wrapped("Rolled only after finding a useful shortcut with checked terrain, crossing restrictions and descent distance. Each route opportunity is tried once, with at least five minutes between checks. 0% disables offers; 100% offers every eligible opportunity. Accepting requests a new clearance. Required traffic spacing, holding, handoffs and go-arounds do not use this percentage.");
     widgets::section_title(ui, "CLEARANCE COMPLIANCE");
     ui.checkbox(
@@ -3734,21 +3734,21 @@ mod tests {
         state.telemetry.com2_khz = Some(118_700);
         let tower: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com1",
-            "frequency": 118700,
+            "frequency": 118_700,
             "speaker": "ATC",
             "text": "Cleared for takeoff."
         }))
         .expect("transmission");
         let ground: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com1",
-            "frequency": 121900,
+            "frequency": 121_900,
             "speaker": "ATC",
             "text": "Taxi to the holding point."
         }))
         .expect("transmission");
         let foreign: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com2",
-            "frequency": 118700,
+            "frequency": 118_700,
             "speaker": "ATC",
             "text": "Tower on the other receiver."
         }))
@@ -4291,7 +4291,7 @@ mod tests {
                         &state,
                         height,
                         TranscriptScope::Radio(interface.active_radio),
-                    )
+                    );
                 });
             ctx.render();
         };
@@ -4356,7 +4356,7 @@ mod tests {
                         state,
                         300.0,
                         TranscriptScope::Radio(interface.active_radio),
-                    )
+                    );
                 });
             ctx.render();
         };

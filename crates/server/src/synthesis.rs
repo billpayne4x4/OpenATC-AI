@@ -54,10 +54,6 @@ fn load(config: &Config) -> Result<(Engine, Status), String> {
         ),
         Engine::Kitten(e) => (DeviceStatus::new(e.device().0, e.device().1), e.voices()),
     };
-    #[derive(serde::Deserialize)]
-    struct Warmup {
-        text: String,
-    }
     let warmup: Warmup = toml::from_str(include_str!("../../../server/warmup.toml"))
         .map_err(|error| error.to_string())?;
     if warmup.text.trim().is_empty() || warmup.text.len() > 128 {
@@ -88,6 +84,11 @@ fn load(config: &Config) -> Result<(Engine, Status), String> {
             voices,
         },
     ))
+}
+
+#[derive(serde::Deserialize)]
+struct Warmup {
+    text: String,
 }
 
 pub fn run(

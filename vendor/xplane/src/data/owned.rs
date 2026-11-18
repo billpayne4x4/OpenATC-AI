@@ -6,7 +6,6 @@ use std::ffi::{c_int, c_void};
 use std::{
     cmp,
     ffi::{CString, NulError},
-    i32,
     marker::PhantomData,
     ptr,
 };

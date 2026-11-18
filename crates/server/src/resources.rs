@@ -12,6 +12,7 @@ impl Monitor {
             sampled: false,
         }
     }
+    #[allow(clippy::cast_precision_loss)]
     pub fn sample(&mut self, root: Option<u32>) -> Value {
         self.system.refresh_memory();
         self.system.refresh_cpu_usage();
@@ -100,27 +101,25 @@ pub async fn gpu(pids: &[u32]) -> Value {
     let mut processes = vec![];
     if let Ok(Ok(output)) =
         tokio::time::timeout(std::time::Duration::from_secs(2), command.output()).await
+        && output.status.success()
     {
-        if output.status.success() {
-            let mut total = 0;
-            let mut found = false;
-            let mut unknown = false;
-            for line in String::from_utf8_lossy(&output.stdout).lines() {
-                let parts: Vec<_> = line.split(',').map(str::trim).collect();
-                if parts.len() == 2 && parts[0].parse().ok().is_some_and(|pid| pids.contains(&pid))
-                {
-                    found = true;
-                    processes.push(json!({"pid":parts[0].parse::<u32>().ok(),"memoryMiB":parts[1].parse::<u64>().ok()}));
-                    if let Ok(value) = parts[1].parse::<u64>() {
-                        total += value
-                    } else {
-                        unknown = true;
-                    }
+        let mut total = 0;
+        let mut found = false;
+        let mut unknown = false;
+        for line in String::from_utf8_lossy(&output.stdout).lines() {
+            let parts: Vec<_> = line.split(',').map(str::trim).collect();
+            if parts.len() == 2 && parts[0].parse().is_ok_and(|pid| pids.contains(&pid)) {
+                found = true;
+                processes.push(json!({"pid":parts[0].parse::<u32>().ok(),"memoryMiB":parts[1].parse::<u64>().ok()}));
+                if let Ok(value) = parts[1].parse::<u64>() {
+                    total += value;
+                } else {
+                    unknown = true;
                 }
             }
-            if found && !unknown {
-                used = Some(total);
-            }
+        }
+        if found && !unknown {
+            used = Some(total);
         }
     }
     json!({"available":!devices.is_empty(),"devices":devices,"serverMiB":used,"processes":processes,"reason":"VRAM counters are dedicated-device values; shared/unified memory may be unavailable"})
@@ -158,10 +157,9 @@ mod tests {
             .collect();
         let pids = sample["pids"].as_array().unwrap();
         assert!(!tasks.is_empty());
-        assert!(
-            pids.iter()
-                .all(|id| !tasks.contains(&(id.as_u64().unwrap() as u32)))
-        );
+        assert!(pids.iter().all(|id| {
+            u32::try_from(id.as_u64().unwrap_or(u64::MAX)).is_ok_and(|id| !tasks.contains(&id))
+        }));
         worker.thread().unpark();
         worker.join().unwrap();
     }

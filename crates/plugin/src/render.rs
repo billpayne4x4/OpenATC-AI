@@ -1,4 +1,4 @@
-//! OpenGL rendering and simulator mouse/keyboard input for ImGui.
+//! OpenGL rendering and simulator mouse/keyboard input for `ImGui`.
 
 use crate::geometry::FrameLayout;
 use openatc_ui::interface::{WindowActions, WindowFrame};

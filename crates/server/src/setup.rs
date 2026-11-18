@@ -84,9 +84,9 @@ pub(super) fn values(path: &Path) -> Result<toml::Table, String> {
 }
 fn normalize(mut values: toml::Table) -> toml::Table {
     values.retain(|key, value| {
-        !matches!(value, toml::Value::String(value) if value.is_empty())
-            && !(matches!(key, "threads" | "batch-threads" | "llm-bytes")
-                && value.as_integer() == Some(0))
+        !(matches!(value, toml::Value::String(value) if value.is_empty())
+            || (matches!(key, "threads" | "batch-threads" | "llm-bytes")
+                && value.as_integer() == Some(0)))
     });
     if values.get("ctx-auto").and_then(toml::Value::as_bool) == Some(true) {
         values.remove("ctx-size");

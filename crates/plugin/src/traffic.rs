@@ -1,7 +1,7 @@
 //! Optional native AI count control. X-Plane continues to fly the aircraft.
 use xplane_sys as xp;
 
-/// Decide whether OpenATC should own X-Plane's native AI and how many to request.
+/// Decide whether `OpenATC` should own X-Plane's native AI and how many to request.
 ///
 /// Generated traffic always forces native AI to zero. Otherwise a configured native count is
 /// used only when the user manages native traffic explicitly.

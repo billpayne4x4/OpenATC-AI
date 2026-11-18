@@ -464,7 +464,7 @@ impl Library {
     /// resulting obstacle is the tallest thing it can place. A reference that cannot be resolved
     /// makes the whole string unresolved rather than being treated as flat ground.
     /// Bound the distance between an annotation and its tile's ground point.
-    /// SHARE_Y can refer to another tile, so those definitions retain the area-wide bound.
+    /// `SHARE_Y` can refer to another tile, so those definitions retain the area-wide bound.
     pub fn autogen_ground_reach(&self, pack: &Path, name: &str) -> Option<f64> {
         let key = (pack.to_path_buf(), name.to_owned());
         if let Some(value) = self.ground_reach_cache.borrow().get(&key) {

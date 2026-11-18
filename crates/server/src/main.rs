@@ -37,6 +37,7 @@ use openatc_platform::models_dir;
 use openatc_tts::fx::Fx;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -336,6 +337,7 @@ fn chatml_prompt(messages: &[ChatMessage]) -> String {
 }
 
 /// Run one completion on the inference thread. Returns text plus token counts.
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 fn complete(
     model: &LlamaModel,
     context: &mut llama_cpp_2::context::LlamaContext,
@@ -464,6 +466,11 @@ fn complete(
 }
 
 /// Inference thread entry: loads everything once, then serves jobs forever.
+#[allow(
+    clippy::too_many_arguments,
+    clippy::fn_params_excessive_bools,
+    clippy::needless_pass_by_value
+)]
 fn inference_loop(
     llm_path: &std::path::Path,
     ctx_size: u32,
@@ -753,7 +760,7 @@ async fn tokenize(
             .iter()
             .map(|message| message.content.len())
             .sum::<usize>()
-            > 262144
+            > 262_144
     {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
@@ -1152,7 +1159,6 @@ async fn main() -> Result<(), String> {
             std::process::exit(0);
         });
     }
-    use std::io::IsTerminal;
     if !config_path.exists() && std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
         setup::terminal(&config_path, initial.settings_schema.as_deref())?;
     }
@@ -1266,7 +1272,7 @@ async fn main() -> Result<(), String> {
             root,
         };
         tts_loader = Some(std::thread::spawn(move || {
-            synthesis::run(&config, tts_rx, &ready_tx)
+            synthesis::run(&config, tts_rx, &ready_tx);
         }));
         tokio::task::spawn_blocking(move || {
             ready_rx.recv_timeout(std::time::Duration::from_secs(300))

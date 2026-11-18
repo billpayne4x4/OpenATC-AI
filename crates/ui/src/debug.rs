@@ -186,7 +186,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({
                 "speaker": "ATC",
                 "radio": "com1",
-                "frequency": 118700,
+                "frequency": 118_700,
                 "text": "Tower three."
             }))
             .unwrap(),
@@ -195,7 +195,7 @@ mod tests {
             serde_json::from_value(serde_json::json!({
                 "speaker": "ATC",
                 "radio": "com2",
-                "frequency": 118700,
+                "frequency": 118_700,
                 "text": "Tower four."
             }))
             .unwrap(),

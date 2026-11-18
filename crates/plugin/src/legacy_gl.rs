@@ -1,5 +1,5 @@
 //! Compatibility-profile drawing for the OpenGL 2.1 context supplied by macOS.
-//! The fixed-pipeline approach follows Dear ImGui's OpenGL 2 backend; client
+//! The fixed-pipeline approach follows Dear `ImGui`'s OpenGL 2 backend; client
 //! pointers are rebased per command to support maps with more than 64K vertices.
 use imgui::{DrawCmd, DrawData, DrawIdx, DrawVert, TextureId, internal::RawWrapper};
 use std::{

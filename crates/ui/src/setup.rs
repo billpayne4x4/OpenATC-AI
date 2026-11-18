@@ -79,6 +79,7 @@ pub(crate) fn controls(ui: &imgui::Ui, interface: &mut Interface) {
     details(ui, interface);
 }
 
+#[allow(clippy::cast_precision_loss)]
 fn details(ui: &imgui::Ui, interface: &Interface) {
     let status = &interface.setup_status;
     if let Some(phase) = status["setup"]["phase"].as_str() {

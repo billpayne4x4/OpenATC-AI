@@ -72,12 +72,14 @@ impl NavAid {
 
     #[must_use]
     /// Get the latitude of this navaid.
+    /// Latitude in degrees.
     pub fn lat(&self) -> f32 {
         self.lat
     }
 
     #[must_use]
     /// Get the longitude of this navaid.
+    /// Longitude in degrees.
     pub fn lon(&self) -> f32 {
         self.lon
     }
@@ -154,31 +156,31 @@ pub struct FmsEntry<'a> {
 
 impl FmsEntry<'_> {
     #[must_use]
-    ///
+    /// Navaid associated with this entry, if any.
     pub fn navaid(&self) -> &Option<NavAid> {
         &self.navaid
     }
 
     #[must_use]
-    ///
+    /// FMS waypoint identifier.
     pub fn fms_wpt_id(&self) -> &str {
         &self.fms_wpt_id
     }
 
     #[must_use]
-    ///
+    /// Planned altitude in feet.
     pub fn altitude(&self) -> i32 {
         self.altitude
     }
 
     #[must_use]
-    ///
+    /// Latitude in degrees.
     pub fn lat(&self) -> f32 {
         self.lat
     }
 
     #[must_use]
-    ///
+    /// Longitude in degrees.
     pub fn lon(&self) -> f32 {
         self.lon
     }

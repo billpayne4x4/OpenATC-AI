@@ -783,8 +783,8 @@ pub fn departure_hold(airport: &Airport, runway: &str) -> Option<DepartureHold> 
     let mut best: Option<(f64, DepartureHold)> = None;
     for line in &airport.taxi_hold_lines {
         let midpoint = Point {
-            east: (line[0].east + line[1].east) / 2.0,
-            north: (line[0].north + line[1].north) / 2.0,
+            east: f64::midpoint(line[0].east, line[1].east),
+            north: f64::midpoint(line[0].north, line[1].north),
             height: line[0].height,
         };
         let distance = flat_distance(&midpoint, &threshold);
@@ -3402,7 +3402,7 @@ mod pavement_tests {
             north,
             height: 0.0,
         };
-        let contours = vec![
+        let contours = [
             vec![
                 point(0.0, 0.0),
                 point(10.0, 0.0),

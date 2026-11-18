@@ -12,6 +12,12 @@ repository = "https://github.com/billpayne4x4/OpenATC-AI"
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 missing_errors_doc = { level = "allow", priority = 1 }
+# Long controller and dispatcher routines read in order; keep them intact.
+too_many_lines = { level = "allow", priority = 1 }
+# Independent state flags; their combinations are not an enum.
+struct_excessive_bools = { level = "allow", priority = 1 }
+# Monotonic instants with short offsets; checked_sub adds noise.
+unchecked_time_subtraction = { level = "allow", priority = 1 }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

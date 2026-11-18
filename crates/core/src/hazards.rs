@@ -220,7 +220,7 @@ pub fn advisory_text(
             "windshear_advise",
             &[
                 ("callsign", callsign.to_owned()),
-                ("station", station.to_owned()),
+                ("station", station.clone()),
             ],
         );
     }

@@ -18,9 +18,16 @@ unsafe extern "C-unwind" fn unused_value(_cookie: *mut c_void) -> f32 {
 struct Pending {
     alive: Arc<AtomicBool>,
     result: Arc<Mutex<Option<usize>>>,
+    path: String,
 }
 unsafe extern "C-unwind" fn loaded(object: xp::XPLMObjectRef, cookie: *mut c_void) {
     let pending = unsafe { Box::from_raw(cookie.cast::<Pending>()) };
+    if object.is_null() {
+        crate::debug_log(&format!(
+            "OpenATC: failed to load CSL object {}\n",
+            pending.path
+        ));
+    }
     if pending.alive.load(Ordering::Acquire) {
         *pending
             .result
@@ -348,57 +355,40 @@ impl DrawClock {
     }
 }
 
+/// Accept only an absolute .obj path that stays inside its package.
+fn valid_model_path(path: &std::path::Path) -> bool {
+    path.is_absolute()
+        && path
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("obj"))
+        && !path
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+}
+
+#[derive(Default)]
 pub struct Renderer {
     assets: BTreeMap<std::path::PathBuf, Asset>,
     aircraft: BTreeMap<u32, Drawn>,
     channels: Vec<(CString, openatc_core::traffic::animation::Channel)>,
     owned_refs: Vec<usize>,
     timeline: Timeline,
-    root: std::path::PathBuf,
-    source_root: std::path::PathBuf,
-    root_checked: bool,
     probe: usize,
     mappings: BTreeMap<String, openatc_core::traffic::animation::Channel>,
     probe_cursor: u32,
     draw_clock: DrawClock,
-}
-impl Default for Renderer {
-    fn default() -> Self {
-        Self {
-            assets: BTreeMap::new(),
-            aircraft: BTreeMap::new(),
-            channels: Vec::new(),
-            owned_refs: Vec::new(),
-            timeline: Timeline::default(),
-            root: std::path::PathBuf::new(),
-            source_root: std::path::PathBuf::new(),
-            root_checked: false,
-            probe: 0,
-            mappings: BTreeMap::new(),
-            probe_cursor: 0,
-            draw_clock: DrawClock::default(),
-        }
-    }
 }
 impl Renderer {
     /// Keep the last two worker snapshots; rendering never scans model folders.
     pub fn receive(
         &mut self,
         frames: &[GeneratedTraffic],
-        root: &std::path::Path,
         mappings: &BTreeMap<String, openatc_core::traffic::animation::Channel>,
         paused: bool,
         stamp: Option<(u64, f64)>,
     ) {
-        // Only a different scenery root invalidates the loaded CSL instances. The animation
-        // channel map is refreshed far more often than that, and resetting the renderer for it
-        // dropped every instance and reloaded every model on each poll, which showed up as a
-        // flicker and as traffic that only appeared after the page forced a refresh.
-        if self.source_root != root {
-            crate::debug_log("OpenATC traffic: scenery root changed, rebuilding renderer");
-            *self = Self::default();
-            self.source_root = root.to_path_buf();
-        }
+        // Channel mappings change more often than the model set. Rebuilding on each
+        // mapping change reloaded every model and made traffic flicker.
         if self.mappings != *mappings {
             crate::debug_log(&format!(
                 "OpenATC traffic: animation channels changed ({} -> {})",
@@ -414,10 +404,6 @@ impl Renderer {
         }
         self.timeline
             .receive(frames, stamp, paused, std::time::Instant::now());
-        if !frames.is_empty() && !self.root_checked {
-            self.root_checked = true;
-            self.root = root.canonicalize().unwrap_or_default();
-        }
     }
     /// Interpolate snapshots without inventing progress beyond a clearance limit.
     pub fn step(&mut self, rate: openatc_settings::TrafficRate) {
@@ -426,17 +412,8 @@ impl Renderer {
             return;
         }
         let frames = self.timeline.sample(now).to_vec();
-        let root = self.root.clone();
-        if !root.as_os_str().is_empty() || frames.is_empty() {
-            self.update(&frames, &root);
-        } else if !frames.is_empty() {
-            static ONCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-            if !ONCE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                crate::debug_log(&format!(
-                    "OpenATC traffic: {} frames sampled before the CSL root was known",
-                    frames.len()
-                ));
-            }
+        if !frames.is_empty() {
+            self.update(&frames);
         }
     }
     /// Use a faster lightweight render loop only while generated traffic exists.
@@ -451,7 +428,7 @@ impl Renderer {
         &self.timeline.rendered
     }
     /// Begin at most one object load per update; existing instances remain usable.
-    pub fn update(&mut self, frames: &[GeneratedTraffic], root: &std::path::Path) {
+    pub fn update(&mut self, frames: &[GeneratedTraffic]) {
         if !frames.is_empty() && self.channels.is_empty() {
             {
                 for (name, channel) in &self.mappings {
@@ -554,12 +531,11 @@ impl Renderer {
             if frame.target.id == 0
                 || frame.model.objects.is_empty()
                 || frame.model.objects.len() > 8
-                || frame.model.objects.iter().any(|path| {
-                    !path.starts_with(root)
-                        || path
-                            .components()
-                            .any(|part| matches!(part, std::path::Component::ParentDir))
-                })
+                || frame
+                    .model
+                    .objects
+                    .iter()
+                    .any(|path| !valid_model_path(path))
                 || !(-90.0..=90.0).contains(&frame.target.latitude)
                 || !(-180.0..=180.0).contains(&frame.target.longitude)
                 || !(-2000.0..=60000.0).contains(&frame.target.altitude_feet)
@@ -582,6 +558,7 @@ impl Renderer {
                 let cookie = Box::into_raw(Box::new(Pending {
                     alive: alive.clone(),
                     result: result.clone(),
+                    path: path.to_string_lossy().into_owned(),
                 }));
                 self.assets.insert(path.clone(), Asset { alive, result });
                 unsafe { xp::XPLMLoadObjectAsync(name.as_ptr(), Some(loaded), cookie.cast()) };
@@ -736,7 +713,7 @@ impl Renderer {
                         *instance as xp::XPLMInstanceRef,
                         &raw const position,
                         values.as_ptr(),
-                    )
+                    );
                 };
             }
         }
@@ -793,6 +770,17 @@ mod tests {
             }),
             animation: Animation::default(),
         }
+    }
+
+    #[test]
+    fn renderer_accepts_absolute_object_paths_and_rejects_escapes() {
+        let absolute = std::env::temp_dir().join("model.obj");
+        assert!(valid_model_path(&absolute));
+        assert!(!valid_model_path(std::path::Path::new("model.obj")));
+        assert!(!valid_model_path(&std::env::temp_dir().join("model.dds")));
+        assert!(!valid_model_path(
+            &std::env::temp_dir().join("..").join("model.obj")
+        ));
     }
 
     #[test]

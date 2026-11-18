@@ -2329,19 +2329,20 @@ impl World {
                 if index == segment || external == Some(index) {
                     return false;
                 }
-                let owner = aircraft.route.segments[index]
-                    .resources
-                    .iter()
-                    .find_map(|resource| {
-                        self.owners
-                            .get(resource)
-                            .copied()
-                            .filter(|owner| *owner != id)
-                    });
-                let Some(owner) = owner else {
+                let conflict =
+                    aircraft.route.segments[index]
+                        .resources
+                        .iter()
+                        .find_map(|resource| {
+                            self.owners
+                                .get(resource)
+                                .copied()
+                                .filter(|owner| *owner != id)
+                        });
+                let Some(conflict) = conflict else {
                     return false;
                 };
-                if !self.companion(id, owner) {
+                if !self.companion(id, conflict) {
                     return false;
                 }
                 index - 1

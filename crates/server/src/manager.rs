@@ -61,23 +61,22 @@ struct RecordGuard {
 }
 impl Drop for RecordGuard {
     fn drop(&mut self) {
-        if let Ok(data) = std::fs::read(&self.path) {
-            if serde_json::from_slice::<Record>(&data)
+        if let Ok(data) = std::fs::read(&self.path)
+            && serde_json::from_slice::<Record>(&data)
                 .is_ok_and(|record| record.instance == self.instance)
-            {
-                let _ = std::fs::remove_file(&self.path);
-            }
+        {
+            let _ = std::fs::remove_file(&self.path);
         }
     }
 }
 fn origin_allowed(headers: &HeaderMap, origin: &str) -> Result<(), ApiError> {
-    if headers.get("origin").and_then(|v| v.to_str().ok()) != Some(origin) {
+    if headers.get("origin").and_then(|v| v.to_str().ok()) == Some(origin) {
+        Ok(())
+    } else {
         Err((
             StatusCode::FORBIDDEN,
             "Use the local dashboard to change settings or server state".into(),
         ))
-    } else {
-        Ok(())
     }
 }
 async fn request(dashboard: &Dashboard, action: &str) -> Result<(), ApiError> {
@@ -121,9 +120,9 @@ fn model_usage(runtime: &Runtime, kind: &str, selected: bool) -> Value {
     let belongs = |pid: u64| {
         active
             && if main_process {
-                Some(pid as u32) == runtime.pid
+                u32::try_from(pid).ok() == runtime.pid
             } else {
-                Some(pid as u32) != runtime.pid
+                u32::try_from(pid).ok() != runtime.pid
             }
     };
     let ram: Option<u64> = runtime.resources["processes"]
@@ -153,7 +152,7 @@ fn model_usage(runtime: &Runtime, kind: &str, selected: bool) -> Value {
                     .iter()
                     .filter_map(|r| r["memoryMiB"].as_u64())
                     .sum::<u64>()
-                    * 1048576,
+                    * 1_048_576,
             );
         }
     }
@@ -166,8 +165,7 @@ fn model_compute(runtime: &Runtime, kind: &str, cpu: bool, loaded: bool) -> Valu
     let device = &runtime
         .health
         .as_ref()
-        .map(|h| h["compute"][kind].clone())
-        .unwrap_or(Value::Null);
+        .map_or(Value::Null, |h| h["compute"][kind].clone());
     let value = device
         .as_str()
         .or_else(|| device["device"].as_str())
@@ -323,7 +321,7 @@ fn registry(path: &Path, runtime: &Runtime) -> Result<Value, String> {
         let file = root.join(&entry.path);
         let bytes = std::fs::metadata(&file)
             .ok()
-            .filter(|m| m.is_file())
+            .filter(std::fs::Metadata::is_file)
             .map(|m| m.len());
         let kind = entry.path.split('/').next().unwrap_or("model");
         let selected = if kind == "llm" {
@@ -356,7 +354,7 @@ fn registry(path: &Path, runtime: &Runtime) -> Result<Value, String> {
             crate::llm_config::Model::value_variants()
                 .iter()
                 .find(|model| model.manifest_name() == entry.name)
-                .and_then(|model| model.to_possible_value())
+                .and_then(clap::ValueEnum::to_possible_value)
                 .map(|value| value.get_name().to_owned())
         } else if kind == "tts" {
             Some(
@@ -383,9 +381,11 @@ fn registry(path: &Path, runtime: &Runtime) -> Result<Value, String> {
     let mut models = vec![];
     for primary in &rows {
         if primary["kind"] == "tts"
-            && !primary["path"]
-                .as_str()
-                .is_some_and(|path| path.ends_with(".onnx"))
+            && !primary["path"].as_str().is_some_and(|path| {
+                std::path::Path::new(path)
+                    .extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("onnx"))
+            })
         {
             continue;
         }
@@ -461,12 +461,15 @@ fn start_tray(
         eprintln!("Tray disabled: no desktop session");
         return None;
     }
-    let path = helper.map(std::path::Path::to_path_buf).unwrap_or_else(|| {
-        std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(|parent| parent.join("openatc-tray")))
-            .unwrap_or_else(|| std::path::PathBuf::from("openatc-tray"))
-    });
+    let path = helper.map_or_else(
+        || {
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|parent| parent.join("openatc-tray")))
+                .unwrap_or_else(|| std::path::PathBuf::from("openatc-tray"))
+        },
+        std::path::Path::to_path_buf,
+    );
     if !path.is_file() {
         eprintln!("Tray helper not found: {}", path.display());
         return None;
@@ -551,6 +554,7 @@ fn router(dashboard: Arc<Dashboard>) -> Router {
         })).with_state(dashboard)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     path: &Path,
     schema: Option<&Path>,
@@ -582,36 +586,32 @@ pub async fn run(
         .build()
         .map_err(|e| e.to_string())?;
     for attempt in 0..3 {
-        if let Ok(data) = std::fs::read(&record_path) {
-            if let Ok(record) = serde_json::from_slice::<Record>(&data) {
-                if record.config == path && local_origin(&record.origin) {
-                    if let Ok(reply) = client
-                        .get(format!("{}/identity", record.origin))
-                        .send()
-                        .await
-                    {
-                        if let Ok(identity) = reply.json::<Value>().await {
-                            if identity["instance"].as_str() == Some(&record.instance) {
-                                if browser {
-                                    setup::open_browser(&record.origin);
-                                }
-                                println!("Server dashboard: {}", record.origin);
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
+        if let Ok(data) = std::fs::read(&record_path)
+            && let Ok(record) = serde_json::from_slice::<Record>(&data)
+            && record.config == path
+            && local_origin(&record.origin)
+            && let Ok(reply) = client
+                .get(format!("{}/identity", record.origin))
+                .send()
+                .await
+            && let Ok(identity) = reply.json::<Value>().await
+            && identity["instance"].as_str() == Some(&record.instance)
+        {
+            if browser {
+                setup::open_browser(&record.origin);
             }
-            if attempt == 0 {
-                tokio::time::sleep(Duration::from_millis(300)).await;
-                continue;
-            }
-            std::fs::rename(
-                &record_path,
-                record_path.with_extension(format!("stale-{}", std::process::id())),
-            )
-            .map_err(|e| e.to_string())?;
+            println!("Server dashboard: {}", record.origin);
+            return Ok(());
         }
+        if attempt == 0 {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            continue;
+        }
+        std::fs::rename(
+            &record_path,
+            record_path.with_extension(format!("stale-{}", std::process::id())),
+        )
+        .map_err(|e| e.to_string())?;
         let record = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -739,7 +739,7 @@ async fn supervise(
                 let Some(request)=request else{stop(&mut child).await;return;};
                 if request.action=="start"&&child.is_some(){let _=request.reply.send(Ok(()));continue;}
                 // Validate before stopping a healthy runtime, so invalid edits never force a restart.
-                let config=if request.action!="stop"{match arguments(&path){Ok(args)=>Some(args),Err(e)=>{let _=request.reply.send(Err(e));continue;}}}else{None};
+                let config=if request.action=="stop"{None}else{match arguments(&path){Ok(args)=>Some(args),Err(e)=>{let _=request.reply.send(Err(e));continue;}}};
                 generation+=1;
                 {let mut s=state.write().await;s.stage="restarting".into();s.generation=generation;s.health=None;s.error=None;}
                 stop(&mut child).await;
@@ -766,12 +766,38 @@ async fn supervise(
             }
             event=incoming.recv()=>{if let Some((source,event,line))=event {if source!=generation {continue;}let mut s=state.write().await;
                 if let Some(event)=event {
-                    if let Some(model)=event.get("model").and_then(Value::as_str){let name=model.to_owned();let mut merged=s.models.get(&name).cloned().unwrap_or_else(||json!({}));if let (Some(to),Some(from))=(merged.as_object_mut(),event.as_object()){to.extend(from.clone());}if event["stage"]=="verified"{merged["verified"]=json!(true);}s.models.insert(name,merged);}
-                    if let Some(stage)=event["stage"].as_str(){if stage!="verified"{s.stage=stage.into();}}
-                    if let Some(component)=event["component"].as_str(){s.component=Some(component.into());}
-                    if let Some(error)=event["error"].as_str(){s.error=Some(error.into());}
-                    if event["stage"]=="ready"{s.health=event.get("health").cloned();s.component=None;}
-                }else{if s.logs.len()>=100{s.logs.pop_front();}s.logs.push_back(line);}
+                    if let Some(model)=event.get("model").and_then(Value::as_str) {
+                        let name=model.to_owned();
+                        let mut merged=s.models.get(&name).cloned().unwrap_or_else(||json!({}));
+                        if let (Some(to),Some(from))=(merged.as_object_mut(),event.as_object()) {
+                            to.extend(from.clone());
+                        }
+                        if event["stage"]=="verified" {
+                            merged["verified"]=json!(true);
+                        }
+                        s.models.insert(name,merged);
+                    }
+                    if let Some(stage)=event["stage"].as_str()
+                        && stage!="verified"
+                    {
+                        s.stage=stage.into();
+                    }
+                    if let Some(component)=event["component"].as_str() {
+                        s.component=Some(component.into());
+                    }
+                    if let Some(error)=event["error"].as_str() {
+                        s.error=Some(error.into());
+                    }
+                    if event["stage"]=="ready" {
+                        s.health=event.get("health").cloned();
+                        s.component=None;
+                    }
+                } else {
+                    if s.logs.len()>=100 {
+                        s.logs.pop_front();
+                    }
+                    s.logs.push_back(line);
+                }
             }}
             _=timer.tick()=>{
                 if let Some(process)=child.as_mut(){match process.try_wait(){Ok(Some(exit))=>{child=None;let mut s=state.write().await;s.pid=None;s.health=None;s.stage="error".into();s.error=Some(format!("Server stopped ({exit}). Check the recent messages, then retry."));},Ok(None)=>{},Err(e)=>{state.write().await.error=Some(e.to_string());}}}
@@ -1011,7 +1037,7 @@ mod model_tests {
         assert_eq!(llm["ramBytes"], 1000);
         assert_eq!(stt["shared"], false);
         assert_eq!(stt["ramBytes"], 200);
-        assert_eq!(stt["vramBytes"], 4 * 1048576);
+        assert_eq!(stt["vramBytes"], 4 * 1_048_576);
         assert!(model_usage(&runtime, "llm", false)["ramBytes"].is_null());
         assert_eq!(
             model_compute(&Runtime::default(), "llm", true, false)["label"],

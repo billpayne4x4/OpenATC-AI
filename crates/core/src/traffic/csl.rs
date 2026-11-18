@@ -216,7 +216,26 @@ fn object_path(root: &Path, exports: &BTreeMap<String, PathBuf>, text: &str) -> 
         && candidate
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("obj")))
-    .then_some(candidate)
+    .then(|| simplified(candidate))
+}
+
+/// Remove the Windows verbatim prefix that the simulator object loader rejects.
+#[cfg(any(windows, test))]
+fn strip_verbatim(text: &str) -> Option<String> {
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return Some(format!(r"\\{rest}"));
+    }
+    text.strip_prefix(r"\\?\").map(str::to_owned)
+}
+
+#[cfg(windows)]
+fn simplified(path: PathBuf) -> PathBuf {
+    strip_verbatim(&path.to_string_lossy()).map_or(path, PathBuf::from)
+}
+
+#[cfg(not(windows))]
+fn simplified(path: PathBuf) -> PathBuf {
+    path
 }
 
 fn definitions(text: &str) -> Vec<Definition> {
@@ -274,6 +293,36 @@ fn definitions(text: &str) -> Vec<Definition> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn verbatim_windows_paths_are_reduced_to_normal_paths() {
+        assert_eq!(
+            strip_verbatim(r"\\?\C:\Models\A320.obj").as_deref(),
+            Some(r"C:\Models\A320.obj")
+        );
+        assert_eq!(
+            strip_verbatim(r"\\?\UNC\server\share\A320.obj").as_deref(),
+            Some(r"\\server\share\A320.obj")
+        );
+        assert_eq!(strip_verbatim(r"C:\Models\A320.obj"), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn scanned_model_paths_are_not_verbatim() {
+        let root = std::env::temp_dir().join(format!("openatc-csl-win-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("models")).unwrap();
+        std::fs::write(root.join("models/aircraft.obj"), "A\n800\nOBJ\n").unwrap();
+        std::fs::write(
+            root.join("models/xsb_aircraft.txt"),
+            "EXPORT_NAME planes\nOBJ8_AIRCRAFT A320_QFA\nOBJ8 SOLID YES planes/aircraft.obj\nAIRLINE A320 QFA\n",
+        )
+        .unwrap();
+        let catalogue = Catalogue::scan(&root).unwrap();
+        let text = catalogue.models[0].objects[0].to_string_lossy();
+        assert!(!text.starts_with(r"\\?\"), "{text}");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn package_parts_operator_matching_and_path_boundaries() {
         let root = std::env::temp_dir().join(format!("openatc-csl-{}", std::process::id()));

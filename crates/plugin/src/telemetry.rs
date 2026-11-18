@@ -191,12 +191,12 @@ pub fn gather_callouts(refs: &Refs) -> openatc_core::state::Telemetry {
             .speed
             .as_ref()
             .map_or(0.0, |read| read() * 1.943_844_492),
-        indicated_speed_knots: optional_number(&refs.indicated_speed, true),
+        indicated_speed_knots: optional_number(refs.indicated_speed.as_deref(), true),
         paused: refs.pause.as_ref().is_some_and(|read| read() != 0),
         vertical_speed_fpm: refs.vertical_speed.as_ref().map_or(0.0, |read| read()),
         height_agl_feet: refs.agl.as_ref().map_or(0.0, |read| read() * 3.280_839_895),
-        simulation_seconds: optional_number(&refs.simulation_seconds, true),
-        zulu_seconds: optional_number(&refs.zulu_seconds, true).filter(|v| *v < 86400.0),
+        simulation_seconds: optional_number(refs.simulation_seconds.as_deref(), true),
+        zulu_seconds: optional_number(refs.zulu_seconds.as_deref(), true).filter(|v| *v < 86400.0),
         ..Default::default()
     }
 }
@@ -228,18 +228,18 @@ pub fn gather(refs: &Refs) -> openatc_core::state::Telemetry {
         latitude,
         longitude,
         altitude_feet: number(&refs.altitude) * 3.280_839_895,
-        indicated_altitude_feet: optional_number(&refs.indicated_altitude, false),
-        pressure_altitude_feet: optional_number(&refs.pressure_altitude, false),
+        indicated_altitude_feet: optional_number(refs.indicated_altitude.as_deref(), false),
+        pressure_altitude_feet: optional_number(refs.pressure_altitude.as_deref(), false),
         ground_speed_knots: number(&refs.speed) * 1.943_844_492,
         heading_degrees: number(&refs.heading),
-        ground_track_degrees: optional_number(&refs.track, false),
-        indicated_speed_knots: optional_number(&refs.indicated_speed, true),
-        magnetic_heading_degrees: optional_number(&refs.magnetic_heading, false),
+        ground_track_degrees: optional_number(refs.track.as_deref(), false),
+        indicated_speed_knots: optional_number(refs.indicated_speed.as_deref(), true),
+        magnetic_heading_degrees: optional_number(refs.magnetic_heading.as_deref(), false),
         on_ground: flag(&refs.ground) != 0,
         engines_running: refs.engines.as_ref().is_some_and(|read| read()),
         paused: flag(&refs.pause) != 0,
-        simulation_seconds: optional_number(&refs.simulation_seconds, true),
-        zulu_seconds: optional_number(&refs.zulu_seconds, true).filter(|v| *v < 86400.0),
+        simulation_seconds: optional_number(refs.simulation_seconds.as_deref(), true),
+        zulu_seconds: optional_number(refs.zulu_seconds.as_deref(), true).filter(|v| *v < 86400.0),
         vertical_speed_fpm: refs.vertical_speed.as_ref().map_or(0.0, |read| read()),
         height_agl_feet: refs.agl.as_ref().map_or(0.0, |read| read()) * 3.280_839_895,
         radio_power: true,
@@ -257,9 +257,8 @@ pub fn gather(refs: &Refs) -> openatc_core::state::Telemetry {
 }
 
 // Unavailable instrument readings must not discard a valid position and radio.
-fn optional_number(reader: &Option<Box<dyn Fn() -> f64>>, nonnegative: bool) -> Option<f64> {
+fn optional_number(reader: Option<&dyn Fn() -> f64>, nonnegative: bool) -> Option<f64> {
     reader
-        .as_ref()
         .map(|read| read())
         .filter(|value| value.is_finite() && (!nonnegative || *value >= 0.0))
 }
@@ -325,8 +324,7 @@ fn traffic_reader(
         let speed_available = vx
             .as_ref()
             .zip(vz.as_ref())
-            .map(|(x, z)| x.get(&mut east).min(z.get(&mut north)))
-            .unwrap_or(0);
+            .map_or(0, |(x, z)| x.get(&mut east).min(z.get(&mut north)));
         let code = |bytes: &[u8]| {
             String::from_utf8_lossy(bytes.split(|b| *b == 0).next().unwrap_or_default())
                 .trim()

@@ -112,8 +112,8 @@ mod tests {
     }
     #[test]
     fn explicit_options_override_saved_values_without_shell_interpretation() {
-        let cli = ["server", "--ctx-size", "8192"].map(OsString::from);
         use clap::CommandFactory;
+        let cli = ["server", "--ctx-size", "8192"].map(OsString::from);
         let command = crate::Args::command();
         let args = arguments(
             "ctx-size = 4096\nforce-tts-cpu = true\nmodels-dir = 'C:\\Models with spaces'",

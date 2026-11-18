@@ -195,8 +195,9 @@ impl Policy {
         })
     }
 
+    #[must_use]
     pub fn with_standard(mut self, standard: &str) -> Self {
-        self.standard = normalize_standard(standard).to_owned();
+        normalize_standard(standard).clone_into(&mut self.standard);
         self
     }
 
@@ -217,6 +218,11 @@ impl Policy {
         })
     }
 
+    /// Region rules for an airport, falling back to the `icao` table.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the validated policy has no `icao` region.
     #[must_use]
     pub fn region(&self, airport: &str) -> &Region {
         let key = if self.standard == "auto" {
@@ -261,7 +267,6 @@ impl Policy {
                 .and_then(|profile| profile.cwt)
                 .or_else(|| {
                     sim_wake.map(|value| match value {
-                        0 => 'I',
                         1 => 'F',
                         2 => 'B',
                         3 => 'A',
@@ -427,6 +432,11 @@ pub fn read<R>(apply: impl FnOnce(&Policy) -> R) -> R {
     apply(&guard)
 }
 
+/// The policy most recently published by the engine.
+///
+/// # Panics
+///
+/// Panics when the embedded `traffic/wake.toml` no longer parses.
 #[must_use]
 pub fn current() -> Policy {
     global().read().map_or_else(
@@ -487,7 +497,7 @@ mod tests {
         for key in ["faa", "icao", "recat_eu", "mats"] {
             assert!(policy.file.regions.contains_key(key), "{key}");
         }
-        assert_eq!(policy.runways().crossing_degrees, 12.0);
+        assert!((policy.runways().crossing_degrees - 12.0).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -496,17 +506,19 @@ mod tests {
         let bundled =
             Policy::parse(include_str!("../../../../traffic/wake.toml")).expect("bundled policy");
         assert_eq!(split.file.regions.len(), bundled.file.regions.len());
-        assert_eq!(
-            split.file.runways.parallel_independent_m,
-            bundled.file.runways.parallel_independent_m
+        assert!(
+            (split.file.runways.parallel_independent_m
+                - bundled.file.runways.parallel_independent_m)
+                .abs()
+                < f64::EPSILON
         );
-        assert_eq!(
-            split.file.runways.parallel_wake_m,
-            bundled.file.runways.parallel_wake_m
+        assert!(
+            (split.file.runways.parallel_wake_m - bundled.file.runways.parallel_wake_m).abs()
+                < f64::EPSILON
         );
-        assert_eq!(
-            split.file.runways.crossing_degrees,
-            bundled.file.runways.crossing_degrees
+        assert!(
+            (split.file.runways.crossing_degrees - bundled.file.runways.crossing_degrees).abs()
+                < f64::EPSILON
         );
         for (key, region) in &bundled.file.regions {
             let split = split
@@ -544,8 +556,8 @@ mod tests {
         let policy =
             Policy::parse(include_str!("../../../../traffic/wake.toml")).expect("bundled policy");
         let australia = policy.separation("YSSY").expect("Australian radar minima");
-        assert_eq!(australia.terminal_lateral_nm, 3.0);
-        assert_eq!(australia.vertical_below_fl290_feet, 1000.0);
+        assert!((australia.terminal_lateral_nm - 3.0).abs() < f64::EPSILON);
+        assert!((australia.vertical_below_fl290_feet - 1000.0).abs() < f64::EPSILON);
         assert_eq!(australia.status, "verified");
         assert!(
             policy.separation("KLAX").is_none(),

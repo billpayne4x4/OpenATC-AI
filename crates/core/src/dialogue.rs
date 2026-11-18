@@ -172,14 +172,68 @@ pub fn validate(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Load edits at engine startup; invalid libraries cannot silently fall back to code wording.
-pub fn load(path: &Path) -> Result<(), String> {
-    validate(path)?;
-    let edited = parse(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)?;
+/// Load the edited response library at startup.
+///
+/// Missing or slot-changed responses are taken from the bundled catalogue, so an
+/// older installed file still starts. Returns a repair note when anything was
+/// filled; `None` means the file matched.
+///
+/// # Panics
+///
+/// Panics only if the compiled-in catalogue is invalid.
+#[must_use]
+pub fn load(path: &Path) -> Option<String> {
+    let defaults = parse(DEFAULTS).expect("shipped dialogue TOML");
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => {
+            store(defaults);
+            return Some(format!(
+                "speech library unreadable ({error}); using bundled defaults"
+            ));
+        }
+    };
+    let edited = match parse(&text) {
+        Ok(edited) => edited,
+        Err(error) => {
+            store(defaults);
+            return Some(format!(
+                "speech library invalid ({error}); using bundled defaults"
+            ));
+        }
+    };
+    let (merged, added, replaced) = merge(defaults, edited);
+    store(merged);
+    (added + replaced > 0).then(|| {
+        format!(
+            "{added} missing responses and {replaced} changed responses filled from the bundled library"
+        )
+    })
+}
+
+fn merge(defaults: Templates, mut edited: Templates) -> (Templates, usize, usize) {
+    let mut added = 0;
+    let mut replaced = 0;
+    for (id, required) in defaults {
+        match edited.get(&id) {
+            None => {
+                edited.insert(id, required);
+                added += 1;
+            }
+            Some(entry) if entry.slots != required.slots => {
+                edited.insert(id, required);
+                replaced += 1;
+            }
+            Some(_) => {}
+        }
+    }
+    (edited, added, replaced)
+}
+
+fn store(templates: Templates) {
     let lock = TEMPLATES.get_or_init(|| RwLock::new(BTreeMap::new()));
-    *lock.write().map_err(|e| e.to_string())? = edited;
+    *lock.write().expect("dialogue templates") = templates;
     EDITED.store(true, Ordering::Relaxed);
-    Ok(())
 }
 
 fn next_phrase(choices: &mut BTreeMap<String, usize>, id: &str, count: usize) -> usize {
@@ -351,6 +405,8 @@ pub fn social_only(text: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    type Case<'a> = (&'a str, &'a [(&'a str, String)], &'a [&'a str]);
+
     use super::*;
     #[test]
     fn editable_matching_conditions_priorities_and_humour_select_responses() {
@@ -449,7 +505,7 @@ mod tests {
             ("station", station.to_owned()),
             ("frequency", "121.700".to_owned()),
         ];
-        let cases: [(&str, &[(&str, String)], &[&str]); 11] = [
+        let cases: [Case; 11] = [
             ("ambient_hold_short", &simple, &[callsign, runway]),
             ("ambient_hold_short_readback", &simple, &[callsign, runway]),
             ("ambient_line_up", &simple, &[callsign, runway]),
@@ -484,6 +540,29 @@ mod tests {
                 "{key} left an unfilled placeholder: {rendered}"
             );
         }
+    }
+
+    #[test]
+    fn a_stale_library_is_filled_and_restored_from_the_bundled_defaults() {
+        let defaults = parse(
+            "[hold]\nslots=['callsign']\nsay=['{callsign}, hold position.']\n\
+             [lineup]\nslots=['runway']\nsay=['Runway {runway}, line up and wait.']\n",
+        )
+        .unwrap();
+        let edited = parse("[hold]\nslots=[]\nsay=['Hold position.']\n").unwrap();
+        let (merged, added, replaced) = merge(defaults, edited);
+        assert_eq!(added, 1);
+        assert_eq!(replaced, 1);
+        assert_eq!(merged["lineup"].slots, vec!["runway".to_owned()]);
+        assert_eq!(
+            merged["hold"].slots,
+            vec!["callsign".to_owned()],
+            "an entry with a changed slot contract is restored"
+        );
+        assert_eq!(
+            merged["hold"].say,
+            vec!["{callsign}, hold position.".to_owned()]
+        );
     }
 
     #[test]

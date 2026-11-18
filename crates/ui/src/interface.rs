@@ -1112,6 +1112,8 @@ impl Interface {
                 fresh.simulator_host = self.simulator_host;
                 fresh.preserve_window_layout(self);
                 fresh.current_airport.clone_from(&self.current_airport);
+                fresh.setup_seen_run = self.setup_seen_run;
+                fresh.setup_status = self.setup_status.clone();
                 fresh.flight_reset_generation = self.flight_reset_generation;
                 fresh.clipboard = self.clipboard.take();
                 fresh.plan_notice = "New flight ready.".into();
@@ -1432,7 +1434,7 @@ impl Interface {
         })
     }
 
-    fn reveal_mask(&self, state: &State, entry: &Transmission) -> [bool; 2] {
+    fn reveal_mask(state: &State, entry: &Transmission) -> [bool; 2] {
         [
             state.transmission_on_radio(entry, openatc_core::state::Radio::Com1),
             state.transmission_on_radio(entry, openatc_core::state::Radio::Com2),
@@ -1452,7 +1454,7 @@ impl Interface {
 
     /// Reveal a line that will not be spoken.
     fn reveal_now(&mut self, state: &State, entry: &Transmission) {
-        let mask = self.reveal_mask(state, entry);
+        let mask = Self::reveal_mask(state, entry);
         self.apply_reveal(entry.sequence, mask);
     }
 
@@ -1547,7 +1549,7 @@ impl Interface {
             if let Some((sequence, mask)) = self.pending_reveal[index].take() {
                 self.apply_reveal(sequence, mask);
             }
-            self.pending_reveal[index] = Some((entry.sequence, self.reveal_mask(&state, entry)));
+            self.pending_reveal[index] = Some((entry.sequence, Self::reveal_mask(&state, entry)));
         }
         let endpoint = self.engine.endpoint();
         let output = if radio == openatc_core::state::Radio::Com2 {
@@ -2891,7 +2893,7 @@ mod radio_busy_tests {
         state.telemetry.com1_khz = 120_160;
         let tower: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com1",
-            "frequency": 118700
+            "frequency": 118_700
         }))
         .expect("tower entry");
         assert!(!entry_frequency_tuned(&tower, &state));
@@ -3003,7 +3005,7 @@ mod radio_playback_tests {
     fn tower_call() -> Transmission {
         serde_json::from_value(serde_json::json!({
             "radio": "com1",
-            "frequency": 118700,
+            "frequency": 118_700,
             "speaker": "ATC",
             "text": "Cleared for takeoff."
         }))
@@ -3026,7 +3028,7 @@ mod radio_playback_tests {
         state.telemetry.com2_khz = Some(118_700);
         let entry: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com1",
-            "frequency": 118700,
+            "frequency": 118_700,
             "sequence": 9,
             "speaker": "ATC",
             "text": "Cleared for takeoff."
@@ -3052,7 +3054,7 @@ mod radio_playback_tests {
         state.telemetry.com2_khz = Some(118_700);
         let com1: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com1",
-            "frequency": 118200,
+            "frequency": 118_200,
             "sequence": 5,
             "speaker": "ATC",
             "text": "Descend and maintain 3000 feet."
@@ -3060,7 +3062,7 @@ mod radio_playback_tests {
         .expect("com1 entry");
         let com2: Transmission = serde_json::from_value(serde_json::json!({
             "radio": "com2",
-            "frequency": 118700,
+            "frequency": 118_700,
             "sequence": 6,
             "speaker": "ATC",
             "text": "Runway 35, line up and wait."

@@ -348,9 +348,9 @@ pub struct RequestContext<'a> {
 }
 
 /// Runway occupancy using the combined traffic picture when the caller supplied one.
-fn blocked_for_context<'a>(
+fn blocked_for_context(
     state: &State,
-    ctx: &RequestContext<'a>,
+    ctx: &RequestContext<'_>,
     airport: &Airport,
     runway: &str,
 ) -> Option<&'static str> {
@@ -361,9 +361,9 @@ fn blocked_for_context<'a>(
     }
 }
 
-fn blocked_for_crossing<'a>(
+fn blocked_for_crossing(
     state: &State,
-    ctx: &RequestContext<'a>,
+    ctx: &RequestContext<'_>,
     airport: &Airport,
     runway: &str,
     crossing_along: f64,

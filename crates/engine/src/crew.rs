@@ -1264,13 +1264,13 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
             let value = match command.value.as_str() {
                 "on" => control.on,
                 "off" => control.off,
-                other => match other.parse::<f64>() {
-                    Ok(value) => value,
-                    Err(_) => {
+                other => {
+                    let Ok(value) = other.parse::<f64>() else {
                         resolved = false;
                         break;
-                    }
-                },
+                    };
+                    value
+                }
             };
             actions.push(openatc_core::crew::request::ControlAction {
                 control: command.control.clone(),

@@ -174,8 +174,10 @@ impl XPAPI {
     /// that subsequent versions will have greater numbers.
     ///
     /// The first entry of the tuple is a tuple containing:
+    ///
     /// - The major version of X-Plane (the two most significant digits of the X-Plane version)
     /// - All remaining digits of the X-Plane version
+    ///
     /// The second entry of the tuple is the XPLM version.
     pub fn get_versions(&mut self) -> ((i32, i32), i32) {
         let mut xp = 0i32;

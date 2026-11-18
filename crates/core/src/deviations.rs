@@ -198,7 +198,7 @@ impl Policy {
         let number = value
             .get("number_for_you")
             .cloned()
-            .map(|value| value.try_into())
+            .map(toml::Value::try_into)
             .transpose()
             .map_err(|error| format!("invalid number_for_you: {error}"))?
             .unwrap_or_default();
@@ -236,7 +236,7 @@ impl Policy {
         let areas = value
             .get("airspace")
             .cloned()
-            .map(|value| value.try_into())
+            .map(toml::Value::try_into)
             .transpose()
             .map_err(|error| format!("invalid supplemental airspace: {error}"))?;
         Ok(areas.unwrap_or_default())

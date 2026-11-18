@@ -275,16 +275,14 @@ impl Runtime {
             .controls
             .iter()
             .filter_map(|(id, c)| {
-                let ok = if !c.on_command.is_empty() {
+                let ok = if c.on_command.is_empty() {
+                    CString::new(c.dataref.clone()).is_ok_and(|name| unsafe {
+                        let r = xplane_sys::XPLMFindDataRef(name.as_ptr());
+                        !r.is_null() && xplane_sys::XPLMCanWriteDataRef(r) != 0
+                    })
+                } else {
                     x.command.try_find(&c.on_command).is_ok()
                         && (c.off_command.is_empty() || x.command.try_find(&c.off_command).is_ok())
-                } else {
-                    CString::new(c.dataref.clone())
-                        .ok()
-                        .is_some_and(|name| unsafe {
-                            let r = xplane_sys::XPLMFindDataRef(name.as_ptr());
-                            !r.is_null() && xplane_sys::XPLMCanWriteDataRef(r) != 0
-                        })
                 };
                 ok.then(|| id.clone())
             })

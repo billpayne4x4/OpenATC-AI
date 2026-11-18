@@ -637,7 +637,7 @@ mod tests {
             ground_speed_knots: 180.0,
             position_valid: true,
             on_ground: false,
-            com1_khz: 123100,
+            com1_khz: 123_100,
             simulation_seconds: Some(100.0),
             zulu_seconds: Some(86300.0),
             traffic: Some(vec![TrafficTarget {
@@ -675,7 +675,7 @@ mod tests {
             service: "Approach".into(),
             name: "Test Approach".into(),
             airport: "KTEST".into(),
-            khz: 123100,
+            khz: 123_100,
             coverage: vec![Coverage {
                 floor: 0.0,
                 ceiling: 20000.0,
@@ -842,7 +842,7 @@ mod tests {
         tick(&mut s, &station);
         assert!(!s.traffic.hold.as_ref().unwrap().onward);
         let other = Station {
-            khz: 125000,
+            khz: 125_000,
             ..station.clone()
         };
         assert!(!request(

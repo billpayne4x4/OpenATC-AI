@@ -870,7 +870,7 @@ fn prepare_fallback(
     }
     // A missed approach can change course between climb legs. The fallback follows the
     // first course to the final level instead of forcing that turn, then holds at the end.
-    let mut path_legs = missed.to_vec();
+    let mut path_legs = missed.clone();
     if let Some(first) = missed
         .first()
         .filter(|leg| matches!(leg.terminator.as_str(), "CA" | "DF"))

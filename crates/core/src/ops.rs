@@ -11,7 +11,7 @@ use super::state::{FlightPlan, PhaseCode, State, Telemetry};
 pub fn callsign_key(callsign: &str) -> String {
     callsign
         .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
+        .filter(char::is_ascii_alphanumeric)
         .map(|character| character.to_ascii_uppercase())
         .collect()
 }

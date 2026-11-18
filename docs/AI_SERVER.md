@@ -55,7 +55,7 @@ The manager owns its inference child and speech sidecar. Reopening the same conf
 
 ### Desktop tray
 
-`tray-enabled` in `server.toml` accepts `auto`, `on` or `off`. `auto` starts the tray only when a Linux desktop session and session bus are available. Headless services log `Tray disabled: no desktop session` and continue. The tray shows the manager status and release, opens the dashboard, restarts the server, or performs Hara-kiri. The web dashboard remains the fallback and the full control surface.
+`tray-enabled` in `server.toml` accepts `auto`, `on` or `off`. `auto` starts the tray only when a Linux desktop session and session bus are available. Headless services log `Tray disabled: no desktop session` and continue. The tray shows the manager status and release and performs Hara-kiri. Everything else stays in the web dashboard, which remains the full control surface.
 
 ```sh
 openatc-ai --tray                 # force an attempt

@@ -147,7 +147,7 @@ pub async fn post_telemetry(
                         &root, &icao, &exists, &read,
                     )?;
                     let profile = openatc_core::arrival::ArrivalAirport::load(&root, airport)
-                        .map_err(|error| error.to_string())?;
+                        .map_err(|error| error.clone())?;
                     Ok::<_, String>(profile)
                 })
                 .await;
