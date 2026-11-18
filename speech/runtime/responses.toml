@@ -1301,6 +1301,14 @@ say = [
   "Backtrack runway {runway} to the departure end, stop and hold position. Report ready to Tower; takeoff clearance is required.",
 ]
 
+[runway_taxi_backtrack_now_clear]
+slots = ["runway"]
+say = [
+  "Runway {runway} is clear, backtrack to the departure end and hold position. Report ready to Tower.",
+  "Runway {runway} now clear. Backtrack to the departure end, hold position and report ready.",
+  "Runway {runway} is now clear. Backtrack to the departure end; takeoff clearance is still required.",
+]
+
 [runway_taxi_contact_tower]
 slots = []
 say = [
@@ -18164,6 +18172,43 @@ slots = ["callsign", "runway"]
 say = [
   "{callsign}, continue to the end of runway {runway} and vacate when able.",
   "{callsign}, continue and vacate runway {runway} when able.",
+]
+
+[deviation_exit_runway]
+slots = ["callsign", "runway", "hold"]
+say = [
+  "{callsign}, exit runway {runway} at the next taxiway, taxi to the holding point and hold short of runway {hold}.",
+  "{callsign}, vacate runway {runway} at the first available taxiway. Taxi to the holding point, hold short of runway {hold}.",
+  "{callsign}, leave runway {runway} at the next exit. Taxi to the holding point, hold short of runway {hold}.",
+]
+
+[deviation_exit_runway_via]
+slots = ["callsign", "runway", "via", "hold"]
+say = [
+  "{callsign}, exit runway {runway} at the next taxiway, taxi via {via} to the holding point and hold short of runway {hold}.",
+  "{callsign}, vacate runway {runway} at the first available taxiway. Taxi via {via} to the holding point, hold short of runway {hold}.",
+  "{callsign}, leave runway {runway} at the next exit, then taxi via {via} to the holding point, hold short of runway {hold}.",
+]
+
+[deviation_exit_runway_backtrack]
+slots = ["callsign", "runway", "hold"]
+say = [
+  "{callsign}, no taxiway exit ahead. Backtrack runway {runway} to the holding point, hold short of runway {hold}.",
+  "{callsign}, backtrack runway {runway} to the holding point and hold short of runway {hold}.",
+]
+
+[pilot_exit_runway_readback]
+slots = ["callsign", "runway", "hold"]
+say = [
+  "Exit runway {runway}, taxi to the holding point, hold short of runway {hold}, {callsign}.",
+  "{callsign}, vacating runway {runway}, taxiing to the holding point, hold short of runway {hold}.",
+]
+
+[pilot_exit_runway_via_readback]
+slots = ["callsign", "runway", "via", "hold"]
+say = [
+  "Exit runway {runway}, taxi via {via} to the holding point, hold short of runway {hold}, {callsign}.",
+  "{callsign}, vacating runway {runway}, then via {via} to the holding point, hold short of runway {hold}.",
 ]
 
 [pilot_vacate_readback]

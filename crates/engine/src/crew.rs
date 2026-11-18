@@ -162,7 +162,7 @@ pub struct CrewSession {
     pub sequence: u32,
     pub pushback: Option<openatc_core::crew::PushbackRequest>,
     pub observed_at: Option<std::time::Instant>,
-    pub batch: Option<Batch>,
+    pub batches: BTreeMap<String, Batch>,
 }
 impl Default for CrewSession {
     fn default() -> Self {
@@ -179,7 +179,7 @@ impl Default for CrewSession {
                 .map_or(0, |t| t.as_millis() as u32),
             pushback: None,
             observed_at: None,
-            batch: None,
+            batches: BTreeMap::new(),
         }
     }
 }
@@ -232,7 +232,7 @@ pub async fn observe(
         s.crew.social.clear();
         s.request_memory.forget_crew();
         s.crew.checklist = None;
-        s.crew.batch = None;
+        s.crew.batches.clear();
         s.session.crew_actions.clear();
     }
     s.crew.aircraft = input.aircraft;
@@ -267,13 +267,23 @@ pub async fn observe(
     s.crew.profile = profile;
     s.crew.values = input.values;
     s.crew.observed_at = Some(std::time::Instant::now());
-    if s.crew
-        .batch
-        .as_ref()
-        .is_some_and(|b| b.started.elapsed().as_secs() >= 90)
-    {
-        let actions = std::mem::take(&mut s.session.crew_actions);
-        if let Some(mut batch) = s.crew.batch.take() {
+    let stale: Vec<String> = s
+        .crew
+        .batches
+        .iter()
+        .filter(|(_, batch)| batch.started.elapsed().as_secs() >= 90)
+        .map(|(role, _)| role.clone())
+        .collect();
+    for role in stale {
+        let actions: Vec<Action> = s
+            .session
+            .crew_actions
+            .iter()
+            .filter(|action| action.role == role)
+            .cloned()
+            .collect();
+        s.session.crew_actions.retain(|action| action.role != role);
+        if let Some(mut batch) = s.crew.batches.remove(&role) {
             for action in &actions {
                 s.request_memory.confirm(action.sequence, false);
                 let item = say(&format!("crew_control_{}", action.control), &[]);
@@ -454,7 +464,7 @@ pub async fn acknowledge(AxumState(shared): AxumState<Shared>, Json(ack): Json<A
         } else {
             "crew_action_confirmed"
         };
-        let text = if s.crew.batch.is_some() {
+        let text = if s.crew.batches.contains_key(&action.role) {
             let key = format!(
                 "crew_completed_{}_{}",
                 action.control,
@@ -484,7 +494,7 @@ pub async fn acknowledge(AxumState(shared): AxumState<Shared>, Json(ack): Json<A
         } else {
             say(template, &[("item", label), ("state", action.response)])
         };
-        if let Some(batch) = s.crew.batch.as_mut() {
+        if let Some(batch) = s.crew.batches.get_mut(&action.role) {
             batch.outcomes.push(text);
         } else {
             s.request_memory.reply_for_action(action.sequence, &text);
@@ -496,20 +506,26 @@ pub async fn acknowledge(AxumState(shared): AxumState<Shared>, Json(ack): Json<A
         }
     } else {
         eprintln!("Crew action {} failed: {}", action.control, ack.detail);
-        if let Some(batch) = s.crew.batch.as_mut() {
+        if let Some(batch) = s.crew.batches.get_mut(&action.role) {
             batch
                 .outcomes
                 .push(say("crew_completed_unconfirmed", &[("item", label)]));
         } else {
-            s.session.crew_actions.clear();
+            s.session
+                .crew_actions
+                .retain(|queued| queued.role != action.role);
             s.crew.checklist = None;
             let text = say("crew_action_failed", &[("item", label)]);
             s.request_memory.reply_for_action(action.sequence, &text);
             speak(&mut s, &action.role, &text);
         }
     }
-    if s.session.crew_actions.is_empty()
-        && let Some(batch) = s.crew.batch.take()
+    if !s
+        .session
+        .crew_actions
+        .iter()
+        .any(|queued| queued.role == action.role)
+        && let Some(batch) = s.crew.batches.remove(&action.role)
     {
         let text = batch_reply(&mut s, batch);
         s.request_memory.reply_for_action(action.sequence, &text);
@@ -1222,7 +1238,7 @@ pub fn update_ground_connection(state: &mut crate::EngineState) {
             .session
             .crew_actions
             .retain(|action| action.role != "ground");
-        state.crew.batch = None;
+        state.crew.batches.remove("ground");
         state.crew.pushback = None;
     }
 }
@@ -1743,7 +1759,11 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
     {
         return Some(reply(&mut s, role, "crew_controls_wait", &[], false));
     }
-    if !s.session.crew_actions.is_empty() {
+    if s.session
+        .crew_actions
+        .iter()
+        .any(|action| action.role == role)
+    {
         return Some(reply(&mut s, role, "crew_actions_busy", &[], false));
     }
     if role == "ground" && (text.contains("pushback") || text.contains("push back")) {
@@ -1957,7 +1977,11 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
             conversation.intent = "conversation".into();
             return Some(crate::routes::actor_chat(shared, &settings, &conversation).await);
         }
-        if !s.session.crew_actions.is_empty() {
+        if s.session
+            .crew_actions
+            .iter()
+            .any(|action| action.role == role)
+        {
             return Some(reply(&mut s, role, "crew_actions_busy", &[], false));
         }
         let mut batch = Batch {
@@ -1994,7 +2018,7 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
             };
             let ok = queue(&mut s, role, &id, value, state);
             if !ok {
-                s.session.crew_actions.clear();
+                s.session.crew_actions.retain(|queued| queued.role != role);
                 return Some(reply(
                     &mut s,
                     role,
@@ -2004,7 +2028,12 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
                 ));
             }
         }
-        if s.session.crew_actions.is_empty() {
+        if !s
+            .session
+            .crew_actions
+            .iter()
+            .any(|queued| queued.role == role)
+        {
             let generation = s.session_generation;
             let protected = batch.outcomes.clone();
             let message = batch_reply(&mut s, batch);
@@ -2017,7 +2046,7 @@ pub async fn request(shared: &Shared, request: &Request) -> Option<Response> {
             speak(&mut s, role, &message);
             return Some(Json(json!({"result":{"accepted":true,"message":message},"state":snapshot(&s.session,&s.settings)})).into_response());
         }
-        s.crew.batch = Some(batch);
+        s.crew.batches.insert(role.to_owned(), batch);
         return Some(Json(json!({"result":{"accepted":true,"pending":true},"state":snapshot(&s.session,&s.settings)})).into_response());
     }
     if !recognized {
@@ -3180,5 +3209,120 @@ mod callout_log_tests {
                     && !entry.is_controller_instruction())
         );
         assert!(state.session.crew_actions.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod role_batch_tests {
+    use super::*;
+    use openatc_core::crew::CrewProfile;
+    use openatc_core::state::ControlCommand;
+
+    fn toliss_profile() -> CrewProfile {
+        let catalogue: toml::Value =
+            toml::from_str(include_str!("../../../aircraft/toliss_a320.toml")).unwrap();
+        serde_json::from_value(serde_json::to_value(&catalogue["aircraft"]["crew"]).unwrap())
+            .unwrap()
+    }
+
+    fn control(profile: &CrewProfile, role: &str, id: &str) -> Request {
+        let control = &profile.controls[id];
+        let value = if role == "cabin" {
+            control.on
+        } else {
+            control.off
+        };
+        Request {
+            role: role.into(),
+            controls: vec![ControlCommand {
+                control: id.into(),
+                value: format!("{value}"),
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn different_roles_hold_control_batches_at_the_same_time() {
+        let profile = toliss_profile();
+        let mut state = crate::test_state();
+        state.crew.profile = profile.clone();
+        state.crew.aircraft = "test".into();
+        state.crew.observed_at = Some(std::time::Instant::now());
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        state.session.telemetry.ground_speed_knots = 0.0;
+        let shared = std::sync::Arc::new(tokio::sync::RwLock::new(state));
+        let ground = request(&shared, &control(&profile, "ground", "chocks")).await;
+        assert!(ground.is_some_and(|response| response.status().is_success()));
+        let cabin = request(&shared, &control(&profile, "cabin", "slides")).await;
+        assert!(cabin.is_some_and(|response| response.status().is_success()));
+        let state = shared.read().await;
+        assert!(state.crew.batches.contains_key("ground"));
+        assert!(state.crew.batches.contains_key("cabin"));
+        assert_eq!(state.session.crew_actions.len(), 2);
+        assert!(
+            state
+                .session
+                .crew_actions
+                .iter()
+                .any(|action| action.role == "ground")
+                && state
+                    .session
+                    .crew_actions
+                    .iter()
+                    .any(|action| action.role == "cabin")
+        );
+    }
+
+    #[tokio::test]
+    async fn acknowledging_one_roles_action_leaves_another_batch_running() {
+        let mut state = crate::test_state();
+        state.crew.aircraft = "TEST".into();
+        state.session.crew_actions = vec![
+            Action {
+                sequence: 1,
+                aircraft: "TEST".into(),
+                control: "chocks".into(),
+                value: 0.0,
+                role: "ground".into(),
+                response: "off".into(),
+            },
+            Action {
+                sequence: 2,
+                aircraft: "TEST".into(),
+                control: "slides".into(),
+                value: 1.0,
+                role: "cabin".into(),
+                response: "armed".into(),
+            },
+        ];
+        for role in ["ground", "cabin"] {
+            state.crew.batches.insert(
+                role.into(),
+                Batch {
+                    outcomes: Vec::new(),
+                    held_reply: String::new(),
+                    started: std::time::Instant::now(),
+                },
+            );
+        }
+        let shared = std::sync::Arc::new(tokio::sync::RwLock::new(state));
+        let response = acknowledge(
+            AxumState(shared.clone()),
+            Json(Ack {
+                sequence: 1,
+                aircraft: "TEST".into(),
+                success: true,
+                detail: String::new(),
+            }),
+        )
+        .await;
+        assert!(response.status().is_success());
+        let state = shared.read().await;
+        assert_eq!(state.session.crew_actions.len(), 1);
+        assert_eq!(state.session.crew_actions[0].role, "cabin");
+        assert!(!state.crew.batches.contains_key("ground"));
+        assert!(state.crew.batches.contains_key("cabin"));
     }
 }

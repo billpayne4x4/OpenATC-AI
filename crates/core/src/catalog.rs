@@ -129,7 +129,17 @@ pub fn activate(path: &Path) -> Result<(), String> {
             })
             || entry.when.as_ref().is_some_and(|when| {
                 when.control.len() > 64
-                    || !matches!(when.is.as_str(), "on" | "off" | "available" | "unavailable")
+                    || when.all.len() > 8
+                    || (!when.control.is_empty()
+                        && !matches!(when.is.as_str(), "on" | "off" | "available" | "unavailable"))
+                    || when.all.iter().any(|condition| {
+                        condition.control.is_empty()
+                            || condition.control.len() > 64
+                            || !matches!(
+                                condition.is.as_str(),
+                                "on" | "off" | "available" | "unavailable"
+                            )
+                    })
             })
             || entry.actions.len() > 24
             || entry.actions.iter().any(|action| {
@@ -243,6 +253,18 @@ pub struct IntentEntry {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(default, deny_unknown_fields)]
 pub struct When {
+    /// Profile control to inspect.
+    pub control: String,
+    /// on | off | available | unavailable.
+    pub is: String,
+    /// Every listed condition must also hold.
+    pub all: Vec<WhenCondition>,
+}
+
+/// One entry in a combined visibility condition.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default, deny_unknown_fields)]
+pub struct WhenCondition {
     /// Profile control to inspect.
     pub control: String,
     /// on | off | available | unavailable.
@@ -563,6 +585,43 @@ mod tests {
             }
         }
         assert_eq!(buttons().len(), 35);
+    }
+
+    #[test]
+    fn a_combined_condition_parses_every_control() {
+        let text = r#"
+[intent.crew_chocks_power_off]
+title = "Remove chocks and external power"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "ground"
+control = "chocks"
+say = "remove chocks and external power"
+when = { all = [
+  { control = "chocks", is = "on" },
+  { control = "external_power", is = "on" },
+] }
+actions = [
+  { control = "chocks", value = "off" },
+  { control = "external_power", value = "off" },
+]
+phase = ["parked_out", "pushback"]
+roles = ["ground"]
+pattern = "none"
+
+[buttons]
+order = ["crew_chocks_power_off"]
+"#;
+        let file = crate::configuration::from_str::<CatalogueFile>(text).expect("catalogue");
+        let when = file.intent["crew_chocks_power_off"]
+            .when
+            .as_ref()
+            .expect("condition");
+        assert!(when.control.is_empty());
+        assert_eq!(when.all.len(), 2);
+        assert_eq!(when.all[1].control, "external_power");
+        assert_eq!(when.all[1].is, "on");
     }
 
     #[test]

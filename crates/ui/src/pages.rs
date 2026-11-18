@@ -10,7 +10,7 @@
     clippy::cast_sign_loss
 )]
 
-use crate::interface::Interface;
+use crate::interface::{Interface, SpeechChannel};
 use crate::widgets;
 use openatc_core::ops::{phase_name, request_available};
 use openatc_core::state::{Request, State};
@@ -946,17 +946,21 @@ fn talk_row(ui: &imgui::Ui, interface: &mut Interface, crew: &str) {
 /// Record and replay row with the mic status and dev readout.
 fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     let speech_busy = interface.speech.busy() || interface.speech.monitoring();
-    let rec_disabled = ui.begin_disabled(speech_busy);
-    if ui.button(if interface.speech.recording() {
-        "Stop + transcribe"
-    } else {
-        "Record request"
-    }) {
-        if interface.speech.recording() {
-            let endpoint = interface.engine.endpoint();
-            interface.speech.transcribe(&endpoint);
+    {
+        // Only the record button waits for playback. Replay and the cancel control
+        // must stay usable while a voice is speaking.
+        let _rec_disabled = ui.begin_disabled(speech_busy);
+        if ui.button(if interface.speech.recording() {
+            "Stop + transcribe"
         } else {
-            interface.speech.start_recording(false);
+            "Record request"
+        }) {
+            if interface.speech.recording() {
+                let endpoint = interface.engine.endpoint();
+                interface.speech.transcribe(&endpoint);
+            } else {
+                interface.speech.start_recording(false);
+            }
         }
     }
     widgets::same_line_if_fits(
@@ -979,14 +983,62 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         ui.calc_text_size("ATC Auto Reply")[0] + ui.clone_style().frame_padding[0] * 2.0,
     );
     let reply = openatc_core::readback::auto_reply(state);
-    {
+    let debug = interface.settings.dev_mode;
+    let playing = interface.any_playback();
+    let width = ui.calc_text_size("ATC Auto Reply")[0] + ui.clone_style().frame_padding[0] * 2.0;
+    let clicked = if debug && playing {
+        let clicked = widgets::icon_button_sized(
+            ui,
+            "Stop the current playback",
+            widgets::ToolbarIcon::FastForward,
+            false,
+            [width, ui.frame_height()],
+        );
+        let (min, max) = (ui.item_rect_min(), ui.item_rect_max());
+        interface.skip_bounds = [min[0], min[1], max[0], max[1]];
+        if ui.is_item_hovered() {
+            ui.tooltip_text("Stop the current playback. The transcript updates immediately and any prepared reply can proceed.");
+        }
+        clicked
+    } else if debug {
+        interface.skip_bounds = [0.0; 4];
+        let clicked = ui.button("ATC Auto Reply");
+        if ui.is_item_hovered() {
+            ui.tooltip_text("Stop any current playback. With nothing playing, reply to the pending ATC instruction.");
+        }
+        clicked
+    } else {
+        interface.skip_bounds = [0.0; 4];
         let _disabled = ui.begin_disabled(
             reply.is_none()
                 || interface.auto_reply_pending
                 || !interface.engine.connected()
                 || !interface.radio_power,
         );
-        if ui.button("ATC Auto Reply") {
+        let clicked = ui.button("ATC Auto Reply");
+        if ui.is_item_hovered_with_flags(imgui::ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
+            ui.tooltip_text("Reply to your IFR, taxi, start-up, pushback approval or traffic call. Messages with no pending instruction do not need an automatic reply.");
+        }
+        clicked
+    };
+    if clicked {
+        if debug {
+            // The stop reaches every audio engine regardless of what the UI detected.
+            let had_playback = interface.any_playback();
+            interface.stop_playback();
+            if !had_playback
+                && reply.is_some()
+                && !interface.auto_reply_pending
+                && interface.engine.connected()
+                && interface.radio_power
+            {
+                interface.auto_reply_pending = true;
+                "Sending current ATC readback".clone_into(&mut interface.last_action);
+                interface
+                    .engine
+                    .post("/request/auto-reply", serde_json::json!({}));
+            }
+        } else {
             interface.auto_reply_pending = true;
             "Sending current ATC readback".clone_into(&mut interface.last_action);
             interface
@@ -994,16 +1046,12 @@ fn record_row(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                 .post("/request/auto-reply", serde_json::json!({}));
         }
     }
-    if ui.is_item_hovered_with_flags(imgui::ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
-        ui.tooltip_text("Reply to your IFR, taxi, start-up, pushback approval or traffic call. Messages with no pending instruction do not need an automatic reply.");
-    }
     ui.same_line();
     let speech_status = interface.speech.status();
     if ui.content_region_avail()[0] < ui.calc_text_size(&speech_status)[0] {
         ui.new_line();
     }
     widgets::muted_wrapped(ui, speech_status);
-    drop(rec_disabled);
     if interface.settings.dev_mode {
         ui.new_line();
         if ui.button("Copy ATC conversation") {
@@ -1318,18 +1366,20 @@ pub fn atc_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             / available_height.max(1.0))
         .clamp(0.2, 0.8);
     }
-    let draw = ui.get_window_draw_list();
-    for offset in [-7.0, 0.0, 7.0] {
-        draw.add_circle(
-            [
-                splitter_position[0] + splitter_width * 0.5 + offset * scale,
-                splitter_position[1] + 4.0 * scale,
-            ],
-            1.5 * scale,
-            widgets::muted(ui),
-        )
-        .filled(true)
-        .build();
+    {
+        let draw = ui.get_window_draw_list();
+        for offset in [-7.0, 0.0, 7.0] {
+            draw.add_circle(
+                [
+                    splitter_position[0] + splitter_width * 0.5 + offset * scale,
+                    splitter_position[1] + 4.0 * scale,
+                ],
+                1.5 * scale,
+                widgets::muted(ui),
+            )
+            .filled(true)
+            .build();
+        }
     }
     ui.child_window("##communication-controls")
         .size([0.0, 0.0])
@@ -1372,16 +1422,25 @@ fn crew_condition_met(
     let Some(when) = when else {
         return true;
     };
-    let Some(control) = controls.iter().find(|control| control.id == when.control) else {
-        return false;
-    };
-    match when.is.as_str() {
+    let holds = |control: &openatc_core::crew::Capability, test: &str| match test {
         "available" => control.available,
         "unavailable" => !control.available,
         "on" => control.available && control.state == "on",
         "off" => control.available && control.state == "off",
         _ => false,
-    }
+    };
+    let met = |condition: &str, test: &str| {
+        controls
+            .iter()
+            .find(|control| control.id == condition)
+            .is_some_and(|control| holds(control, test))
+    };
+    let single = when.control.is_empty() || met(&when.control, &when.is);
+    single
+        && when
+            .all
+            .iter()
+            .all(|condition| met(&condition.control, &condition.is))
 }
 
 /// Crew page: quick requests and the interphone conversation for one crew member.
@@ -1431,18 +1490,20 @@ pub fn crew_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             / available_height.max(1.0))
         .clamp(0.2, 0.8);
     }
-    let draw = ui.get_window_draw_list();
-    for offset in [-7.0, 0.0, 7.0] {
-        draw.add_circle(
-            [
-                splitter_position[0] + splitter_width * 0.5 + offset * scale,
-                splitter_position[1] + 4.0 * scale,
-            ],
-            1.5 * scale,
-            widgets::muted(ui),
-        )
-        .filled(true)
-        .build();
+    {
+        let draw = ui.get_window_draw_list();
+        for offset in [-7.0, 0.0, 7.0] {
+            draw.add_circle(
+                [
+                    splitter_position[0] + splitter_width * 0.5 + offset * scale,
+                    splitter_position[1] + 4.0 * scale,
+                ],
+                1.5 * scale,
+                widgets::muted(ui),
+            )
+            .filled(true)
+            .build();
+        }
     }
     ui.child_window("##crew-controls")
         .size([0.0, 0.0])
@@ -1453,6 +1514,26 @@ pub fn crew_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                 TABS[interface.crew_tab].to_uppercase()
             ));
             talk_row(ui, interface, request_role);
+            if interface.settings.dev_mode {
+                let channel = SpeechChannel::crew(request_role)
+                    .filter(|channel| interface.channel_has_speech(*channel));
+                if let Some(channel) = channel {
+                    let width = ui.calc_text_size("ATC Auto Reply")[0]
+                        + ui.clone_style().frame_padding[0] * 2.0;
+                    if widgets::icon_button_sized(
+                        ui,
+                        "Skip the current crew reply audio",
+                        widgets::ToolbarIcon::FastForward,
+                        false,
+                        [width, ui.frame_height()],
+                    ) {
+                        interface.skip_speech(channel);
+                    }
+                    if ui.is_item_hovered_with_flags(imgui::ItemHoveredFlags::ALLOW_WHEN_DISABLED) {
+                        ui.tooltip_text("Skip the current reply from this crew member. The transcript updates immediately.");
+                    }
+                }
+            }
             ui.separator();
             if buttons.is_empty() {
                 ui.text_wrapped("No quick requests for this crew member in this phase.");
@@ -1683,6 +1764,12 @@ pub fn taxi_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
     ) {
         interface.save_settings();
     }
+    if ui.checkbox(
+        "Hold point ring",
+        &mut interface.settings.show_holding_point,
+    ) {
+        interface.save_settings();
+    }
     if ui.checkbox("Follow-me car", &mut interface.settings.show_follow_me) {
         interface.save_settings();
     }
@@ -1738,6 +1825,16 @@ fn taxi_layers(ui: &imgui::Ui, interface: &mut Interface) {
             "Taxi route",
             &mut interface.settings.show_taxi_route,
             [0.25, 0.87, 0.66, 1.0],
+        ),
+        (
+            "Taxi arrows",
+            &mut interface.settings.show_taxi_arrows,
+            [0.90, 0.95, 1.0, 1.0],
+        ),
+        (
+            "Holding point",
+            &mut interface.settings.show_map_holding_point,
+            [1.0, 0.75, 0.34, 1.0],
         ),
         (
             "Aircraft",
@@ -3130,25 +3227,6 @@ fn realism_tab(ui: &imgui::Ui, interface: &mut Interface) {
     }
     drop(chat_disabled);
     ui.text_wrapped("Checks for a current reason before rolling: recent strong wind or reduced visibility near the other pilot can prompt a request for a weather report. No reason means no call, even at 100%. Checks are spaced by the conversation interval; 0% disables unsolicited calls. Operational questions remain available independently of informal chat.");
-    widgets::section_title(ui, "TAXI GUIDANCE");
-    ui.checkbox(
-        "Show taxi arrows in plugin map",
-        &mut interface.settings.show_taxi_arrows,
-    );
-    ui.checkbox(
-        "Show taxi arrows on simulator ground",
-        &mut interface.settings.show_ground_taxi_arrows,
-    );
-    ui.checkbox(
-        "Show holding point on simulator ground",
-        &mut interface.settings.show_holding_point,
-    );
-    ui.text_wrapped("Guidance follows the approved taxi route and stops at the clearance limit. Ground arrows are available in X-Plane while on the ground.");
-    ui.checkbox(
-        "Show follow-me car on approved taxi route",
-        &mut interface.settings.show_follow_me,
-    );
-    ui.text_wrapped("Uses an installed X-Plane scenery vehicle. The guide stops before each clearance limit; following it does not authorize a runway crossing.");
 }
 
 /// Discipline preset picker.
@@ -3669,24 +3747,69 @@ mod tests {
         assert!(super::crew_condition_met(
             Some(&When {
                 control: "chocks".into(),
-                is: "on".into()
+                is: "on".into(),
+                ..Default::default()
             }),
             &controls
         ));
         assert!(!super::crew_condition_met(
             Some(&When {
                 control: "chocks".into(),
-                is: "off".into()
+                is: "off".into(),
+                ..Default::default()
             }),
             &controls
         ));
         assert!(!super::crew_condition_met(
             Some(&When {
                 control: "external_power".into(),
-                is: "on".into()
+                is: "on".into(),
+                ..Default::default()
             }),
             &controls
         ));
+        let both = vec![
+            Capability {
+                id: "chocks".into(),
+                label: "Chocks".into(),
+                role: "ground".into(),
+                available: true,
+                value: Some(1.0),
+                state: "on".into(),
+            },
+            Capability {
+                id: "external_power".into(),
+                label: "External power".into(),
+                role: "ground".into(),
+                available: true,
+                value: Some(1.0),
+                state: "on".into(),
+            },
+        ];
+        let combined = When {
+            control: String::new(),
+            is: String::new(),
+            all: vec![
+                openatc_core::catalog::WhenCondition {
+                    control: "chocks".into(),
+                    is: "on".into(),
+                },
+                openatc_core::catalog::WhenCondition {
+                    control: "external_power".into(),
+                    is: "on".into(),
+                },
+            ],
+        };
+        assert!(super::crew_condition_met(Some(&combined), &both));
+        let only_chocks = vec![Capability {
+            id: "chocks".into(),
+            label: "Chocks".into(),
+            role: "ground".into(),
+            available: true,
+            value: Some(1.0),
+            state: "on".into(),
+        }];
+        assert!(!super::crew_condition_met(Some(&combined), &only_chocks));
     }
 
     #[test]
@@ -4205,6 +4328,61 @@ mod tests {
         let mut interface = Interface::new("http://127.0.0.1:9");
         interface.set_airport(openatc_core::airport::demo_airport());
         interface
+    }
+
+    #[test]
+    fn the_debug_fast_forward_click_stops_queued_playback() {
+        let _guard = CONTEXT_LOCK.lock().unwrap();
+        let mut ctx = headless();
+        let mut interface = interface_with_airport();
+        interface.settings.dev_mode = true;
+        interface.settings.pin_open = true;
+        interface.set_page(0);
+        let entry: Transmission = serde_json::from_value(serde_json::json!({
+            "radio": "com1",
+            "frequency": 118_700,
+            "sequence": 42,
+            "speaker": "ATC",
+            "text": "Cleared for takeoff."
+        }))
+        .expect("transmission");
+        interface.queue_test_speech(crate::interface::SpeechChannel::Com1, entry);
+        let frame = |ctx: &mut imgui::Context, interface: &mut Interface| {
+            interface.set_window_frame(crate::interface::WindowFrame {
+                native_bounds: None,
+                position: [0.0, 0.0],
+                size: [960.0, 780.0],
+                can_pop_out: true,
+                popped_out: false,
+            });
+            interface.draw(ctx.frame());
+            ctx.render();
+        };
+        for _ in 0..4 {
+            frame(&mut ctx, &mut interface);
+        }
+        let bounds = interface.skip_bounds;
+        assert!(
+            bounds[2] > bounds[0] && bounds[3] > bounds[1],
+            "skip control was not drawn: {bounds:?}"
+        );
+        let target = [
+            f32::midpoint(bounds[0], bounds[2]),
+            f32::midpoint(bounds[1], bounds[3]),
+        ];
+        ctx.io_mut().add_mouse_pos_event(target);
+        frame(&mut ctx, &mut interface);
+        ctx.io_mut()
+            .add_mouse_button_event(imgui::MouseButton::Left, true);
+        frame(&mut ctx, &mut interface);
+        ctx.io_mut()
+            .add_mouse_button_event(imgui::MouseButton::Left, false);
+        frame(&mut ctx, &mut interface);
+        assert_eq!(
+            interface.last_action, "Stopped playback",
+            "the fast-forward click did not reach the playback control"
+        );
+        assert!(interface.speech_queue.is_empty());
     }
 
     #[test]

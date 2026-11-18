@@ -291,43 +291,32 @@ fn spawn_detached(binary: &Path) -> bool {
         .is_ok()
 }
 
-/// Companion-engine log path in the user configuration directory.
-fn engine_log_path() -> String {
+/// User configuration directory shared with the companion engine.
+pub(super) fn config_dir() -> Option<PathBuf> {
     if let Some(dir) =
         std::env::var_os("OPENATC_AI_CONFIG_DIR").or_else(|| std::env::var_os("OPENATC_CONFIG_DIR"))
     {
-        return PathBuf::from(dir)
-            .join("engine.log")
-            .to_string_lossy()
-            .into_owned();
+        return Some(PathBuf::from(dir));
     }
     #[cfg(windows)]
     if let Some(dir) = std::env::var_os("LOCALAPPDATA") {
-        return PathBuf::from(dir)
-            .join("openatc-ai/engine.log")
-            .to_string_lossy()
-            .into_owned();
+        return Some(PathBuf::from(dir).join("openatc-ai"));
     }
     #[cfg(target_os = "macos")]
     if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home)
-            .join("Library/Application Support/openatc-ai/engine.log")
-            .to_string_lossy()
-            .into_owned();
+        return Some(PathBuf::from(home).join("Library/Application Support/openatc-ai"));
     }
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(dir)
-            .join("openatc-ai/engine.log")
-            .to_string_lossy()
-            .into_owned();
+        return Some(PathBuf::from(dir).join("openatc-ai"));
     }
-    if let Some(home) = std::env::var_os("HOME") {
-        return PathBuf::from(home)
-            .join(".config/openatc-ai/engine.log")
-            .to_string_lossy()
-            .into_owned();
-    }
-    String::new()
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/openatc-ai"))
+}
+
+/// Companion-engine log path in the user configuration directory.
+fn engine_log_path() -> String {
+    config_dir().map_or_else(String::new, |dir| {
+        dir.join("engine.log").to_string_lossy().into_owned()
+    })
 }
 
 #[cfg(test)]

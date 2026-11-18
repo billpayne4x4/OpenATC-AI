@@ -77,7 +77,7 @@ pub async fn prepare(State(shared): State<Shared>, Json(body): Json<Value>) -> R
     let token = state.session_generation;
     state.pending_copilot_reply = None;
     state.session.crew_actions.clear();
-    state.crew.batch = None;
+    state.crew.batches.clear();
     state.crew.pushback = None;
     state.crew.checklist = None;
     state.crew.ground_taxi_origin = None;

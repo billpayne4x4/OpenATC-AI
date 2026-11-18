@@ -89,6 +89,7 @@ struct Playback {
     frames: Vec<f32>,
     position: usize,
     volume: f32,
+    cancelled: Arc<AtomicBool>,
 }
 
 /// FFI device cap as C int. 32 is exact in any int width.
@@ -958,6 +959,11 @@ unsafe extern "C" fn render_callback(ud: *mut c_void, out: *mut c_float, frames:
         {
             eprintln!("OpenATC audio: playing at master level {master:.2}");
         }
+        if locked.cancelled.load(Ordering::SeqCst) {
+            dest.fill(0.0);
+            locked.position = locked.frames.len();
+            return;
+        }
         for sample in dest {
             *sample = if locked.position < locked.frames.len() {
                 let value = locked.frames[locked.position] * locked.volume * master;
@@ -1048,7 +1054,7 @@ fn synthesize_and_play(
     payload: &serde_json::Value,
     output_key: &str,
     volume: f32,
-    cancelled: &AtomicBool,
+    cancelled: &Arc<AtomicBool>,
     started: &AtomicBool,
 ) -> Result<(), String> {
     const FAILED: &str = "Speech synthesis failed. Check engine TTS settings.";
@@ -1115,7 +1121,7 @@ fn play_frames(
     output_key: &str,
     frames: &[f32],
     volume: f32,
-    cancelled: &AtomicBool,
+    cancelled: &Arc<AtomicBool>,
 ) -> Result<(), String> {
     let index = if output_key.is_empty() {
         -1
@@ -1129,6 +1135,7 @@ fn play_frames(
         frames: frames.to_vec(),
         position: 0,
         volume: volume.clamp(0.0, 1.0),
+        cancelled: cancelled.clone(),
     }));
     let ud = Arc::into_raw(playback.clone()) as *mut c_void;
     let handle = unsafe { oatc_render_open(context, index, render_callback, ud) };
@@ -1168,6 +1175,27 @@ mod tests {
         assert!(!speech.started());
         speech.started.store(true, Ordering::SeqCst);
         assert!(speech.started());
+    }
+
+    #[test]
+    fn cancelling_mutes_the_next_render_buffer() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let playback = Arc::new(Mutex::new(Playback {
+            frames: vec![1.0; 16],
+            position: 0,
+            volume: 1.0,
+            cancelled: flag.clone(),
+        }));
+        let ud = Arc::into_raw(playback.clone()) as *mut c_void;
+        let mut normal = [0.0_f32; 8];
+        unsafe { render_callback(ud, normal.as_mut_ptr(), 4) };
+        assert!(normal.iter().any(|sample| *sample > 0.0));
+        flag.store(true, Ordering::SeqCst);
+        let mut muted = [1.0_f32; 8];
+        unsafe { render_callback(ud, muted.as_mut_ptr(), 4) };
+        assert!(muted.iter().all(|sample| *sample == 0.0));
+        assert_eq!(playback.lock().unwrap().position, 16);
+        unsafe { drop(Arc::from_raw(ud as *const Mutex<Playback>)) };
     }
 
     #[test]
@@ -1260,6 +1288,7 @@ mod tests {
             frames: vec![0.2, -0.4, 0.6, -0.8],
             position: 0,
             volume: 0.5,
+            cancelled: Arc::new(AtomicBool::new(false)),
         }));
         let mut output = [99.0_f32; 6];
         unsafe {
@@ -1371,7 +1400,7 @@ mod tests {
             &output,
             &vec![0.0; 9600],
             0.0,
-            &AtomicBool::new(false),
+            &Arc::new(AtomicBool::new(false)),
         )
         .unwrap();
     }

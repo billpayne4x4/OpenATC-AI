@@ -389,7 +389,7 @@ fn samples(points: &[Point], ownship: &Point) -> Vec<(Point, f64)> {
     // Show the approved taxiway ahead even when the stand is off the network.
     // The gap across an unmapped apron still receives no invented arrows.
     let mut output = Vec::new();
-    let mut along = nearest.1 + 10.0;
+    let mut along = 10.0;
     let mut offset = 0.0;
     for pair in points.windows(2) {
         let (dx, dn) = (pair[1].east - pair[0].east, pair[1].north - pair[0].north);
@@ -398,14 +398,16 @@ fn samples(points: &[Point], ownship: &Point) -> Vec<(Point, f64)> {
             continue;
         }
         while along < offset + length && along < total - 6.0 && output.len() < 64 {
-            let t = (along - offset) / length;
-            let point = Point {
-                east: pair[0].east + dx * t,
-                north: pair[0].north + dn * t,
-                height: 0.0,
-            };
-            if (point.east - ownship.east).hypot(point.north - ownship.north) < 1200.0 {
-                output.push((point, dx.atan2(dn).to_degrees().rem_euclid(360.0)));
+            if along > nearest.1 {
+                let t = (along - offset) / length;
+                let point = Point {
+                    east: pair[0].east + dx * t,
+                    north: pair[0].north + dn * t,
+                    height: 0.0,
+                };
+                if (point.east - ownship.east).hypot(point.north - ownship.north) < 1200.0 {
+                    output.push((point, dx.atan2(dn).to_degrees().rem_euclid(360.0)));
+                }
             }
             along += 25.0;
         }
@@ -512,7 +514,7 @@ mod tests {
     #[test]
     fn arrows_follow_turn_and_stop_before_limit() {
         let a = samples(&[p(0.0, 0.0), p(0.0, 50.0), p(100.0, 50.0)], &p(0.0, 20.0));
-        assert_eq!(a[0].0, p(0.0, 30.0));
+        assert_eq!(a[0].0, p(0.0, 35.0));
         assert_eq!(a[0].1, 0.0);
         assert_eq!(a[1].1, 90.0);
         assert!(a.last().unwrap().0.east < 94.0);
@@ -530,6 +532,21 @@ mod tests {
         );
         assert!(samples(&route, &p(1500.0, 0.0)).is_empty());
     }
+    #[test]
+    fn arrows_keep_fixed_route_positions_as_the_aircraft_moves() {
+        let route = [p(0.0, 0.0), p(0.0, 1000.0)];
+        let first = samples(&route, &p(0.0, 100.0));
+        let second = samples(&route, &p(0.0, 205.0));
+        let at = |arrows: &[(Point, f64)]| {
+            arrows
+                .iter()
+                .find(|(point, _)| (point.north - 510.0).abs() < 0.5)
+                .map(|(point, _)| (point.east, point.north))
+        };
+        assert!(at(&first).is_some());
+        assert_eq!(at(&first), at(&second));
+    }
+
     #[test]
     fn remote_airport_has_no_arrows() {
         assert!(samples(&[p(0.0, 0.0), p(0.0, 100.0)], &p(2000.0, 0.0)).is_empty());

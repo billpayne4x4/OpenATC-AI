@@ -340,7 +340,7 @@ pub async fn debug_cancel_actions(AxumState(shared): AxumState<Shared>) -> Respo
     state.pending_copilot_reply = None;
     state.debug_jump = None;
     state.session.crew_actions.clear();
-    state.crew.batch = None;
+    state.crew.batches.clear();
     state.crew.pushback = None;
     state.crew.checklist = None;
     state.crew.social.clear();
@@ -413,7 +413,7 @@ fn reset_flight(state: &mut crate::EngineState) {
     state.atis_logged.clear();
     state.flow = super::flight::FlightFlow::default();
     state.crew.checklist = None;
-    state.crew.batch = None;
+    state.crew.batches.clear();
     state.crew.social.clear();
     state.crew.pushback = None;
     state.request_memory = Default::default();
@@ -1345,6 +1345,7 @@ fn prepare_reply(state: &mut crate::EngineState, request: Request) {
 ///
 /// A prepared reply is only a playback handshake. Clear it when a newer controller
 /// instruction makes it obsolete; it must not block the radio or the takeoff sequencer.
+/// A taxi clearance awaiting its readback keeps the prepared reply through another station call.
 pub(crate) fn reconcile_pending_reply(state: &mut crate::EngineState) {
     let latest = state
         .session
@@ -1353,9 +1354,18 @@ pub(crate) fn reconcile_pending_reply(state: &mut crate::EngineState) {
         .rev()
         .find(|entry| entry.is_controller_instruction())
         .map_or(0, |entry| entry.sequence);
-    if let Some(pending) = state.pending_copilot_reply.as_ref()
-        && (pending.generation != state.session_generation || latest > pending.sequence)
-    {
+    let drop_pending = state.pending_copilot_reply.as_ref().is_some_and(|pending| {
+        if pending.generation != state.session_generation {
+            return true;
+        }
+        if latest <= pending.sequence {
+            return false;
+        }
+        !(pending.request.readback_kind == "taxi"
+            && state.session.taxi_clearance.pending_readback
+            && state.session.taxi_clearance.sequence == pending.request.clearance_sequence)
+    });
+    if drop_pending {
         state.pending_copilot_reply = None;
     }
 }
@@ -2794,6 +2804,28 @@ pub(crate) async fn atc_request(
         return Json(json!({"result": result, "state":snapshot(&state.session,&state.settings)}))
             .into_response();
     }
+    // A taxi request from the runway resets the incursion. A clear runway gets the
+    // departure backtrack; a blocked one gets the exit route.
+    if request.intent == "taxi"
+        && state.session.phase == PhaseCode::Taxi
+        && state.session.telemetry.on_ground
+        && let Some(airport) = airport.as_ref()
+    {
+        let here = openatc_core::airport::airport_point(
+            airport,
+            state.session.telemetry.latitude,
+            state.session.telemetry.longitude,
+        );
+        if openatc_core::airport::within_runway(airport, &here)
+            && let Some(message) =
+                runway_taxi_reset(&mut state, airport, &request, &pilot_tag, &atc_tag)
+        {
+            return Json(
+                json!({"result":{"accepted":true,"message":message},"state":snapshot(&state.session,&state.settings)}),
+            )
+            .into_response();
+        }
+    }
     let squawk = if request.intent == "clearance" && state.session.phase == PhaseCode::Parked {
         state.squawks.next()
     } else {
@@ -3182,6 +3214,95 @@ pub async fn post_suggest(
     }
 }
 
+/// Reset a runway incursion on a taxi request and issue a fresh departure or exit route.
+fn runway_taxi_reset(
+    state: &mut crate::EngineState,
+    airport: &openatc_core::airport::Airport,
+    request: &Request,
+    pilot_tag: &SpeechTag,
+    atc_tag: &SpeechTag,
+) -> Option<String> {
+    let runway = state.session.plan.runway.clone();
+    if runway.is_empty() {
+        return None;
+    }
+    let size = openatc_core::parking::aircraft_size(&state.session).unwrap_or('F');
+    let blocked = crate::deviations::runway_blocked(state, &runway);
+    let mut route = if blocked.is_none() {
+        openatc_core::airport::calculate_runway_taxi_route_from_current(
+            airport,
+            &state.session.telemetry,
+            &runway,
+        )
+        .or_else(|_| {
+            openatc_core::airport::calculate_runway_taxi_route(
+                airport,
+                &state.session.telemetry,
+                &runway,
+                size,
+            )
+        })
+    } else {
+        openatc_core::airport::calculate_runway_exit_route(
+            airport,
+            &state.session.telemetry,
+            &runway,
+            &runway,
+            size,
+        )
+    }
+    .ok()?;
+    let hold = if route.hold_short_runway.is_empty() {
+        runway.clone()
+    } else {
+        route.hold_short_runway.clone()
+    };
+    route.hold_short_runway.clone_from(&hold);
+    let with_via = !route.via.is_empty();
+    let text = if blocked.is_none() {
+        openatc_core::dialogue::say(
+            "runway_taxi_backtrack_now_clear",
+            &[("runway", runway.clone())],
+        )
+    } else if with_via {
+        openatc_core::dialogue::say(
+            "deviation_exit_runway_via",
+            &[
+                ("callsign", state.session.plan.callsign.clone()),
+                ("runway", runway),
+                ("via", route.via.clone()),
+                ("hold", hold),
+            ],
+        )
+    } else {
+        openatc_core::dialogue::say(
+            "deviation_exit_runway",
+            &[
+                ("callsign", state.session.plan.callsign.clone()),
+                ("runway", runway),
+                ("hold", hold),
+            ],
+        )
+    };
+    if text.is_empty() {
+        return None;
+    }
+    route.instructions.clone_from(&text);
+    route.approved = false;
+    route.pending_readback = true;
+    route.waiting_for_traffic = false;
+    route.waiting_seconds = 0.0;
+    route.takeoff_state = openatc_core::state::TakeoffState::Idle;
+    route.sequence = state.session.next_sequence;
+    state.deviations.reset_ground();
+    state.session.taxi_clearance = route;
+    state.session.control_radio = request.radio;
+    let callsign = state.session.plan.callsign.clone();
+    add_transmission(&mut state.session, &callsign, &request.text, pilot_tag);
+    add_transmission(&mut state.session, "ATC", &text, atc_tag);
+    Some(text)
+}
+
 /// Keep clearance validation feedback identical in the transcript and UI result.
 fn clearance_rejection(
     state: &mut crate::EngineState,
@@ -3200,6 +3321,7 @@ fn clearance_rejection(
 mod readback_tests {
     use super::*;
     use openatc_core::aircraft::AircraftBehaviour;
+    use openatc_core::state::TrafficTarget;
     #[test]
     fn a_prepared_readback_is_dropped_when_a_newer_instruction_supersedes_it() {
         let mut state = crate::test_state();
@@ -3229,6 +3351,113 @@ mod readback_tests {
         );
         reconcile_pending_reply(&mut state);
         assert!(state.pending_copilot_reply.is_none());
+    }
+
+    #[test]
+    fn a_pending_taxi_readback_survives_another_controller_call() {
+        let mut state = crate::test_state();
+        let tag = SpeechTag::default();
+        add_transmission(
+            &mut state.session,
+            "ATC",
+            "Taxi via A, hold short of runway 10.",
+            &tag,
+        );
+        let taxi_sequence = state.session.transcript.last().unwrap().sequence;
+        state.session.taxi_clearance.pending_readback = true;
+        state.session.taxi_clearance.sequence = taxi_sequence;
+        add_transmission(
+            &mut state.session,
+            "COPILOT",
+            "Taxi via A, hold short of runway 10, C-GTLT.",
+            &tag,
+        );
+        let prepared_sequence = state.session.transcript.last().unwrap().sequence;
+        state.pending_copilot_reply = Some(PreparedReply {
+            generation: state.session_generation,
+            sequence: prepared_sequence,
+            frequency: 118_700,
+            request: Request {
+                readback_kind: "taxi".into(),
+                clearance_sequence: taxi_sequence,
+                ..Default::default()
+            },
+        });
+        add_transmission(&mut state.session, "ATC", "Stand by.", &tag);
+        reconcile_pending_reply(&mut state);
+        assert!(
+            state.pending_copilot_reply.is_some(),
+            "the taxi readback still answers the pending clearance"
+        );
+        state.session.taxi_clearance.pending_readback = false;
+        reconcile_pending_reply(&mut state);
+        assert!(state.pending_copilot_reply.is_none());
+    }
+
+    #[test]
+    fn a_taxi_request_from_the_runway_issues_the_departure_backtrack() {
+        let mut state = crate::test_state();
+        state.session.phase = PhaseCode::Taxi;
+        state.session.plan.runway = "09".into();
+        state.session.telemetry = openatc_core::state::Telemetry {
+            latitude: 0.0,
+            longitude: 0.0,
+            on_ground: true,
+            position_valid: true,
+            traffic: Some(vec![]),
+            ..Default::default()
+        };
+        let airport = openatc_core::airport::demo_airport();
+        state.airport = Some(airport.clone());
+        let request = Request {
+            intent: "taxi".into(),
+            text: "request taxi".into(),
+            ..Default::default()
+        };
+        let tag = SpeechTag::default();
+        let message =
+            runway_taxi_reset(&mut state, &airport, &request, &tag, &tag).expect("clearance");
+        assert!(message.to_lowercase().contains("backtrack"), "{message}");
+        assert!(state.session.taxi_clearance.pending_readback);
+        assert!(!state.session.taxi_clearance.approved);
+        assert!(state.session.taxi_clearance.runway_taxi);
+    }
+
+    #[test]
+    fn a_taxi_request_from_the_runway_exits_when_the_runway_is_blocked() {
+        let mut state = crate::test_state();
+        state.session.phase = PhaseCode::Taxi;
+        state.session.plan.runway = "09".into();
+        state.session.telemetry = openatc_core::state::Telemetry {
+            latitude: 0.0,
+            longitude: 0.0,
+            on_ground: true,
+            position_valid: true,
+            traffic: Some(vec![TrafficTarget {
+                aircraft: "B738".into(),
+                latitude: 0.0,
+                longitude: 500.0 / 111_320.0,
+                altitude_feet: 0.0,
+                track_degrees: 90.0,
+                on_ground: true,
+                ground_speed_knots: Some(0.0),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        let airport = openatc_core::airport::demo_airport();
+        state.airport = Some(airport.clone());
+        let request = Request {
+            intent: "taxi".into(),
+            text: "request taxi".into(),
+            ..Default::default()
+        };
+        let tag = SpeechTag::default();
+        let message =
+            runway_taxi_reset(&mut state, &airport, &request, &tag, &tag).expect("exit route");
+        assert!(message.to_lowercase().contains("exit runway"), "{message}");
+        assert!(state.session.taxi_clearance.pending_readback);
+        assert!(!state.session.taxi_clearance.runway_taxi);
     }
 
     #[test]

@@ -403,6 +403,8 @@ pub async fn post_telemetry(
         ) && route.stage() == SurfaceStage::AtHold
             && route.takeoff_state == TakeoffState::Idle
             && (!route.to_parking || !route.hold_short_runway.is_empty())
+            && route.approved
+            && !route.pending_readback
             && telemetry.on_ground
             && !telemetry.paused
             && telemetry.radio_power;
@@ -470,7 +472,6 @@ pub async fn post_telemetry(
             || route.backtrack_required
             || (!route.hold_short_runway.is_empty()
                 && route.hold_short_runway != state.session.plan.runway);
-        let backtrack = route.backtrack_required;
         let tower = openatc_core::stations::station_serves(station, "ready");
         if !tower && !needs_further {
             // A frequency transfer needs no new runway clearance or scenery reload.
@@ -531,17 +532,6 @@ pub async fn post_telemetry(
             return Json(json!({"accepted":true})).into_response();
         }
         state.session.taxi_clearance.holding_channel = channel;
-        if backtrack && tower {
-            let text = openatc_core::dialogue::say(
-                "holding_report_ready",
-                &[(
-                    "runway",
-                    state.session.taxi_clearance.hold_short_runway.clone(),
-                )],
-            );
-            add_transmission(&mut state.session, "ATC", &text, &tag);
-            return Json(json!({"accepted":true})).into_response();
-        }
         (
             state.settings.clone(),
             openatc_core::dialogue::say(
@@ -812,6 +802,60 @@ mod tests {
             shared.read().await.session.transcript.len(),
             count,
             "Wait for crossing readback before another instruction"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_hold_report_waits_for_the_taxi_readback() {
+        let mut state = fixture();
+        state.settings.simulator_root = "test".into();
+        state.station_root = "test".into();
+        state.session.phase = openatc_core::state::PhaseCode::Taxi;
+        state.session.taxi_clearance.pending_readback = true;
+        state.session.taxi_clearance.approved = false;
+        state.session.taxi_clearance.guidance_complete = true;
+        state.session.taxi_clearance.backtrack_required = true;
+        state.session.taxi_clearance.hold_short_runway = "10".into();
+        state.session.plan.runway = "28".into();
+        state.session.telemetry = Telemetry {
+            com1_khz: 118_700,
+            ..telemetry()
+        };
+        let shared = std::sync::Arc::new(tokio::sync::RwLock::new(state));
+        let before = shared.read().await.session.transcript.len();
+        let sample = shared.read().await.session.telemetry.clone();
+        post_telemetry(AxumState(shared.clone()), Json(sample)).await;
+        {
+            let state = shared.read().await;
+            assert_eq!(
+                state.session.transcript.len(),
+                before,
+                "no holding report before the readback is accepted"
+            );
+            assert_eq!(state.session.taxi_clearance.holding_channel, 0);
+        }
+        {
+            let mut state = shared.write().await;
+            state.session.taxi_clearance.approved = true;
+            state.session.taxi_clearance.pending_readback = false;
+        }
+        let sample = shared.read().await.session.telemetry.clone();
+        post_telemetry(AxumState(shared.clone()), Json(sample)).await;
+        let state = shared.read().await;
+        assert!(
+            state.session.transcript.len() > before,
+            "the holding report follows the readback"
+        );
+        assert!(
+            !state
+                .session
+                .transcript
+                .last()
+                .unwrap()
+                .text
+                .contains("not available"),
+            "{}",
+            state.session.transcript.last().unwrap().text
         );
     }
 

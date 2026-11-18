@@ -176,6 +176,15 @@ impl Manager {
     }
 
     fn handle(&mut self, state: &mut EngineState, policy: &Policy, finding: &Finding) -> bool {
+        // A runway entry gets the exit demand immediately, even while the
+        // earlier hold-position warning is still inside its cooldown.
+        if finding.rule == "hold_short_passed"
+            && policy.settings.runway_entry_immediate
+            && aircraft_on_runway(state)
+        {
+            self.last.insert(finding.rule, Instant::now());
+            return self.runway_exit(state, policy, finding);
+        }
         let now = Instant::now();
         if self.last.get(finding.rule).is_some_and(|last| {
             now.duration_since(*last) < Duration::from_secs(policy.settings.cooldown_seconds)
@@ -192,12 +201,7 @@ impl Manager {
             return false;
         }
         self.last.insert(finding.rule, now);
-        let runway_entry = finding.rule == "hold_short_passed"
-            && policy.settings.runway_entry_immediate
-            && aircraft_on_runway(state);
-        let weight = if runway_entry {
-            policy.limit(finding.scope)
-        } else if finding.serious() {
+        let weight = if finding.serious() {
             if policy.settings.serious_immediate {
                 policy.limit(finding.scope)
             } else {
@@ -215,7 +219,6 @@ impl Manager {
                 Scope::Flight => self.divert_pending = true,
             }
         } else if finding.rule == "hold_short_passed"
-            && !runway_entry
             && let Some(runway) = finding.facts.get("runway")
             && runway_clear(state, runway)
         {
@@ -224,7 +227,134 @@ impl Manager {
         true
     }
 
+    /// Demand the runway exit and issue the route back to the holding point together.
+    fn runway_exit(&mut self, state: &mut EngineState, policy: &Policy, finding: &Finding) -> bool {
+        let Some(runway) = finding.facts.get("runway").cloned() else {
+            return false;
+        };
+        self.runway_exit_for(state, policy, runway)
+    }
+
+    fn runway_exit_for(
+        &mut self,
+        state: &mut EngineState,
+        policy: &Policy,
+        runway: String,
+    ) -> bool {
+        if runway.is_empty() {
+            return false;
+        }
+        let callsign = state.session.plan.callsign.clone();
+        let size = openatc_core::parking::aircraft_size(&state.session).unwrap_or('F');
+        let target = if state.session.plan.runway.trim().is_empty() {
+            runway.clone()
+        } else {
+            state.session.plan.runway.clone()
+        };
+        let route = state.airport.as_ref().and_then(|airport| {
+            openatc_core::airport::calculate_runway_exit_route(
+                airport,
+                &state.session.telemetry,
+                &runway,
+                &target,
+                size,
+            )
+            .ok()
+        });
+        let Some(mut route) = route else {
+            let sent = send(
+                state,
+                "deviation_vacate",
+                &[("callsign", callsign.clone()), ("runway", runway)],
+                Some("pilot_vacate_readback"),
+            );
+            self.mark_ground_consequence(state, policy, callsign);
+            return sent;
+        };
+        let hold = if route.hold_short_runway.is_empty() {
+            runway.clone()
+        } else {
+            route.hold_short_runway.clone()
+        };
+        route.hold_short_runway.clone_from(&hold);
+        let with_via = !route.via.is_empty();
+        let slots = if with_via {
+            vec![
+                ("callsign", callsign.clone()),
+                ("runway", runway),
+                ("via", route.via.clone()),
+                ("hold", hold),
+            ]
+        } else {
+            vec![
+                ("callsign", callsign.clone()),
+                ("runway", runway),
+                ("hold", hold),
+            ]
+        };
+        let (phrase, readback) = if with_via {
+            (
+                "deviation_exit_runway_via",
+                "pilot_exit_runway_via_readback",
+            )
+        } else {
+            ("deviation_exit_runway", "pilot_exit_runway_readback")
+        };
+        let text = say(phrase, &slots);
+        if text.is_empty() {
+            return false;
+        }
+        let tag = tag(state);
+        route.approved = true;
+        route.pending_readback = false;
+        route.waiting_for_traffic = false;
+        route.waiting_seconds = 0.0;
+        route.takeoff_state = openatc_core::state::TakeoffState::Idle;
+        route.sequence = state.session.next_sequence;
+        add_transmission(&mut state.session, "ATC", &text, &tag);
+        if state.settings.copilot_replies
+            && let Some(entry) = state.session.transcript.last_mut()
+        {
+            let reply = say(readback, &slots);
+            if !reply.is_empty() {
+                entry.pilot_reply = reply;
+            }
+        }
+        state.session.taxi_clearance = route;
+        self.mark_ground_consequence(state, policy, callsign);
+        true
+    }
+
+    /// The runway-entry demand replaces the hold-position consequence.
+    fn mark_ground_consequence(
+        &mut self,
+        state: &mut EngineState,
+        policy: &Policy,
+        callsign: String,
+    ) {
+        self.strikes
+            .insert("hold_short_passed", policy.limit(Scope::Ground));
+        self.ground_pending = false;
+        self.ground_done = true;
+        self.send_number(state, policy, callsign);
+    }
+
+    /// Clear the ground incursion state for a fresh taxi request.
+    pub fn reset_ground(&mut self) {
+        self.strikes.remove("hold_short_passed");
+        self.last.remove("hold_short_passed");
+        self.ground_pending = false;
+        self.ground_done = false;
+        self.recovery = None;
+    }
+
     fn ground_consequence(&mut self, state: &mut EngineState, policy: &Policy) -> bool {
+        if aircraft_on_runway(state) {
+            let runway = state.session.taxi_clearance.hold_short_runway.clone();
+            if !runway.is_empty() {
+                return self.runway_exit_for(state, policy, runway);
+            }
+        }
         let callsign = state.session.plan.callsign.clone();
         let slots = [("callsign", callsign.clone())];
         let sent = send(
@@ -449,15 +579,20 @@ fn tag(state: &mut EngineState) -> SpeechTag {
     }
 }
 
-fn runway_clear(state: &EngineState, runway: &str) -> bool {
+/// Runway occupancy for a surface instruction; `None` means clear.
+pub(crate) fn runway_blocked(state: &EngineState, runway: &str) -> Option<&'static str> {
     let Some(airport) = state.airport.as_ref() else {
-        return false;
+        return Some("holding_standby");
     };
     if runway.is_empty() {
-        return false;
+        return Some("holding_standby");
     }
     let telemetry = state.telemetry_with_traffic();
-    openatc_core::holding::blocked(airport, runway, &telemetry).is_none()
+    openatc_core::holding::blocked(airport, runway, &telemetry)
+}
+
+fn runway_clear(state: &EngineState, runway: &str) -> bool {
+    runway_blocked(state, runway).is_none()
 }
 
 fn choose_airport(state: &EngineState, policy: &Policy) -> Option<(String, String)> {

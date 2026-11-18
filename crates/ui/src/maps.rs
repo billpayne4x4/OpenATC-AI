@@ -461,7 +461,7 @@ fn draw_map(
             }
         }
     }
-    if interface.settings.show_taxi_route
+    if (interface.settings.show_taxi_route || interface.settings.show_map_holding_point)
         && (state.taxi_clearance.approved || state.taxi_clearance.pending_readback)
         && state.taxi_clearance.airport == airport.icao
     {
@@ -685,92 +685,95 @@ fn draw_route(
     project: &dyn Fn(&Point) -> [f32; 2],
 ) {
     let points = &state.taxi_clearance.points;
-    if state.telemetry.position_valid && !points.is_empty() {
-        let current = project(&airport_point(
-            airport,
-            state.telemetry.latitude,
-            state.telemetry.longitude,
-        ));
-        let first = project(&points[0]);
-        let length = (first[0] - current[0]).hypot(first[1] - current[1]);
-        if length > 1.0 && f64::from(length) < 350.0 * f64::from(interface.zoom.max(0.2)) {
-            let mut offset = 0.0;
-            while offset < length {
-                let end = length.min(offset + 6.0);
-                draw.add_line(
-                    [
-                        current[0] + (first[0] - current[0]) * offset / length,
-                        current[1] + (first[1] - current[1]) * offset / length,
-                    ],
-                    [
-                        current[0] + (first[0] - current[0]) * end / length,
-                        current[1] + (first[1] - current[1]) * end / length,
-                    ],
-                    rgba(255, 192, 87, 255),
-                )
-                .thickness(2.0)
-                .build();
-                offset += 12.0;
-            }
-        }
-    }
-    for index in 1..points.len() {
-        draw.add_line(
-            project(&points[index - 1]),
-            project(&points[index]),
-            rgba(20, 54, 49, 255),
-        )
-        .thickness(9.0)
-        .build();
-        draw.add_line(
-            project(&points[index - 1]),
-            project(&points[index]),
-            if state.taxi_clearance.pending_readback {
-                rgba(255, 192, 87, 255)
-            } else {
-                rgba(64, 223, 168, 255)
-            },
-        )
-        .thickness(4.0)
-        .build();
-    }
-    if interface.settings.show_taxi_arrows {
-        for pair in points.windows(2) {
-            let a = project(&pair[0]);
-            let b = project(&pair[1]);
-            let length = (b[0] - a[0]).hypot(b[1] - a[1]);
-            if length < 18.0 {
-                continue;
-            }
-            let direction = [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
-            let mut distance = 14.0;
-            while distance < length - 8.0 {
-                let tip = [
-                    a[0] + direction[0] * distance,
-                    a[1] + direction[1] * distance,
-                ];
-                for side in [-1.0, 1.0] {
+    if interface.settings.show_taxi_route {
+        if state.telemetry.position_valid && !points.is_empty() {
+            let current = project(&airport_point(
+                airport,
+                state.telemetry.latitude,
+                state.telemetry.longitude,
+            ));
+            let first = project(&points[0]);
+            let length = (first[0] - current[0]).hypot(first[1] - current[1]);
+            if length > 1.0 && f64::from(length) < 350.0 * f64::from(interface.zoom.max(0.2)) {
+                let mut offset = 0.0;
+                while offset < length {
+                    let end = length.min(offset + 6.0);
                     draw.add_line(
                         [
-                            tip[0] - direction[0] * 7.0 - direction[1] * side * 5.0,
-                            tip[1] - direction[1] * 7.0 + direction[0] * side * 5.0,
+                            current[0] + (first[0] - current[0]) * offset / length,
+                            current[1] + (first[1] - current[1]) * offset / length,
                         ],
-                        tip,
-                        rgba(220, 255, 245, 255),
+                        [
+                            current[0] + (first[0] - current[0]) * end / length,
+                            current[1] + (first[1] - current[1]) * end / length,
+                        ],
+                        rgba(255, 192, 87, 255),
                     )
-                    .thickness(2.5)
+                    .thickness(2.0)
                     .build();
+                    offset += 12.0;
                 }
-                distance += 42.0;
+            }
+        }
+        for index in 1..points.len() {
+            draw.add_line(
+                project(&points[index - 1]),
+                project(&points[index]),
+                rgba(20, 54, 49, 255),
+            )
+            .thickness(9.0)
+            .build();
+            draw.add_line(
+                project(&points[index - 1]),
+                project(&points[index]),
+                if state.taxi_clearance.pending_readback {
+                    rgba(255, 192, 87, 255)
+                } else {
+                    rgba(64, 223, 168, 255)
+                },
+            )
+            .thickness(4.0)
+            .build();
+        }
+        if interface.settings.show_taxi_arrows {
+            for pair in points.windows(2) {
+                let a = project(&pair[0]);
+                let b = project(&pair[1]);
+                let length = (b[0] - a[0]).hypot(b[1] - a[1]);
+                if length < 18.0 {
+                    continue;
+                }
+                let direction = [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
+                let mut distance = 14.0;
+                while distance < length - 8.0 {
+                    let tip = [
+                        a[0] + direction[0] * distance,
+                        a[1] + direction[1] * distance,
+                    ];
+                    for side in [-1.0, 1.0] {
+                        draw.add_line(
+                            [
+                                tip[0] - direction[0] * 7.0 - direction[1] * side * 5.0,
+                                tip[1] - direction[1] * 7.0 + direction[0] * side * 5.0,
+                            ],
+                            tip,
+                            rgba(220, 255, 245, 255),
+                        )
+                        .thickness(2.5)
+                        .build();
+                    }
+                    distance += 42.0;
+                }
             }
         }
     }
     if let Some(endpoint) = points.last().filter(|_| {
-        (state.taxi_clearance.pending_readback
-            || matches!(
-                state.phase,
-                openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::TaxiIn
-            ))
+        interface.settings.show_map_holding_point
+            && (state.taxi_clearance.pending_readback
+                || matches!(
+                    state.phase,
+                    openatc_core::state::PhaseCode::Taxi | openatc_core::state::PhaseCode::TaxiIn
+                ))
             && !state.taxi_clearance.hold_short_runway.is_empty()
             && state.taxi_clearance.crossing_runway.is_empty()
     }) {

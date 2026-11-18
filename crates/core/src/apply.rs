@@ -848,6 +848,72 @@ fn apply_taxi(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
     }
 }
 
+/// Enter the runway at the hold point and backtrack to the departure end.
+fn backtrack(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
+    if !ctx.runway_taxi_authorized {
+        return reply(
+            state,
+            ctx,
+            false,
+            crate::dialogue::say("runway_taxi_contact_tower", &[]),
+        );
+    }
+    let Some(airport) = ctx.airport else {
+        return reply(
+            state,
+            ctx,
+            false,
+            crate::dialogue::say("runway_taxi_unavailable", &[]),
+        );
+    };
+    let size = crate::parking::aircraft_size(state).unwrap_or('F');
+    let destination = state.plan.runway.clone();
+    let retry = state.taxi_clearance.waiting_for_traffic;
+    let position = state.telemetry.clone();
+    let route = super::airport::calculate_runway_taxi_route(airport, &position, &destination, size)
+        .or_else(|_| {
+            super::airport::calculate_runway_taxi_route_from_current(
+                airport,
+                &position,
+                &destination,
+            )
+        });
+    match route {
+        Ok(mut route) => {
+            let point =
+                super::airport::airport_point(airport, position.latitude, position.longitude);
+            if retry {
+                route.instructions = crate::dialogue::say(
+                    "runway_taxi_backtrack_now_clear",
+                    &[("runway", state.plan.runway.clone())],
+                );
+            } else if !super::airport::within_runway(airport, &point)
+                && !route.entry_runway.is_empty()
+            {
+                route.instructions = crate::dialogue::say(
+                    "runway_taxi_backtrack",
+                    &[("runway", route.entry_runway.clone())],
+                );
+            }
+            route.approved = false;
+            route.pending_readback = true;
+            route.sequence = state.next_sequence;
+            let instructions = route.instructions.clone();
+            state.taxi_clearance = route;
+            reply(
+                state,
+                ctx,
+                true,
+                crate::dialogue::say(
+                    "read_back_the_taxi_route_and_hold",
+                    &[("prefix", String::new()), ("instructions", instructions)],
+                ),
+            )
+        }
+        Err(error) => reply(state, ctx, false, error),
+    }
+}
+
 /// Ready for departure. Needs an approved taxi route, and off-demo the pilot
 /// has to actually sit at the end of it.
 fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
@@ -873,6 +939,14 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
                 crate::dialogue::say("continue_to_the_end_of_the_approved", &[]),
             );
         }
+    }
+    if state.taxi_clearance.backtrack_required {
+        if !state.demo
+            && let Some(response) = backtrack_blocked(state, ctx)
+        {
+            return hold_for_backtrack(state, ctx, response);
+        }
+        return backtrack(state, ctx);
     }
     if !state.demo {
         let runway = state.plan.runway.clone();
@@ -955,6 +1029,38 @@ fn apply_ready(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutcome {
             ],
         ),
     )
+}
+
+/// Runway protection before a backtrack. The aircraft occupies the runway for the
+/// whole taxi in, so the short-final envelope used by a take-off applies.
+fn backtrack_blocked(state: &State, ctx: &RequestContext<'_>) -> Option<&'static str> {
+    let Some(airport) = ctx.airport else {
+        return Some("holding_standby");
+    };
+    let Some(targets) = ctx.traffic.or(state.telemetry.traffic.as_deref()) else {
+        return Some("holding_standby");
+    };
+    crate::holding::blocked_for_movement(airport, &state.plan.runway, targets.iter(), 180.0)
+}
+
+/// Refuse runway entry for a backtrack and keep the route approved for the
+/// automatic retry once the runway is confirmed clear.
+fn hold_for_backtrack(
+    state: &mut State,
+    ctx: &RequestContext<'_>,
+    response: &str,
+) -> RequestOutcome {
+    state.taxi_clearance.waiting_for_traffic = true;
+    state.taxi_clearance.waiting_seconds = 0.0;
+    let runway = state.plan.runway.clone();
+    let outcome = reply(
+        state,
+        ctx,
+        false,
+        crate::dialogue::say(response, &[("runway", runway.clone())]),
+    );
+    hold_readback(state, &runway);
+    outcome
 }
 
 /// Hold the departure at the runway and keep the approved taxi route alive so the
@@ -1620,7 +1726,9 @@ pub fn apply_request(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
             crate::dialogue::say("read_back_your_ifr_clearance_first_destination", &[]),
         );
     }
-    if !request_available(state, &ctx.request.intent) {
+    // The automatic hold report follows an accepted readback; do not re-gate it as a pilot request.
+    let automatic_ready = ctx.request.controller_initiated && ctx.request.intent == "ready";
+    if !automatic_ready && !request_available(state, &ctx.request.intent) {
         return reply(
             state,
             ctx,
@@ -1652,7 +1760,7 @@ pub fn apply_request(state: &mut State, ctx: &RequestContext<'_>) -> RequestOutc
 
 #[cfg(test)]
 mod tests {
-    use super::super::airport::demo_airport;
+    use super::super::airport::{demo_airport, load_airport};
     use super::super::state::{Clearance, Point, State, Telemetry};
     use super::*;
     use std::path::PathBuf;
@@ -2708,5 +2816,145 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 4, "all roster cases run");
+    }
+    #[test]
+    fn ready_at_a_backtrack_hold_issues_the_runway_clearance() {
+        let text = "1 0 0 0 TEST Mid-runway entry\n100 30 1 1 0.2 0 0 0 09 0 0 0 0 0 0 0 0 27 0 0.02 0 0 0 0 0 0\n110 1 0.2 0 Apron\n111 -0.001 0.009\n111 -0.001 0.011\n111 0.002 0.011\n113 0.002 0.009\n120 Centerline\n111 0.001 0.01 1\n115 0 0.01\n120 Hold\n111 0.0006 0.0095 4\n115 0.0006 0.0105\n";
+        let airport = load_airport(text, "TEST").unwrap();
+        let telemetry = Telemetry {
+            latitude: 0.001,
+            longitude: 0.01,
+            on_ground: true,
+            position_valid: true,
+            ..Default::default()
+        };
+        let mut route =
+            crate::airport::calculate_taxi_route(&airport, &telemetry, "27", false, 'C').unwrap();
+        assert!(
+            route.backtrack_required,
+            "test airport must require a backtrack"
+        );
+        route.approved = true;
+        route.pending_readback = false;
+        let end = *route.points.last().unwrap();
+        let mut state = State::default();
+        state.plan.runway = "27".into();
+        state.telemetry = Telemetry {
+            latitude: airport.reference_latitude + end.north / 111_320.0,
+            longitude: airport.reference_longitude
+                + end.east / (111_320.0 * airport.reference_latitude.to_radians().cos()),
+            ..telemetry
+        };
+        state.taxi_clearance = route;
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let tag = SpeechTag::default();
+        let realism = Realism::default();
+        let region = Region::default();
+        let ctx = RequestContext {
+            squawk: "2105",
+            runway_taxi_authorized: true,
+            request: &request,
+            airport: Some(&airport),
+            atc_tag: &tag,
+            pilot_tag: &tag,
+            realism: &realism,
+            units: UnitSystem::Imperial,
+            region: &region,
+            traffic: None,
+            runway_sequence: RunwaySequence::Clear,
+        };
+        let outcome = apply_ready(&mut state, &ctx);
+        assert!(outcome.accepted, "{}", outcome.text());
+        assert!(state.taxi_clearance.runway_taxi);
+        assert!(state.taxi_clearance.pending_readback);
+        assert!(outcome.text().to_lowercase().contains("backtrack"));
+    }
+
+    #[test]
+    fn a_backtrack_holds_short_while_the_runway_is_occupied() {
+        let text = "1 0 0 0 TEST Mid-runway entry\n100 30 1 1 0.2 0 0 0 09 0 0 0 0 0 0 0 0 27 0 0.02 0 0 0 0 0 0\n110 1 0.2 0 Apron\n111 -0.001 0.009\n111 -0.001 0.011\n111 0.002 0.011\n113 0.002 0.009\n120 Centerline\n111 0.001 0.01 1\n115 0 0.01\n120 Hold\n111 0.0006 0.0095 4\n115 0.0006 0.0105\n";
+        let airport = load_airport(text, "TEST").unwrap();
+        let telemetry = Telemetry {
+            latitude: 0.001,
+            longitude: 0.01,
+            on_ground: true,
+            position_valid: true,
+            ..Default::default()
+        };
+        let mut route =
+            crate::airport::calculate_taxi_route(&airport, &telemetry, "27", false, 'C').unwrap();
+        route.approved = true;
+        route.pending_readback = false;
+        let end = *route.points.last().unwrap();
+        let mut state = State {
+            demo: false,
+            ..Default::default()
+        };
+        state.plan.runway = "27".into();
+        state.telemetry = Telemetry {
+            latitude: airport.reference_latitude + end.north / 111_320.0,
+            longitude: airport.reference_longitude
+                + end.east / (111_320.0 * airport.reference_latitude.to_radians().cos()),
+            ..telemetry
+        };
+        state.taxi_clearance = route;
+        let request = Request {
+            intent: "ready".into(),
+            ..Default::default()
+        };
+        let tag = SpeechTag::default();
+        let realism = Realism::default();
+        let region = Region::default();
+        let occupied = [TrafficTarget {
+            aircraft: "B738".into(),
+            latitude: airport.reference_latitude,
+            longitude: airport.reference_longitude + 0.012,
+            altitude_feet: airport.elevation_feet,
+            track_degrees: 90.0,
+            on_ground: true,
+            ground_speed_knots: Some(0.0),
+            ..Default::default()
+        }];
+        let ctx = RequestContext {
+            squawk: "2105",
+            runway_taxi_authorized: true,
+            request: &request,
+            airport: Some(&airport),
+            atc_tag: &tag,
+            pilot_tag: &tag,
+            realism: &realism,
+            units: UnitSystem::Imperial,
+            region: &region,
+            traffic: Some(&occupied),
+            runway_sequence: RunwaySequence::Clear,
+        };
+        let outcome = apply_ready(&mut state, &ctx);
+        assert!(!outcome.accepted, "{}", outcome.text());
+        assert!(state.taxi_clearance.waiting_for_traffic);
+        assert!(state.taxi_clearance.backtrack_required);
+        assert!(!state.taxi_clearance.runway_taxi);
+        assert!(!state.taxi_clearance.pending_readback);
+        assert!(
+            outcome.text().to_lowercase().contains("hold short"),
+            "{}",
+            outcome.text()
+        );
+        let clear: [TrafficTarget; 0] = [];
+        let ctx = RequestContext {
+            traffic: Some(&clear),
+            ..ctx
+        };
+        let outcome = apply_ready(&mut state, &ctx);
+        assert!(outcome.accepted, "{}", outcome.text());
+        assert!(state.taxi_clearance.runway_taxi);
+        assert!(state.taxi_clearance.pending_readback);
+        assert!(
+            outcome.text().to_lowercase().contains("runway 27 is clear"),
+            "{}",
+            outcome.text()
+        );
     }
 }

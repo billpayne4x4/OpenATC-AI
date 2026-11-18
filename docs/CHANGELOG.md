@@ -1,5 +1,13 @@
 # Unreleased
 
+## Holding point, runway exits and personal buttons — 18 November 2026
+
+- At the departure hold, the automatic report waits until the taxi readback has been accepted, so the clearance cannot be stranded by a rejected request. Tower then checks the runway: a clear runway gets the backtrack to the departure end; final-approach or occupied traffic gets a hold-short reason, and Tower calls again when the runway clears without another ready report.
+- An unauthorised runway entry withdraws the landing clearance of conflicting traffic and makes it go around, then Tower demands the exit and issues the route back to the holding point. Approved arrows and the hold marker appear with the instruction. Re-requesting taxi from the runway resets the ground warning count and issues a departure-end backtrack when clear, or the exit route when not; the transcript keeps the incursion.
+- In debug mode the ATC Auto Reply control stays enabled while audio is playing and becomes a fast-forward glyph; it stops every audio channel and drops queued spoken lines, then returns to the Auto Reply text when idle. Personal crew buttons load from `intents.toml` in the user configuration folder for both the engine and the plugin. `when.all` requires every listed control condition before a button is shown.
+- Added phrased variants for a runway that becomes clear after a hold, exit-at-the-next-taxiway clearances and their readbacks.
+- Fixed: keep a prepared taxi readback alive while its clearance is still awaiting the readback, even if another controller transmission arrives.
+
 ## Barometric altitude monitoring and QNH wording — 13 October 2026
 
 - Keep geometric, indicated and standard-pressure altitude separate. Flight-level compliance uses standard pressure; lower altitude assignments and pilot reports use the altimeter reading. Preserve the existing 300-foot tolerance, sustained-deviation delay and allowance for climbing/descending toward the clearance.

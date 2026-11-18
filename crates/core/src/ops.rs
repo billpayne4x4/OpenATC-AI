@@ -172,8 +172,8 @@ fn ground_request_available(state: &State, intent: &str) -> Option<bool> {
 fn ready_available(state: &State) -> bool {
     if !state.taxi_clearance.crossing_runway.is_empty()
         || (state.taxi_clearance.runway_taxi && !state.taxi_clearance.guidance_complete)
-        || state.taxi_clearance.backtrack_required
-        || (!state.taxi_clearance.hold_short_runway.is_empty()
+        || (!state.taxi_clearance.backtrack_required
+            && !state.taxi_clearance.hold_short_runway.is_empty()
             && state.taxi_clearance.hold_short_runway != state.plan.runway)
         || !state.telemetry.on_ground
         || state.phase != PhaseCode::Taxi
@@ -961,9 +961,35 @@ mod tests {
         state.phase = crate::state::PhaseCode::Pushback;
         assert!(super::planning_callsign(&state, "OTHER1").is_none());
     }
-    use super::super::state::{FlightPlan, PhaseCode, State, Telemetry};
+    use super::super::state::{FlightPlan, PhaseCode, Point, State, TaxiClearance, Telemetry};
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn ready_is_available_at_a_backtrack_hold() {
+        let state = State {
+            phase: PhaseCode::Taxi,
+            telemetry: Telemetry {
+                on_ground: true,
+                position_valid: true,
+                ground_speed_knots: 0.0,
+                ..Default::default()
+            },
+            plan: FlightPlan {
+                runway: "28".into(),
+                ..Default::default()
+            },
+            taxi_clearance: TaxiClearance {
+                approved: true,
+                backtrack_required: true,
+                hold_short_runway: "10".into(),
+                points: vec![Point::default()],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(super::request_available(&state, "ready"));
+    }
 
     #[test]
     fn invalid_motion_does_not_replace_last_valid_flight_state() {

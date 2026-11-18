@@ -3739,6 +3739,56 @@ mod tests {
     }
 
     #[test]
+    fn a_landing_clearance_is_withdrawn_when_the_player_enters_the_runway() {
+        let (mut state, prepared) = fixture();
+        install(&mut state.generated, 1, &prepared).unwrap();
+        // Install validates the static fixture, which has no rollout contract; add the
+        // landing clearance the radio grants so the withdrawal path is exercised.
+        let installed = state.generated.flights.get(&1).expect("flight").clone();
+        let mut installed = (*installed).clone();
+        installed
+            .clearances
+            .get_mut(&6)
+            .expect("landing clearance")
+            .landing_rollout = Some(7);
+        state.generated.flights.insert(1, Arc::new(installed));
+        for second in 31..900 {
+            if let Some(exchange) = &mut state.generated.exchange {
+                exchange.due = Instant::now();
+            }
+            super::super::radio_tick(&mut state);
+            state.session.telemetry.simulation_seconds = Some(f64::from(second));
+            super::super::advance(&mut state.generated, &state.session.telemetry);
+            if state.generated.world.snapshot()[0].stage == Stage::Approach
+                && state.generated.world.snapshot()[0].seconds_to_limit
+                    <= state
+                        .generated
+                        .policy
+                        .as_ref()
+                        .unwrap()
+                        .flight_clearance_lead_seconds
+            {
+                break;
+            }
+        }
+        state.generated.exchange = None;
+        state.generated.approved_orders.insert((1, 6));
+        assert!(!state.generated.cancelled_landings.contains(&(1, 6)));
+        state.session.telemetry.traffic = Some(vec![]);
+        state.session.telemetry.latitude = 0.0;
+        state.session.telemetry.longitude = 12_700.0 / 111_320.0;
+        state.session.telemetry.heading_degrees = 90.0;
+        state.session.telemetry.position_valid = true;
+        state.session.telemetry.on_ground = true;
+        super::super::withhold_conflicting_landings(&mut state.generated, &state.session.telemetry);
+        assert!(
+            state.generated.cancelled_landings.contains(&(1, 6)),
+            "the landing clearance is withdrawn for the go-around"
+        );
+        assert!(!state.generated.approved_orders.contains(&(1, 6)));
+    }
+
+    #[test]
     fn active_taxi_edges_cannot_inherit_a_previous_segment_permission() {
         let (mut state, _) = fixture();
         state.generated.world = Default::default();

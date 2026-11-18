@@ -421,7 +421,10 @@ pub struct Settings {
     pub show_taxi_arrows: bool,
     /// Illuminated taxi guidance objects in the simulator.
     pub show_ground_taxi_arrows: bool,
-    /// Highlight the authorised holding point on the map and simulator ground.
+    /// Draw the authorised holding point on the airport map.
+    #[serde(default = "yes")]
+    pub show_map_holding_point: bool,
+    /// Highlight the authorised holding point on simulator ground.
     pub show_holding_point: bool,
     /// Debug: ring each generated aircraft's next hold, before a crossing or at the
     /// departure runway.
@@ -596,6 +599,7 @@ impl Default for Settings {
             show_taxi_route: true,
             show_taxi_arrows: true,
             show_ground_taxi_arrows: false,
+            show_map_holding_point: true,
             show_holding_point: false,
             show_traffic_holding_points: false,
             show_traffic_debug: false,
@@ -978,6 +982,7 @@ mod tests {
         assert_eq!(serde_json::to_value(&com2).unwrap()["showCom2"], true);
         assert!(settings.show_taxi_arrows);
         assert!(!settings.show_ground_taxi_arrows);
+        assert!(settings.show_map_holding_point);
         assert!(!settings.show_holding_point);
         assert!(!settings.dev_mode);
         assert!(!settings.light_theme);

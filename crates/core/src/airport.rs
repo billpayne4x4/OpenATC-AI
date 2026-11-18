@@ -1030,6 +1030,16 @@ pub fn calculate_taxi_route_unchecked(
     )
 }
 
+/// Whether two published names are the two ends of one physical runway.
+fn same_runway(airport: &Airport, first: &str, second: &str) -> bool {
+    !first.is_empty()
+        && (first == second
+            || airport.runways.iter().any(|runway| {
+                (runway.first_name == first && runway.second_name == second)
+                    || (runway.first_name == second && runway.second_name == first)
+            }))
+}
+
 fn calculate_taxi_route_with(
     airport: &Airport,
     telemetry: &Telemetry,
@@ -1242,7 +1252,8 @@ fn calculate_taxi_route_with(
     {
         return Err(crate::dialogue::say("taxi_route_leaves_pavement", &[]));
     }
-    let needs_backtrack = target_distance > 500.0 && !to_parking && hold_short == destination;
+    let needs_backtrack =
+        target_distance > 500.0 && !to_parking && same_runway(airport, &hold_short, destination);
     let instructions = if via.is_empty() && !hold_short.is_empty() {
         crate::dialogue::say("taxi_to_holding_point", &[("runway", hold_short.clone())])
     } else if via.is_empty() && to_parking {
@@ -1258,7 +1269,7 @@ fn calculate_taxi_route_with(
     } else if needs_backtrack {
         crate::dialogue::say(
             "taxi_hold_for_backtrack",
-            &[("via", via.clone()), ("runway", destination.to_owned())],
+            &[("via", via.clone()), ("runway", hold_short.clone())],
         )
     } else if !hold_short.is_empty() {
         crate::dialogue::say(
@@ -2557,6 +2568,178 @@ pub fn calculate_runway_taxi_route(
     size: char,
 ) -> Result<TaxiClearance, String> {
     calculate_runway_taxi_route_with(airport, telemetry, destination, size, false)
+}
+
+/// Build a backtrack directly from the current position when no taxi-graph start
+/// is close enough. Used at a holding point that only the runway can reach.
+pub fn calculate_runway_taxi_route_from_current(
+    airport: &Airport,
+    telemetry: &Telemetry,
+    destination: &str,
+) -> Result<TaxiClearance, String> {
+    let failure = || crate::dialogue::say("runway_taxi_unavailable", &[]);
+    if !telemetry.on_ground || !telemetry.position_valid {
+        return Err(failure());
+    }
+    let runway = airport
+        .runways
+        .iter()
+        .find(|runway| runway.first_name == destination || runway.second_name == destination)
+        .ok_or_else(failure)?;
+    let threshold = if runway.first_name == destination {
+        runway.first
+    } else {
+        runway.second
+    };
+    let opposite = if runway.first_name == destination {
+        runway.second
+    } else {
+        runway.first
+    };
+    let stop = along(
+        threshold,
+        opposite,
+        (30.0 / flat_distance(&threshold, &opposite).max(30.0)).min(1.0),
+    );
+    let current = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    let entry = runway_projection(current, runway.first, runway.second);
+    let mut points = vec![current];
+    if flat_distance(&current, &entry) > 1.0 {
+        points.push(entry);
+    }
+    points.push(stop);
+    if crate::surface::SurfaceModel::new(airport)
+        .validate(&points, true)
+        .is_err()
+    {
+        return Err(failure());
+    }
+    let entry_runway =
+        if flat_distance(&entry, &runway.first) <= flat_distance(&entry, &runway.second) {
+            runway.first_name.clone()
+        } else {
+            runway.second_name.clone()
+        };
+    Ok(TaxiClearance {
+        airport: airport.icao.clone(),
+        destination: destination.to_owned(),
+        instructions: crate::dialogue::say(
+            "runway_taxi_backtrack",
+            &[("runway", entry_runway.clone())],
+        ),
+        via: String::new(),
+        points,
+        runway_taxi: true,
+        entry_runway,
+        reference_latitude: airport.reference_latitude,
+        reference_longitude: airport.reference_longitude,
+        destination_point: stop,
+        ..Default::default()
+    })
+}
+
+/// Route from a runway back to a holding point after a cancelled entry. Uses the
+/// nearest connected taxiway; an aircraft already clear uses the normal taxi route.
+pub fn calculate_runway_exit_route(
+    airport: &Airport,
+    telemetry: &Telemetry,
+    current_runway: &str,
+    target_runway: &str,
+    aircraft_size: char,
+) -> Result<TaxiClearance, String> {
+    let failure = || crate::dialogue::say("runway_taxi_unavailable", &[]);
+    if !telemetry.on_ground || !telemetry.position_valid {
+        return Err(failure());
+    }
+    let current = airport_point(airport, telemetry.latitude, telemetry.longitude);
+    if !within_runway(airport, &current) {
+        return calculate_taxi_route(airport, telemetry, target_runway, false, aircraft_size);
+    }
+    let runway = airport
+        .runways
+        .iter()
+        .find(|runway| runway.first_name == current_runway || runway.second_name == current_runway)
+        .or_else(|| {
+            airport.runways.iter().find(|runway| {
+                runway.first_name == target_runway || runway.second_name == target_runway
+            })
+        })
+        .ok_or_else(failure)?;
+    let (threshold, far_end) = if runway.first_name == current_runway {
+        (runway.first, runway.second)
+    } else {
+        (runway.second, runway.first)
+    };
+    let dx = far_end.east - threshold.east;
+    let dn = far_end.north - threshold.north;
+    let length = dx.hypot(dn).max(1.0);
+    let along = |point: Point| {
+        ((point.east - threshold.east) * dx + (point.north - threshold.north) * dn) / length
+    };
+    let across = |point: Point| {
+        ((point.east - threshold.east) * dn - (point.north - threshold.north) * dx).abs() / length
+    };
+    let nodes: BTreeMap<i64, Point> = airport
+        .nodes
+        .iter()
+        .map(|node| (node.id, node.point))
+        .collect();
+    let graph = taxi_graph(airport, &nodes, aircraft_size);
+    let mut exits: Vec<(f64, Point)> = graph
+        .keys()
+        .filter_map(|id| nodes.get(id))
+        .filter(|point| {
+            !within_runway(airport, point)
+                && across(**point) <= 250.0
+                && along(**point) >= -30.0
+                && along(**point) <= length + 30.0
+        })
+        .map(|point| (flat_distance(&current, point), *point))
+        .collect();
+    exits.sort_by(|left, right| left.0.total_cmp(&right.0));
+    let projection = runway_projection(current, runway.first, runway.second);
+    for (_, exit) in exits.iter().take(8) {
+        let mut points = vec![current];
+        if flat_distance(&current, &projection) > 2.0 && flat_distance(&projection, exit) > 2.0 {
+            points.push(projection);
+        }
+        points.push(*exit);
+        let exit_telemetry = Telemetry {
+            latitude: airport.reference_latitude + exit.north / 111_320.0,
+            longitude: airport.reference_longitude
+                + exit.east / (111_320.0 * airport.reference_latitude.to_radians().cos()),
+            ..telemetry.clone()
+        };
+        let Ok(rest) = calculate_taxi_route_with(
+            airport,
+            &exit_telemetry,
+            target_runway,
+            false,
+            aircraft_size,
+            false,
+        ) else {
+            continue;
+        };
+        if let Some(start) = rest.points.first().copied()
+            && flat_distance(&start, exit) > 1.0
+        {
+            points.push(start);
+        }
+        points.extend(rest.points.iter().skip(1).copied());
+        if crate::surface::SurfaceModel::new(airport)
+            .validate(&points, true)
+            .is_err()
+        {
+            continue;
+        }
+        let mut route = rest;
+        route.points = points;
+        route.holding_marker_point = holding_marker_position(airport, &route.points);
+        route.reference_latitude = airport.reference_latitude;
+        route.reference_longitude = airport.reference_longitude;
+        return Ok(route);
+    }
+    Err(failure())
 }
 
 /// Route to the departure runway. `full_length` prefers the runway threshold when the
@@ -3864,5 +4047,70 @@ mod hold_passed_tests {
                 height: 0.0,
             }
         ));
+    }
+}
+
+#[cfg(test)]
+mod exit_route_tests {
+    use super::*;
+
+    #[test]
+    fn a_runway_entry_gets_a_route_back_to_the_hold() {
+        let airport = demo_airport();
+        let telemetry = Telemetry {
+            latitude: 0.0,
+            longitude: 0.0,
+            on_ground: true,
+            position_valid: true,
+            ..Default::default()
+        };
+        let here = airport_point(&airport, telemetry.latitude, telemetry.longitude);
+        assert!(within_runway(&airport, &here));
+        let route = calculate_runway_exit_route(&airport, &telemetry, "09", "09", 'C').unwrap();
+        assert_eq!(route.hold_short_runway, "09");
+        assert!(!route.runway_taxi);
+        assert!(!route.backtrack_required);
+        assert!(route.points.len() >= 3);
+        assert_eq!(route.points[0], here);
+        let end = route.points.last().copied().unwrap();
+        assert!(!within_runway(&airport, &end));
+        assert!(!route.instructions.is_empty());
+    }
+
+    #[test]
+    fn an_aircraft_clear_of_the_runway_uses_the_normal_taxi_route() {
+        let airport = demo_airport();
+        let telemetry = Telemetry {
+            latitude: 430.0 / 111_320.0,
+            longitude: 0.0,
+            on_ground: true,
+            position_valid: true,
+            ..Default::default()
+        };
+        let route = calculate_runway_exit_route(&airport, &telemetry, "09", "09", 'C').unwrap();
+        assert!(route.hold_short_runway == "09" || route.hold_short_runway.is_empty());
+        assert!(route.points.len() >= 2);
+    }
+}
+
+#[cfg(test)]
+mod backtrack_names {
+    use super::*;
+
+    #[test]
+    fn opposite_ends_are_one_physical_runway() {
+        let airport = Airport {
+            runways: vec![Runway {
+                first_name: "10".into(),
+                second_name: "28".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        assert!(same_runway(&airport, "10", "28"));
+        assert!(same_runway(&airport, "28", "10"));
+        assert!(same_runway(&airport, "28", "28"));
+        assert!(!same_runway(&airport, "10", "09"));
+        assert!(!same_runway(&airport, "", "28"));
     }
 }

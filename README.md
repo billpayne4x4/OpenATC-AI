@@ -386,9 +386,11 @@ Approved taxiway arrows remain visible from stands within 1,200 metres of the ro
 
 Automatic crossing requests reuse the active airport data and cached controller voices. A refused crossing keeps its holding-point notification, so the controller says it once for that hold instead of repeating it on every telemetry frame. A request that produces no answer releases the notification, and a new pilot request, route change or traffic hold can ask again.
 
-A Ground taxi request made from physical runway pavement identifies the occupied runway and directs the pilot to Tower for exit instructions, rather than suggesting an unrelated departure-runway backtrack. Ordinary gate taxi routing remains subject to the same runway protection.
+A Ground taxi request made from physical runway pavement is the documented testing shortcut described below: it resets the ground warning state and issues the departure-end backtrack when the runway is clear, or the exit route when it is not. Ordinary gate taxi routing remains subject to the same runway protection.
 
 Each intervening runway is a separate clearance limit. The controller can issue a crossing instruction when you approach the hold and traffic information permits it. A crossing clearance names the runway being crossed, which may differ from the departure runway. Read back the crossing before entering. Unknown traffic information does not count as a clear runway. The crossing check uses the time needed to taxi across, plus the clearance/readback and radio buffer, so a distant final that cannot reach the threshold in time does not block the runway. A landing aircraft that has already passed the crossing point and is moving away does not block the crossing behind it. An aircraft before or over the crossing, stopped past it, or still on final does block it. Generated traffic crosses at the taxi-turn speed (12 kt with the jet envelope) and switches its landing lights on for the crossing.
+
+An aircraft that enters a runway without a clearance loses any landing clearance held by traffic on final: an immediate conflict makes the arriving aircraft go around, and Tower then instructs the intruder to exit. The exit instruction carries a taxi route back to the holding point, so approved arrows and the hold marker appear without another request. Re-requesting taxi from the runway is a deliberate testing shortcut: it resets the ground warning count and the ground hold, then issues a fresh clearance to the departure end when the runway is clear, or the exit route when it is not. The transcript keeps the incursion; only the warning state is cleared.
 
 After the crossing, the copilot can report vacated at the observed completion point. The next taxi instruction replaces the route and requires its own readback. In manual mode physical completion can advance the crossing workflow; a vacated report is not treated as an altitude readback.
 
@@ -396,7 +398,9 @@ Published taxi networks are preferred. Where they are missing, painted scenery c
 
 ### 4. Holding point and takeoff
 
-At the final departure hold, Ground sends you to the published Tower frequency. If already on Tower, stay with that controller. Reaching the hold does not invent a ready-for-departure call: report ready yourself or use an available supported copilot exchange.
+At the final departure hold, Ground sends you to the published Tower frequency. If already on Tower, stay with that controller. Reaching the hold does not invent a ready-for-departure call: report ready yourself or use an available supported copilot exchange. The automatic holding report waits until the taxi readback has been accepted, so a readback in progress cannot be replaced by a rejected request.
+
+At the hold, Tower checks the runway before issuing a backtrack. A clear runway produces "backtrack to the departure end"; traffic on final, an occupied runway or unavailable traffic information produces a hold-short reason instead. The taxi clearance stays alive, and Tower calls again when the runway is confirmed clear, so a second ready report is not needed. The backtrack is not a takeoff clearance: stop at the departure end and report ready.
 
 Holding-point detection considers approach geometry and the aircraft's reference position; it does not require the aircraft to be perfectly stopped to recognise arrival. Tower checks runway, final-approach traffic and the runway sequence and either clears takeoff or explains the hold. The player and ambient traffic use the same takeoff decision: a clear runway with no wake interval and no conflict gets a direct takeoff clearance, a rolling departure or live wake interval gets line up and wait, and landing or short-final traffic gets a hold. A ready report is not consumed by a hold: the hold stays in force until the runway clears, and Tower then issues line up and wait or takeoff clearance without another ready call. If the runway is clear and no aircraft is lined up, Tower issues takeoff clearance directly. If a departure is already rolling, the next aircraft receives line up and wait immediately; if one is already lined up, the next holds short. A line-up clearance reserves the slot before the aircraft reaches the hold line, and a stopped aircraft on the runway keeps the next aircraft at the hold until it rolls. The first aircraft at its hold is the queue leader, whether player or ambient, so a later arrival from another taxiway or hold line never jumps ahead; a lined-up aircraft behind the player never keeps the player waiting. Queues are per runway, so an aircraft waiting at a different runway's hold does not block this one. The player is asked to continue only when the queue ahead is clear; a player already queued behind traffic is not asked to move while traffic waits behind. Wake spacing also produces line up and wait, followed automatically by takeoff clearance when the interval expires. Only one aircraft may hold in position on a runway, and a landing clearance on the same runway prevents a new line-up. Final-approach protection uses the time needed for the movement, not a fixed five-mile radius.
 
@@ -525,6 +529,34 @@ The ToLiss profile marks latching ATTN/MECH and CAB/INT commands in `toggle_comm
 ToLiss cabin-light on/off requests use the cabin brightness dataref: on is 100%, off is 0%, and an explicit percentage stays at that value. The ToLiss control's editable `instructions` in `aircraft/toliss_a320.toml` teach the interpreter to use brightness rather than a light switch or another light. Other aircraft retain their own mappings.
 
 Crew requests can include up to eight explicit control actions, such as “remove chocks and disconnect external power.” The engine validates all targets against the loaded aircraft profile before sending a batch. Each action waits for simulator confirmation; a failure cancels the remaining actions. Unsupported or ambiguous clauses are clarified rather than partly executed and announced as complete.
+
+The copilot, ground crew and flight attendant are independent actors. Each has its own request lane and audio channel, so a greeting to the copilot, a ground-service action and a cabin question can all be in progress at once and their replies can overlap. Control batches are tracked per role: a ground batch does not block a cabin batch, and two roles cannot move the same aircraft control at the same time. The local AI server still generates one completion at a time, so LLM wording may arrive in order, but the interface never waits for one actor before accepting another.
+
+With debug mode enabled, the ATC Auto Reply button becomes the header's fast-forward glyph at the same width while a transmission is playing. It stops playback on every audio channel, drops their queued spoken lines, and reveals the transcript text immediately. When the receiver is idle the button returns to its normal Auto Reply text. The glyph appears on both ATC pages while any channel is speaking. The Crew page shows the same glyph while the selected crew member is speaking.
+
+Personal crew buttons belong in the user configuration folder, not in the shipped catalogue: `intents.toml` beside `settings.json` (`~/.config/openatc-ai` on Linux, `%LOCALAPPDATA%\openatc-ai` on Windows, `~/Library/Application Support/openatc-ai` on macOS). Both the engine and the plugin load that overlay after the installed catalogue, and `[buttons] order` must repeat the shipped order. A button may use `when = { control = "chocks", is = "on" }` for one condition, or `when = { all = [ ... ] }` when every listed control must match. The overlay is personal configuration; it is not packaged or copied by the installer.
+
+```toml
+[intent.crew_chocks_power_off]
+title = "Remove chocks and external power"
+group = "Crew"
+catalogue = true
+quick_only = true
+crew = "ground"
+control = "chocks"
+say = "remove chocks and external power"
+when = { all = [
+  { control = "chocks", is = "on" },
+  { control = "external_power", is = "on" },
+] }
+actions = [
+  { control = "chocks", value = "off" },
+  { control = "external_power", value = "off" },
+]
+phase = ["parked_out", "pushback"]
+roles = ["ground"]
+pattern = "none"
+```
 
 Stock aircraft use standard X-Plane control mappings. Third-party TOMLs override controls where the aircraft uses its own datarefs or commands. **Settings → Aircraft controls** shows observed availability. A listed command does not prove that every aircraft exposes a reliable confirmation state: button-only mappings confirm a press, not a resulting switch position.
 
@@ -930,7 +962,7 @@ Click an underlined frequency in the conversation to tune COM1 through the same 
 
 Taxi map arrows and simulator-ground arrows are separate settings. Only acknowledged routes produce ground arrows, and unverified stand connectors are not drawn on simulator ground. Guidance stops at the current clearance limit. Terrain probe misses, water and unsafe discontinuities are skipped.
 
-The player holding point is always drawn on the taxi map during an active taxi clearance: an amber circle and `HOLD` label at the clearance limit, set back on the approach side of available hold-line geometry. The optional **Show holding point on simulator ground** setting is off by default and controls the matching circle in the simulator. Both disappear when the relevant crossing or takeoff permission permits entry. They are plugin guidance, not a replacement for painted markings or native airport lights. Existing scenery runway guard lights are preserved; individual native stop-bar control has not been established. Map layers are grouped under **MAP LAYERS** with colour swatches. **Traffic debug** now replaces the ordinary traffic markers with state and blocker markers instead of drawing a second marker for every aircraft.
+The holding point is drawn on the taxi map during an active taxi clearance when the **Holding point** map layer is on (default on): an amber circle and `HOLD` label at the clearance limit, set back on the approach side of available hold-line geometry. The optional **Hold point ring** setting on the Taxi page is off by default and controls the matching circle in the simulator. Both disappear when the relevant crossing or takeoff permission permits entry. They are plugin guidance, not a replacement for painted markings or native airport lights. Existing scenery runway guard lights are preserved; individual native stop-bar control has not been established. Map layers are grouped under **MAP LAYERS** with colour swatches. **Traffic debug** now replaces the ordinary traffic markers with state and blocker markers instead of drawing a second marker for every aircraft.
 
 - The Arrival profile is a geometric aid, not a complete STAR/VNAV solver.
 - Missing terrain stays unknown.
@@ -979,6 +1011,7 @@ Choose **Relaxed**, **Standard** or **Strict**, then review individual settings 
 - **Readback and constraint checks:** keep clearances pending until acknowledged, and apply selected published restriction checks.
 - **Deviation monitoring:** track assigned altitude/heading/speed where implemented. Repeated unresolved corrections can prompt ATC to ask whether you can comply or need assistance. IFR service and existing permissions are not automatically cancelled after a warning count. The old `terminateAfterWarnings` settings key is retained for existing files and now controls that assistance prompt.
 - **Transponder monitoring:** compare the simulator's selected code with the acknowledged IFR clearance, with a 30-second adjustment period and at least a minute between reminders. Airborne checks also look for altitude-reporting mode. Missing or invalid observations and emergency codes are excluded from routine code corrections.
+- **Runway backtracking:** when the taxi route ends at the opposite end of the departure runway, Tower issues the backtrack clearance at the holding point. The runway taxi and the runway segment are authorised, so they are not treated as a clearance deviation; report ready at the departure end for takeoff.
 - **Runway permission warnings:** identify runway entry, takeoff and landing without the corresponding permission. Crossing permission applies only to the named physical runway. The monitor does not issue a late takeoff-abort instruction during a high-speed roll; an airborne departure without clearance receives an intentions query. Landing reminders wait until rollout slows.
 - **Taxi assistance:** monitoring starts after the taxi readback and confirmed movement: at least five metres of displacement and two telemetry samples at one knot or more. Sitting at the stand, pushback before taxi readback and small speed fluctuations do not trigger an off-route warning. On an unmapped apron, the initial connector from the observed starting position to the first route point uses the same 60-metre corridor tolerance; moving toward the network does not trigger assistance. After joining the mapped route, that exemption ends. Moving away from the connector or spending 15 seconds more than 60 metres from the approved route prompts the issuing controller to offer assistance when the radio is free. A new taxi clearance starts fresh movement monitoring. Runway-permission checks remain independent.
 - Answer the current taxi-assistance question with **yes**, **affirmative**, **no** or **negative**. This works without AI classification. When stopped, an accepted offer recalculates a route to the same runway or stand, updates the map and requires a new readback, retaining intervening runway holds. Missing safe geometry results in a hold-and-confirm-position response. These are revised route instructions, not continuous step-by-step progressive taxi. A short answer cannot acknowledge an unrelated clearance or a question from another frequency. Invalid AI classification JSON is rejected and ATC asks for clarification rather than executing model-supplied actions.
@@ -988,7 +1021,7 @@ Choose **Relaxed**, **Standard** or **Strict**, then review individual settings 
 Initial IFR clearances retain the full filed route internally but speak abbreviated routing: the assigned departure/transition, then as filed. The copilot repeats that abbreviation, altitude, squawk and runway, using the destination airport name when available. Full-route readbacks remain accepted; amendments still require the changed routing. Clearance and readback wording lives in `speech/runtime/responses.toml`.
 - **English-language voices only:** limits controller selection by language while allowing English accents.
 - **Pilot playback:** hear synthesized own transmissions if enabled.
-- **Guidance visibility:** map arrows, ground arrows and holding-point marker are independent.
+- **Guidance visibility:** the map route line, map arrows, map holding point, ground arrows and ground holding ring are independent.
 - **Developer mode:** exposes the sector Map, detailed errors and controlled surface test jumps. It defaults off for new settings files; existing explicit choices are preserved. Enable it under Appearance → Developer tools.
 
 Optional live-session traffic speech is tied to identified simulator aircraft and observed events. No synthetic radio calls are generated; background radio comes only from modeled traffic. Runway protection can only see traffic provided through the simulator interface; aircraft missing from that interface remain invisible to this check. Complete traffic management, wake sequencing and separation are still in development.
@@ -999,7 +1032,7 @@ The three additional monitoring switches default off for existing configurations
 
 Tower keeps checking the runway after issuing landing clearance. A newly observed conflict can trigger a go-around even with a readback outstanding. A missed approach does not immediately become another approach clearance merely because the aircraft is near the destination; request an approach again. Routine exit instructions wait until the aircraft has slowed below 40 knots on rollout. Published missed-approach leg guidance is not yet complete.
 
-**Follow-me car** is an optional aid under Realism → Taxi guidance and on the Taxi page. It uses X-Plane's installed follow-me vehicle, appears only for an acknowledged departure or arrival taxi route, and waits before each clearance limit. It cannot authorize a runway crossing. Pending readback or pause stops its movement; reaching parking, taking off or ending the flight removes it. If the route is too far from the aircraft or the scenery vehicle is unavailable, it is not drawn. It is off by default. Live appearance and placement still need simulator testing.
+**Follow-me car** is an optional aid on the Taxi page. It uses X-Plane's installed follow-me vehicle, appears only for an acknowledged departure or arrival taxi route, and waits before each clearance limit. It cannot authorize a runway crossing. Pending readback or pause stops its movement; reaching parking, taking off or ending the flight removes it. If the route is too far from the aircraft or the scenery vehicle is unavailable, it is not drawn. It is off by default. Live appearance and placement still need simulator testing.
 
 - Simulator work is bounded: telemetry is sampled twice a second and coalesced, so an outstanding request cannot build up a queue of old positions.
 - HTTP and speech run on workers; route planning and compliance run in the engine.
@@ -1042,7 +1075,7 @@ The developer fast-forward icon offers explicit test checkpoints rather than cyc
 | `deviations.toml` | Deviation mode, warning counts, ground/air consequences and the optional number call. |
 | `custom-restrictions/` | Optional player-supplied airspace polygons missing from the X-Plane database, with a README and example. |
 | `radio-stations.toml` | Optional combined-duty overrides for existing published stations. |
-| `intents.toml` | Request names, aliases and examples. |
+| `intents.toml` | Request names, aliases and examples. A personal copy in the user configuration folder adds or overrides buttons for both the engine and the plugin. |
 | `traffic/behaviour.toml` | Pilot conversation conditions, timing, probability, range, history and personality. |
 | `cabin/behaviour.toml` | Simulated passenger activity, preparation timing and observed-control freshness. |
 | `speech/runtime/responses.toml` | Live controller, pilot, ATIS, readback and crew response templates. |
@@ -1062,7 +1095,7 @@ Adding TOML text does not implement a new operational permission or simulator ac
 
 Deviation monitoring is configured in `deviations.toml`. `mode` selects `off`, `loose`, `realistic` (the default) or `strict`; the mode sets warning counts, tolerances, airspace classes and the diversion threshold. Regional tables override only their differences. Airspace comes from X-Plane's `Resources/default data/airspaces/airspace.txt`. `custom-restrictions/` is only for sourced areas missing from that database; it ships empty. Warning, recovery, diversion and the optional number exchange use the wording in `speech/runtime/responses.toml`. The number exchange is off by default.
 
-`intents.toml` now supplies the request-button labels/order, matching aliases and slot-recognition patterns. The engine and plugin load installed catalogues; a personal engine `intents.toml` can override them. Older catalogues retain bundled missing definitions and button order. Invalid grammar is rejected before activation. Mission phase/probability/choice logic and conversation equality/list/numeric-range conditions are declarative TOML; clearance authority and simulator safety remain validated by Rust.
+`intents.toml` now supplies the request-button labels/order, matching aliases and slot-recognition patterns. The engine and plugin load the installed catalogue, then a personal `intents.toml` from the user configuration folder; the personal file is never packaged. Older catalogues retain bundled missing definitions and button order. Invalid grammar is rejected before activation. Mission phase/probability/choice logic and conversation equality/list/numeric-range conditions are declarative TOML; clearance authority and simulator safety remain validated by Rust.
 
 Validate edited speech before flying:
 

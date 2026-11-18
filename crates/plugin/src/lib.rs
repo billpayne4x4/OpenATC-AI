@@ -836,6 +836,15 @@ impl Plugin for OpenAtc {
         {
             debug_log(&format!("OpenATC AI: intent catalogue rejected: {error}"));
         }
+        // Personal buttons live beside the settings file, not in the install.
+        if let Some(dir) = supervise::config_dir()
+            && dir.join("intents.toml").is_file()
+            && let Err(error) = openatc_core::catalog::activate(&dir.join("intents.toml"))
+        {
+            debug_log(&format!(
+                "OpenATC AI: personal intent catalogue rejected: {error}"
+            ));
+        }
         // Everything X-Plane calls runs on the simulator main thread; the Arc
         // below shares ownership between callbacks, never threads.
         #[allow(clippy::arc_with_non_send_sync)]
@@ -1007,13 +1016,10 @@ impl Plugin for OpenAtc {
                     ..
                 } = &mut *shared;
                 if tcas.active() {
-                    // Do not release the whole override just because the renderer is between
-                    // playout samples. Movement snapshots arrive every half second; an empty
-                    // interpolation frame must leave the existing targets in place.
+                    // Empty frames mean the engine has no traffic. Release the override
+                    // instead of republishing the last target as a frozen aircraft.
                     let frames = generated_traffic.frames();
-                    if !frames.is_empty() {
-                        tcas.receive(frames);
-                    }
+                    tcas.receive(frames);
                     tcas.refresh();
                 }
                 if shared.tcas.active() {

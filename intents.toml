@@ -18,6 +18,10 @@
 #   runway, altitude, squawk, QNH, frequency must be read back).
 # - `variant` is icao (default) or faa (CRAFT-style delivery, "cleared for
 #   takeoff" phrasing, altimeter-inches).
+# - A crew button `when` takes one condition, `{ control = "...", is = "..." }`,
+#   or `{ all = [ { ... }, { ... } ] }` when every listed condition must hold.
+#   Personal buttons belong in the user configuration folder's `intents.toml`,
+#   which the engine and plugin overlay after this file.
 #
 # Placeholder grammar (renderer fills from the parsed request, voice-implicit:
 # no UI modal is shown, the slot arrives with the utterance):

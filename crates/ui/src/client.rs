@@ -9,7 +9,7 @@ use openatc_settings::Settings;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{
     Arc, Condvar, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use std::time::Duration;
 
@@ -58,6 +58,10 @@ pub struct EngineClient {
     cancelled: Arc<AtomicBool>,
     polling_worker: Option<std::thread::JoinHandle<()>>,
     command_worker: Option<std::thread::JoinHandle<()>>,
+    /// Concurrent crew conversations in flight.
+    crew_in_flight: Arc<AtomicUsize>,
+    /// Failures from the concurrent crew lane.
+    crew_errors: Arc<Mutex<Vec<String>>>,
 }
 
 impl EngineClient {
@@ -90,6 +94,8 @@ impl EngineClient {
             cancelled: Arc::new(AtomicBool::new(false)),
             polling_worker: None,
             command_worker: None,
+            crew_in_flight: Arc::new(AtomicUsize::new(0)),
+            crew_errors: Arc::new(Mutex::new(Vec::new())),
         };
         let polling = inner.clone();
         let polling_endpoint = endpoint.to_owned();
@@ -398,6 +404,10 @@ impl EngineClient {
             guard.latest_crew_ack = None;
             guard.replies.clear();
             guard.generation = guard.generation.wrapping_add(1);
+            self.crew_errors
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .clear();
         }
         if path == "/crew/ack" {
             // The current action must finish even when a chat request is still awaiting a reply.
@@ -448,6 +458,64 @@ impl EngineClient {
         }
     }
 
+    /// Send a crew conversation outside the ordered radio queue. Up to six run at once.
+    pub fn post_crew(&self, body: Json) {
+        let in_flight = self.crew_in_flight.fetch_add(1, Ordering::SeqCst);
+        if in_flight >= 6 {
+            self.crew_in_flight.fetch_sub(1, Ordering::SeqCst);
+            self.push_crew_error("Too many crew conversations are already waiting.");
+            return;
+        }
+        let endpoint = self.endpoint.clone();
+        let cancelled = self.cancelled.clone();
+        let counter = self.crew_in_flight.clone();
+        let errors = self.crew_errors.clone();
+        std::thread::spawn(move || {
+            let result = openatc_http::post_json_cancelled(
+                &endpoint,
+                "/request",
+                &body,
+                Duration::from_secs(120),
+                &cancelled,
+            );
+            match result {
+                Ok((200, _)) => {}
+                Ok((status, data)) => {
+                    let detail = data
+                        .get("error")
+                        .and_then(Json::as_str)
+                        .unwrap_or("No detail returned.");
+                    errors
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(format!("Crew request failed ({status}): {detail}"));
+                }
+                Err(error) => errors
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .push(format!("Crew request failed: {error}")),
+            }
+            counter.fetch_sub(1, Ordering::SeqCst);
+        });
+    }
+
+    fn push_crew_error(&self, message: &str) {
+        self.crew_errors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(message.to_owned());
+    }
+
+    /// Take the next failure from the concurrent crew lane.
+    #[must_use]
+    pub fn take_crew_error(&self) -> Option<String> {
+        let mut errors = self
+            .crew_errors
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (!errors.is_empty()).then(|| errors.remove(0))
+    }
+
     /// Replace cached flight data immediately after an accepted reset.
     pub fn accept_reset(&self, data: &Json) {
         if let Ok(snapshot) = serde_json::from_value::<State>(data.clone()) {
@@ -495,6 +563,17 @@ impl Drop for EngineClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn crew_requests_bypass_the_ordered_command_queue() {
+        let client = EngineClient::new("http://127.0.0.1:1");
+        client.post_crew(serde_json::json!({"role":"copilot","text":"good morning"}));
+        client.post_crew(serde_json::json!({"role":"ground","text":"remove chocks"}));
+        assert!(
+            client.lock().pending.is_empty(),
+            "crew conversations must not occupy the ordered radio queue"
+        );
+    }
 
     #[test]
     fn rejected_telemetry_keeps_connection_and_error_until_a_valid_sample_arrives() {

@@ -167,13 +167,25 @@ pub enum ToolbarIcon {
 
 /// Toolbar icon button with tooltip. Returns true when clicked.
 pub fn icon_button(ui: &imgui::Ui, label: &str, icon: ToolbarIcon, selected: bool) -> bool {
+    let size = 32.0 * ui.current_font_size() / 18.0;
+    icon_button_sized(ui, label, icon, selected, [size, size])
+}
+
+/// Icon button in an explicit footprint, used where a text button's width must
+/// be preserved. Returns true when clicked.
+pub fn icon_button_sized(
+    ui: &imgui::Ui,
+    label: &str,
+    icon: ToolbarIcon,
+    selected: bool,
+    size: [f32; 2],
+) -> bool {
     let scale = ui.current_font_size() / 18.0;
-    let size = 32.0 * scale;
     let position = ui.cursor_screen_pos();
-    let clicked = ui.invisible_button(label, [size, size]);
+    let clicked = ui.invisible_button(label, size);
     let hovered = ui.is_item_hovered();
     let draw = ui.get_window_draw_list();
-    let center = [position[0] + size * 0.5, position[1] + size * 0.5];
+    let center = [position[0] + size[0] * 0.5, position[1] + size[1] * 0.5];
     let mut color = if selected {
         [1.0; 4]
     } else {
@@ -195,7 +207,7 @@ pub fn icon_button(ui: &imgui::Ui, label: &str, icon: ToolbarIcon, selected: boo
     if !matches!(icon, ToolbarIcon::Close) {
         draw.add_rect(
             position,
-            [position[0] + size, position[1] + size],
+            [position[0] + size[0], position[1] + size[1]],
             background,
         )
         .filled(true)
