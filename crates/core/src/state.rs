@@ -108,6 +108,34 @@ pub struct GeneratedTraffic {
     pub animation: crate::traffic::animation::Animation,
 }
 
+/// One engine-owned or external aircraft shown on the map.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MapTraffic {
+    /// Stable aircraft id.
+    pub id: u32,
+    /// Radio callsign.
+    pub callsign: String,
+    /// ICAO aircraft type.
+    pub aircraft: String,
+    /// Ground speed in knots, when reported.
+    pub ground_speed_knots: Option<f64>,
+    /// Degrees north.
+    pub latitude: f64,
+    /// Degrees east.
+    pub longitude: f64,
+    /// Altitude in feet MSL.
+    pub altitude_feet: f64,
+    /// Ground track in degrees.
+    pub track_degrees: f64,
+    /// Aircraft is on the ground.
+    pub on_ground: bool,
+    /// A 3D model is drawn for this flight.
+    pub visible: bool,
+    /// `visual`, `radio` or `external`.
+    pub source: String,
+}
+
 /// Per-aircraft generated-traffic debug state for the map and Traffic page.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -928,6 +956,10 @@ pub struct State {
     /// Generated models ready for simulator rendering; observations remain in telemetry.
     #[serde(default)]
     pub generated_traffic: Vec<GeneratedTraffic>,
+    /// Every managed and external aircraft for the map, including ATC-only
+    /// flights that have no 3D model.
+    #[serde(default)]
+    pub map_traffic: Vec<MapTraffic>,
     /// Next hold of each generated ground aircraft, keyed by aircraft id, latitude then
     /// longitude. Separate from `generated_traffic` because the plugin does not need it.
     #[serde(default)]
@@ -1042,6 +1074,7 @@ impl Default for State {
             weather_airports: Vec::new(),
             control_radio: Radio::Com1,
             generated_traffic: Vec::new(),
+            map_traffic: Vec::new(),
             generated_holding_points: std::collections::BTreeMap::new(),
             generated_traffic_clock: None,
             generated_animation_channels: std::collections::BTreeMap::default(),

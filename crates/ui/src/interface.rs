@@ -380,8 +380,6 @@ pub struct Interface {
     pub last_com1_khz: i32,
     /// Last tuned COM2 frequency in kHz, for stopping speech on change.
     pub last_com2_khz: Option<i32>,
-    /// Plan already auto-enabled for generated traffic.
-    auto_generated_plan: String,
     /// Open request modal intent.
     pub modal_intent: String,
     /// Open request modal title.
@@ -664,7 +662,6 @@ impl Interface {
             last_interaction: 0.0,
             last_com1_khz: 0,
             last_com2_khz: None,
-            auto_generated_plan: String::new(),
             modal_intent: String::new(),
             modal_title: String::new(),
             requested_altitude: 32000,
@@ -1825,21 +1822,6 @@ impl Interface {
         if self.settings_loaded && self.settings.simulator_root.is_empty() {
             self.settings.simulator_root = self.engine.settings().simulator_root;
         }
-        if self.settings_loaded
-            && self.engine.connected()
-            && self.settings.auto_generated_traffic
-            && !self.settings.generated_traffic
-            && state.ifr
-            && !state.plan.departure.is_empty()
-            && !state.plan.destination.is_empty()
-        {
-            let key = format!("{}/{}", state.plan.departure, state.plan.destination);
-            if self.auto_generated_plan != key {
-                self.auto_generated_plan = key;
-                self.settings.generated_traffic = true;
-                self.save_settings();
-            }
-        }
         if self.engine.connected() && !self.plan_loaded {
             self.draft = state.plan.clone();
             self.plan_loaded = true;
@@ -2418,7 +2400,6 @@ impl Interface {
         self.pending_clearance = None;
         self.requested_debug_jump = None;
         self.debug_jump_busy = false;
-        self.auto_generated_plan.clear();
         self.requested_frequency_khz = None;
         self.flight_reset_generation = self.flight_reset_generation.wrapping_add(1);
         self.reset_pending = true;

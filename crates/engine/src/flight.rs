@@ -297,7 +297,7 @@ pub fn urgent(state: &mut EngineState) -> bool {
 
 /// First usable runway exit, named taxiway and side relative to the landing direction.
 ///
-/// Uses the same exit rule as ambient arrivals: the departure entry is excluded,
+/// Uses the same exit rule as generated arrivals: the departure entry is excluded,
 /// an exit above the safe turn-off speed is skipped, and a stopped queue moves the
 /// exit to the next one.
 fn runway_exit(state: &EngineState, runway_name: &str) -> Option<(&'static str, String)> {
@@ -321,7 +321,7 @@ fn runway_exit(state: &EngineState, runway_name: &str) -> Option<(&'static str, 
     let size = openatc_core::traffic::profiles::aircraft(code)
         .map_or('C', openatc_core::traffic::profiles::Aircraft::parking_size);
     let targets = state.traffic_targets();
-    let plan = crate::traffic::manager::choose_arrival_exit(
+    let plan = crate::traffic::exit::choose_arrival_exit(
         airport,
         runway_name,
         size,
@@ -359,7 +359,7 @@ fn arrival_exit_available(
         return true;
     }
     let targets = state.traffic_targets();
-    crate::traffic::manager::choose_arrival_exit(airport, runway, size, &targets, 0.0, 20.0, 0.0, 0)
+    crate::traffic::exit::choose_arrival_exit(airport, runway, size, &targets, 0.0, 20.0, 0.0, 0)
         .is_some()
 }
 
@@ -1123,7 +1123,7 @@ pub fn takeoff_wording(
 }
 
 /// Record when the player first reaches the departure hold. The runway queue compares
-/// this with each ambient departure's hold time, so the first aircraft at the hold goes
+/// this with each generated departure's hold time, so the first aircraft at the hold goes
 /// first regardless of which taxiway or hold line it used.
 pub(crate) fn observe_takeoff_hold(state: &mut EngineState) {
     let route = &state.session.taxi_clearance;
@@ -1213,16 +1213,6 @@ pub(crate) fn takeoff_tick(state: &mut EngineState) {
         return;
     }
     if state.airports.crossing_occupied(&airport.icao, &runway, 0) {
-        return;
-    }
-    // An ambient departure still waiting at the hold is ahead of the player; do not
-    // clear the player to line up past it.
-    if state.ambient.departure_ahead_of_player(
-        &airport,
-        &runway,
-        &state.session.telemetry,
-        state.flow.takeoff_hold_since,
-    ) {
         return;
     }
     let sequence = crate::routes::runway_sequence(state, &airport, &runway);

@@ -1806,67 +1806,62 @@ fn taxi_airport<'a>(interface: &'a Interface, state: &'a State) -> &'a str {
     }
 }
 
-/// Wrap map layers to the available panel width.
-fn taxi_layers(ui: &imgui::Ui, interface: &mut Interface) {
-    widgets::section_title(ui, "MAP LAYERS");
-    let right = ui.cursor_screen_pos()[0] + ui.content_region_avail()[0];
-    for (index, (label, value, color)) in [
-        (
-            "Taxiways",
-            &mut interface.settings.show_taxiways,
-            [0.45, 0.62, 0.78, 1.0],
-        ),
-        (
-            "Parking",
-            &mut interface.settings.show_parking,
-            [0.62, 0.66, 0.70, 1.0],
-        ),
-        (
-            "Taxi route",
-            &mut interface.settings.show_taxi_route,
-            [0.25, 0.87, 0.66, 1.0],
-        ),
-        (
-            "Taxi arrows",
-            &mut interface.settings.show_taxi_arrows,
-            [0.90, 0.95, 1.0, 1.0],
-        ),
-        (
+/// One compact control for every map layer and traffic filter.
+fn layers_button(ui: &imgui::Ui, interface: &mut Interface) {
+    if ui.button("Layers & filters") {
+        ui.open_popup("layers-filters");
+    }
+    if let Some(_popup) = ui.begin_popup("layers-filters") {
+        ui.text_disabled("TRAFFIC");
+        ui.checkbox("Visual traffic", &mut interface.settings.map_visual_traffic);
+        ui.checkbox("ATC only", &mut interface.settings.map_radio_traffic);
+        ui.checkbox(
+            "External traffic",
+            &mut interface.settings.map_external_traffic,
+        );
+        ui.checkbox("Traffic markers", &mut interface.taxi_traffic_visible);
+        ui.checkbox("Player", &mut interface.settings.show_ownship);
+        ui.checkbox("Labels", &mut interface.settings.show_labels);
+        ui.separator();
+        ui.text_disabled("MAP");
+        ui.checkbox("Taxiways", &mut interface.settings.show_taxiways);
+        ui.checkbox("Parking", &mut interface.settings.show_parking);
+        ui.checkbox("Taxi route", &mut interface.settings.show_taxi_route);
+        ui.checkbox("Taxi arrows", &mut interface.settings.show_taxi_arrows);
+        ui.checkbox(
             "Holding point",
             &mut interface.settings.show_map_holding_point,
-            [1.0, 0.75, 0.34, 1.0],
-        ),
-        (
-            "Aircraft",
-            &mut interface.settings.show_ownship,
-            [0.90, 0.95, 1.0, 1.0],
-        ),
-        (
-            "Traffic",
-            &mut interface.taxi_traffic_visible,
-            [1.0, 0.75, 0.34, 1.0],
-        ),
-        (
-            "Labels",
-            &mut interface.settings.show_labels,
-            [0.90, 0.95, 1.0, 1.0],
-        ),
-        (
-            "Traffic debug",
-            &mut interface.settings.show_traffic_debug,
-            [0.86, 0.24, 0.24, 1.0],
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if index > 0 && ui.item_rect_max()[0] + ui.calc_text_size(label)[0] + 48.0 < right {
-            ui.same_line();
+        );
+        ui.checkbox("Traffic debug", &mut interface.settings.show_traffic_debug);
+        ui.checkbox("Runways", &mut interface.show_runways);
+        ui.checkbox("Navaids", &mut interface.show_navaids);
+        ui.checkbox("ILS / glideslope", &mut interface.settings.show_ils_beams);
+        ui.checkbox("3D orbit", &mut interface.orbit_view);
+        ui.separator();
+        if ui.button("Reset defaults") {
+            let settings = &mut interface.settings;
+            settings.map_visual_traffic = true;
+            settings.map_radio_traffic = true;
+            settings.map_external_traffic = true;
+            settings.show_ownship = true;
+            settings.show_labels = true;
+            settings.show_taxiways = true;
+            settings.show_parking = true;
+            settings.show_taxi_route = true;
+            settings.show_taxi_arrows = true;
+            settings.show_map_holding_point = true;
+            settings.show_traffic_debug = false;
+            interface.taxi_traffic_visible = true;
+            interface.show_runways = true;
+            interface.show_navaids = true;
         }
-        let _color = ui.push_style_color(imgui::StyleColor::Text, color);
-        ui.checkbox(label, value);
+        ui.text_wrapped("Visual traffic has a 3D model. ATC only is radio and map without a model. External is native AI or multiplayer. Traffic debug replaces the normal markers with state and blocker markers.");
     }
-    ui.text_wrapped("Traffic debug replaces the normal traffic markers with state and blocker markers. The player holding ring stays visible during an active taxi clearance.");
+}
+
+/// Compact layer control for the taxi map.
+fn taxi_layers(ui: &imgui::Ui, interface: &mut Interface) {
+    layers_button(ui, interface);
 }
 
 /// Select the arrival stand from the displayed airport.
@@ -1990,31 +1985,12 @@ pub fn airports_page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
         }
     }
 }
-/// Overview tab: layer toggles and the map canvas.
+/// Overview tab: one layer control and the map canvas.
 fn overview_tab(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
-    let right = ui.cursor_screen_pos()[0] + ui.content_region_avail()[0];
-    for (index, (label, value)) in [
-        ("3D orbit", &mut interface.orbit_view),
-        ("ILS / glideslope", &mut interface.settings.show_ils_beams),
-        ("Runways", &mut interface.show_runways),
-        ("Taxiways", &mut interface.settings.show_taxiways),
-        ("Parking", &mut interface.settings.show_parking),
-        ("Navaids", &mut interface.show_navaids),
-        ("Labels", &mut interface.settings.show_labels),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if index > 0 && ui.item_rect_max()[0] + ui.calc_text_size(label)[0] + 48.0 < right {
-            ui.same_line();
-        }
-        ui.checkbox(label, value);
-    }
+    layers_button(ui, interface);
     if interface.airport.icao == "DEMO" {
+        ui.same_line();
         ui.checkbox("Demo buildings", &mut interface.show_buildings);
-    }
-    if interface.settings.show_ils_beams {
-        ui.text_wrapped("Published ILS courses / glide angle / 4 NM approach illustration");
     }
     crate::maps::airport_canvas(ui, interface, state, true, 0.0);
 }
@@ -3324,7 +3300,7 @@ fn readbacks_row(ui: &imgui::Ui, interface: &mut Interface) {
         "Allow wake separation waits",
         &mut interface.settings.allow_wake_waits,
     );
-    ui.text_wrapped("When off, departure wake intervals are ignored for the player and ambient traffic. Runway occupancy, landing, crossing and go-around protection still apply.");
+    ui.text_wrapped("When off, departure wake intervals are ignored for the player and generated traffic. Runway occupancy, landing, crossing and go-around protection still apply.");
     widgets::section_title(ui, "OPTIONAL ATC OFFERS");
     ui.checkbox(
         "Allow ATC to offer en-route shortcuts",
@@ -3366,6 +3342,47 @@ fn readbacks_row(ui: &imgui::Ui, interface: &mut Interface) {
         ui,
         "This escalation is a simulator training rule, not an automatic real-world IFR cancellation procedure.",
     );
+
+    widgets::section_title(ui, "ROUTE MONITORING");
+    let mut tolerance = interface.settings.route_tolerance_nm as f32;
+    widgets::muted_wrapped(ui, "Off-plan cross-track tolerance (NM)");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##route-tolerance", 0.5, 10.0, &mut tolerance) {
+        interface.settings.route_tolerance_nm = f64::from(tolerance);
+    }
+    let mut departure_distance = interface.settings.departure_grace_nm as f32;
+    widgets::muted_wrapped(ui, "No-SID departure grace distance (NM)");
+    ui.set_next_item_width(-1.0);
+    if ui.slider(
+        "##departure-grace-distance",
+        0.0,
+        50.0,
+        &mut departure_distance,
+    ) {
+        interface.settings.departure_grace_nm = f64::from(departure_distance);
+    }
+    let mut departure_altitude = interface.settings.departure_grace_altitude_ft as f32;
+    widgets::muted_wrapped(ui, "No-SID departure grace altitude (ft AGL)");
+    ui.set_next_item_width(-1.0);
+    if ui.slider(
+        "##departure-grace-altitude",
+        0.0,
+        10_000.0,
+        &mut departure_altitude,
+    ) {
+        interface.settings.departure_grace_altitude_ft = f64::from(departure_altitude);
+    }
+    let mut arrival_distance = interface.settings.arrival_grace_nm as f32;
+    widgets::muted_wrapped(ui, "No-STAR arrival grace distance (NM)");
+    ui.set_next_item_width(-1.0);
+    if ui.slider("##arrival-grace-distance", 0.0, 50.0, &mut arrival_distance) {
+        interface.settings.arrival_grace_nm = f64::from(arrival_distance);
+    }
+    ui.checkbox(
+        "Divert and issue a number after repeated off-plan warnings",
+        &mut interface.settings.off_plan_diverts,
+    );
+    ui.text_wrapped("Without a SID, the first en-route leg is not the departure path. The aircraft is not judged until it has passed the first fix, or is beyond the departure grace distance and altitude. A no-STAR arrival gets the same quiet zone near the destination. Off-plan diversions are off by default, so a course error produces a correction but never rewrites the flight plan or issues a number. A diverse departure turns at 400 ft above the departure end and climbs at 200 ft/NM; the defaults are deliberately more generous.");
 
     widgets::section_title(ui, "READBACKS & RADIO");
     ui.checkbox(

@@ -157,11 +157,6 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface, sta
         interface.save_settings();
     }
     ui.checkbox(
-        "Add local pattern traffic",
-        &mut interface.settings.local_pattern_traffic,
-    );
-    ui.text_wrapped("Adds a local circuit arrival and two departures at your airport when the network released fewer than two flights. The pattern flies on the tower frequency with a clearance and a readback.");
-    ui.checkbox(
         "Start the first flight on approach",
         &mut interface.settings.start_first_flight_on_approach,
     );
@@ -211,8 +206,8 @@ pub fn settings(ui: &imgui::Ui, interface: &mut crate::interface::Interface, sta
             interface.save_settings();
         }
     }
-    widgets::section_title(ui, "TRAFFIC SOURCE");
-    ui.text_wrapped("Airport traffic runs without a flight plan: taxiing aircraft, departures and arrivals around the loaded airport. Generated traffic adds planned flights around your route where the installed procedures allow them. A missed approach that ends in a climb-out or vector gets a fallback hold at the end of its published climb instead of a published hold. Native X-Plane AI is optional; installing Bluebell models alone does not create flights.");
+    widgets::section_title(ui, "TRAFFIC");
+    ui.text_wrapped("One traffic engine. Aircraft inside the visual range are drawn; aircraft beyond it remain on the radio and on the map as ATC-only traffic. Local circuits and planned flights share the same runway and clearance rules. Native X-Plane AI and multiplayer traffic stay external and are never owned or removed by the engine.");
     if let Some(reply) = interface.engine.take_reply("/traffic/models/index") {
         interface.traffic_notice = if reply.success {
             format!(
@@ -312,19 +307,16 @@ pub fn tab(ui: &imgui::Ui, interface: &mut crate::interface::Interface, state: &
         ui.text_wrapped(&interface.traffic_notice);
     }
     ui.text_wrapped("OpenATC checks simulator-reported aircraft before issuing runway crossing, takeoff and landing clearances.");
-    ui.checkbox(
-        "En-route generated traffic",
-        &mut interface.settings.generated_traffic,
-    );
-    if interface.settings.generated_traffic {
-        ui.text_wrapped("ON. Complete flights are prepared around your plan where the installed procedures allow them.");
-    } else {
-        ui.text_wrapped("OFF. Ambient traffic only stays around airports; switch it on for traffic around your route and STAR.");
+    ui.checkbox("Traffic", &mut interface.settings.generated_traffic);
+    let mut range = interface.settings.traffic_visual_range_nm as f32;
+    widgets::muted_wrapped(ui, "Show aircraft within (NM)");
+    ui.set_next_item_width(-1.0);
+    let disabled = ui.begin_disabled(!interface.settings.generated_traffic);
+    if ui.slider("##traffic-visual-range", 1.0, 50.0, &mut range) {
+        interface.settings.traffic_visual_range_nm = f64::from(range);
     }
-    ui.checkbox(
-        "Enable generated traffic automatically for a loaded plan",
-        &mut interface.settings.auto_generated_traffic,
-    );
+    ui.text_wrapped("One traffic engine. Aircraft inside the range are drawn; aircraft beyond it remain on the radio and on the map as ATC-only traffic. Only a drawn aircraft can hold a runway.");
+    drop(disabled);
     if state.telemetry.traffic.is_none() {
         ui.text_colored(widgets::warning(ui), "Traffic feed unavailable");
         ui.text_wrapped("Runway checks cannot confirm clear traffic. Check the simulator connection and the traffic provider's TCAS output.");
@@ -757,7 +749,7 @@ pub(crate) fn scenery_setup(
         ui.text_wrapped(error);
     }
     if status["enabled"].as_bool() == Some(false) {
-        ui.text_wrapped("Generated traffic is switched off. Enable it below to prepare flights.");
+        ui.text_wrapped("Traffic is switched off. Enable it below to prepare flights.");
     }
     if ui.collapsing_header("Scenery cache details", imgui::TreeNodeFlags::empty()) {
         ui.text_wrapped(

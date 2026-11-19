@@ -9,7 +9,7 @@ pub(super) type Loaded = (
 );
 
 /// Read the CSL animation channel catalogue without preparing a full scene.
-/// Ambient traffic renders through the same catalogue while the legacy layer is off.
+/// Generated traffic and local circuits share one catalogue.
 pub(super) fn channels(config: &Path) -> BTreeMap<String, animation::Channel> {
     let mut channels =
         animation::channels(include_str!("../../../../traffic/animation-channels.toml"))

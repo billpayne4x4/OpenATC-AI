@@ -85,7 +85,13 @@ impl Manager {
     pub fn tick(&mut self, state: &mut EngineState) -> bool {
         self.reset_if_needed(state.session_generation);
         let region = region(state);
-        let policy = self.policy(&region);
+        let mut policy = self.policy(&region);
+        policy.settings.off_plan_tolerance_nm = state.settings.route_tolerance_nm.max(0.1);
+        policy.settings.departure_grace_nm = state.settings.departure_grace_nm.max(0.0);
+        policy.settings.departure_grace_altitude_ft =
+            state.settings.departure_grace_altitude_ft.max(0.0);
+        policy.settings.arrival_grace_nm = state.settings.arrival_grace_nm.max(0.0);
+        policy.settings.off_plan_diverts = state.settings.off_plan_diverts;
         if policy.mode == Mode::Off || state.session.telemetry.radio_busy {
             return false;
         }
@@ -101,6 +107,15 @@ impl Manager {
             return self.recover(state);
         }
         self.ensure_airspace(state);
+        let route = openatc_core::route_monitor::RouteStatus::assess(
+            &state.session.plan,
+            state.airport.as_ref(),
+            state.arrival_airport.as_ref(),
+            &state.session.telemetry,
+            state.flow.monitor.next_fix,
+            state.flow.approach_cleared,
+            &policy.settings,
+        );
         let finding = {
             let context = DeviationContext {
                 telemetry: &state.session.telemetry,
@@ -112,6 +127,7 @@ impl Manager {
                 next_fix: state.flow.monitor.next_fix,
                 vector_active: state.flow.monitor.heading.is_some(),
                 direct_active: state.flow.monitor.direct_origin.is_some(),
+                route,
                 settings: &policy.settings,
             };
             self.rules
@@ -201,6 +217,11 @@ impl Manager {
             return false;
         }
         self.last.insert(finding.rule, now);
+        // A course error is a correction, not a diversion. Only count it toward
+        // the flight consequence when the user has opted into that behaviour.
+        if finding.rule == "off_plan" && !policy.settings.off_plan_diverts {
+            return true;
+        }
         let weight = if finding.serious() {
             if policy.settings.serious_immediate {
                 policy.limit(finding.scope)

@@ -9,6 +9,7 @@ pub(super) fn select(
     telemetry: &Telemetry,
     previous: &BTreeSet<u32>,
     policy: &Operations,
+    range_nm: f64,
 ) -> Vec<GeneratedTraffic> {
     if !telemetry.position_valid
         || !telemetry.latitude.is_finite()
@@ -18,6 +19,8 @@ pub(super) fn select(
     {
         return Vec::new();
     }
+    let enter_nm = range_nm.max(1.0);
+    let leave_nm = enter_nm + 2.0;
     let mut nearby: Vec<_> = frames
         .iter()
         .filter_map(|frame| {
@@ -35,11 +38,7 @@ pub(super) fn select(
                 [telemetry.latitude, telemetry.longitude],
                 [target.latitude, target.longitude],
             );
-            let range = if retained {
-                policy.display_leave_nm
-            } else {
-                policy.display_enter_nm
-            };
+            let range = if retained { leave_nm } else { enter_nm };
             (distance <= range).then_some((
                 distance
                     - if retained {
@@ -144,6 +143,7 @@ mod tests {
     fn display_turnover_keeps_flight_state_and_all_separation_observations() {
         let mut state = crate::test_state();
         state.settings.generated_traffic = true;
+        state.settings.traffic_visual_range_nm = 40.0;
         state.generated.epoch = Some(state.session_generation);
         let mut policy =
             parse_operations(include_str!("../../../../traffic/operations.toml")).unwrap();
@@ -211,7 +211,7 @@ mod tests {
             frame.target.track_degrees = 90.0;
             frames.push(frame);
         }
-        let selected = select(&frames, &own, &BTreeSet::new(), &policy);
+        let selected = select(&frames, &own, &BTreeSet::new(), &policy, 40.0);
         assert_eq!(selected.len(), 5);
         let behind = selected
             .iter()
@@ -230,10 +230,10 @@ mod tests {
             longitude: 8.0,
             ..Default::default()
         };
-        let frames = vec![frame(1, 45.0), frame(2, 51.0)];
-        assert!(select(&frames, &own, &BTreeSet::new(), &policy).is_empty());
+        let frames = vec![frame(1, 41.0), frame(2, 51.0)];
+        assert!(select(&frames, &own, &BTreeSet::new(), &policy, 40.0).is_empty());
         assert_eq!(
-            select(&frames, &own, &BTreeSet::from([1, 2]), &policy)
+            select(&frames, &own, &BTreeSet::from([1, 2]), &policy, 40.0)
                 .iter()
                 .map(|f| f.target.id)
                 .collect::<Vec<_>>(),
@@ -242,15 +242,27 @@ mod tests {
         policy.visible_aircraft_limit = 1;
         let previous = BTreeSet::from([1]);
         assert_eq!(
-            select(&[frame(1, 10.0), frame(2, 9.0)], &own, &previous, &policy)[0]
-                .target
-                .id,
+            select(
+                &[frame(1, 10.0), frame(2, 9.0)],
+                &own,
+                &previous,
+                &policy,
+                40.0
+            )[0]
+            .target
+            .id,
             1
         );
         assert_eq!(
-            select(&[frame(1, 10.0), frame(2, 7.0)], &own, &previous, &policy)[0]
-                .target
-                .id,
+            select(
+                &[frame(1, 10.0), frame(2, 7.0)],
+                &own,
+                &previous,
+                &policy,
+                40.0
+            )[0]
+            .target
+            .id,
             2
         );
         assert_eq!(
@@ -258,7 +270,8 @@ mod tests {
                 &[frame(2, 10.0), frame(1, 10.0)],
                 &own,
                 &BTreeSet::new(),
-                &policy
+                &policy,
+                40.0
             )[0]
             .target
             .id,
@@ -266,13 +279,14 @@ mod tests {
         );
         let mut invalid = frame(4, 1.0);
         invalid.target.latitude = f64::NAN;
-        assert!(select(&[invalid], &own, &previous, &policy).is_empty());
+        assert!(select(&[invalid], &own, &previous, &policy, 40.0).is_empty());
     }
 
     #[test]
-    fn publishing_generated_frames_keeps_the_ambient_slice() {
+    fn publishing_generated_frames_keeps_only_owned_frames() {
         let mut state = crate::test_state();
         state.settings.generated_traffic = true;
+        state.settings.traffic_visual_range_nm = 40.0;
         state.generated.epoch = Some(state.session_generation);
         state.generated.policy =
             Some(parse_operations(include_str!("../../../../traffic/operations.toml")).unwrap());
@@ -284,7 +298,6 @@ mod tests {
             traffic: Some(vec![]),
             ..Default::default()
         };
-        state.session.generated_traffic = vec![frame(0x00e0_0000, 12.0)];
         step(&mut state);
         assert!(
             state
@@ -292,13 +305,6 @@ mod tests {
                 .generated_traffic
                 .iter()
                 .any(|frame| frame.target.id == 1)
-        );
-        assert!(
-            state
-                .session
-                .generated_traffic
-                .iter()
-                .any(|frame| frame.target.id == 0x00e0_0000)
         );
 
         state.generated.published_ids.insert(99);
@@ -323,12 +329,8 @@ mod tests {
                 .all(|frame| frame.target.id != 1)
         );
         assert!(
-            state
-                .session
-                .generated_traffic
-                .iter()
-                .any(|frame| frame.target.id == 0x00e0_0000),
-            "ambient traffic must survive when generated traffic is switched off"
+            state.session.generated_traffic.is_empty(),
+            "switching traffic off clears every generated frame"
         );
     }
 }

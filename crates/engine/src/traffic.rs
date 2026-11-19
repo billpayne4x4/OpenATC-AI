@@ -10,11 +10,8 @@ pub mod advisories;
 mod conversation;
 #[cfg(test)]
 mod conversation_tests;
+pub(crate) mod exit;
 pub(crate) mod holding;
-pub mod manager;
-pub(crate) mod motion;
-pub mod phase;
-pub mod phases;
 mod policy;
 pub mod separation;
 mod wake;

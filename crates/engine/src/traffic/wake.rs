@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn an_ambient_frame_participates_in_arrival_wake_spacing() {
+    fn a_generated_frame_participates_in_arrival_wake_spacing() {
         let mut s = crate::test_state();
         s.session.plan.arrival_runway = "09".into();
         s.arrival_airport = Some(Airport {
@@ -498,7 +498,7 @@ mod tests {
             traffic: Some(Vec::new()),
             ..Default::default()
         };
-        let ambient = |longitude: f64| openatc_core::state::GeneratedTraffic {
+        let heavy = |longitude: f64| openatc_core::state::GeneratedTraffic {
             vertical_speed_fpm: 0.0,
             body_heading_degrees: None,
             target: TrafficTarget {
@@ -521,9 +521,10 @@ mod tests {
             }),
             animation: Default::default(),
         };
-        s.session.generated_traffic = vec![ambient(-0.0001)];
+        s.session.generated_traffic = vec![heavy(-0.0001)];
+        s.generated.register_owned(2);
         observe(&mut s);
-        s.session.generated_traffic = vec![ambient(0.0001)];
+        s.session.generated_traffic = vec![heavy(0.0001)];
         s.session.telemetry.simulation_seconds = Some(11.0);
         observe(&mut s);
         assert!(s.session.arrival_wake_conflict);

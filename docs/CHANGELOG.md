@@ -1,5 +1,15 @@
 # Unreleased
 
+## One traffic engine, visible range and no-SID grace — 20 November 2026
+
+- Replaced the separate ambient and generated traffic layers with one engine-owned flight table. Native X-Plane AI and future multiplayer traffic remain external and read-only.
+- Visibility is now a distance decision. Aircraft inside the display range are drawn; aircraft beyond it stay on the radio and on the map as ATC-only traffic with no model and no runway authority.
+- Only a drawn aircraft can hold the player. A runway occupant that does not move for 20 seconds loses its slot and is removed, and a rendered frame alone no longer keeps a pose or blocks a clearance.
+- Removed the local surface-departure spawn path that could place a controlled aircraft on the runway with no clearance contract.
+- Added route monitoring for flights without a SID or STAR. A no-SID departure is not judged against the first en-route leg until it passes the first fix or reaches the departure grace distance and altitude; a no-STAR arrival gets the same quiet zone near the destination. Off-plan diversions are off by default, so a course error produces a correction instead of a rewritten plan and a phone number.
+- Traffic settings now expose one Traffic switch, a display range, and advanced route-monitoring values with documented defaults.
+- The map shows every managed flight with colour and marker shape: visual traffic green, ATC-only amber and hollow, external traffic blue, and the player white. One **Layers & filters** popup replaces the wrapped checkbox rows on the Map and Taxi pages, and its state persists.
+
 ## Holding point, runway exits and personal buttons — 18 November 2026
 
 - At the departure hold, the automatic report waits until the taxi readback has been accepted, so the clearance cannot be stranded by a rejected request. Tower then checks the runway: a clear runway gets the backtrack to the departure end; final-approach or occupied traffic gets a hold-short reason, and Tower calls again when the runway clears without another ready report.

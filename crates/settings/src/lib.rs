@@ -199,16 +199,14 @@ pub struct Settings {
     pub native_traffic_count: u8,
     /// Enable `OpenATC`'s lightweight generated model instances.
     pub generated_traffic: bool,
-    /// Enable generated traffic automatically when a flight plan is loaded.
-    #[serde(default = "yes")]
-    pub auto_generated_traffic: bool,
+    /// Distance at which a generated flight becomes visible. Beyond it the
+    /// flight remains on the radio and on the map without a model.
+    pub traffic_visual_range_nm: f64,
     /// How often the generated traffic is drawn. A higher rate moves the traffic more smoothly
     /// and costs more of the simulator's frame time.
     pub traffic_rate: TrafficRate,
     /// Generated-traffic diagnostics in the engine log.
     pub traffic_log: TrafficLog,
-    /// Add a local pattern aircraft and departures when the network released little traffic.
-    pub local_pattern_traffic: bool,
     /// Start the first released flight on approach instead of at its stand.
     pub start_first_flight_on_approach: bool,
     /// Active mainline-airline budget.
@@ -219,6 +217,19 @@ pub struct Settings {
     pub cargo_traffic: u8,
     /// Active private/GA budget.
     pub ga_traffic: u8,
+    /// Cross-track tolerance for the filed route, in nautical miles.
+    pub route_tolerance_nm: f64,
+    /// Distance from the departure airport where a no-SID departure may still
+    /// be joining the first en-route leg.
+    pub departure_grace_nm: f64,
+    /// Height above the departure airport where a no-SID departure may still
+    /// be joining the first en-route leg.
+    pub departure_grace_altitude_ft: f64,
+    /// Distance from the arrival airport where a no-STAR arrival may still be
+    /// joining the approach or the last en-route leg.
+    pub arrival_grace_nm: f64,
+    /// Repeated off-plan warnings may divert the flight and issue a number.
+    pub off_plan_diverts: bool,
     /// Minimum generated aircraft moving on the ground when traffic is full.
     pub traffic_taxi_min: u8,
     /// Maximum generated aircraft moving on the ground when traffic is full.
@@ -236,6 +247,12 @@ pub struct Settings {
     pub allow_wake_waits: bool,
     /// Speak simulated pilot reports based on observed local traffic movements.
     pub hear_traffic_radio: bool,
+    /// Show generated flights with a 3D model on the map.
+    pub map_visual_traffic: bool,
+    /// Show ATC-only generated flights on the map.
+    pub map_radio_traffic: bool,
+    /// Show native and multiplayer aircraft on the map.
+    pub map_external_traffic: bool,
     /// Allow conversations with simulated pilots for identified traffic.
     pub talk_to_traffic: bool,
     /// Allow brief informal exchanges with identified simulated pilots.
@@ -494,15 +511,19 @@ impl Default for Settings {
             mute_native_radio: true,
             native_traffic_count: 0,
             generated_traffic: false,
-            auto_generated_traffic: true,
+            traffic_visual_range_nm: 10.0,
             traffic_rate: TrafficRate::EveryFrame,
             traffic_log: TrafficLog::Summary,
-            local_pattern_traffic: true,
             start_first_flight_on_approach: false,
             airline_traffic: 8,
             regional_traffic: 4,
             cargo_traffic: 2,
             ga_traffic: 5,
+            route_tolerance_nm: 2.0,
+            departure_grace_nm: 10.0,
+            departure_grace_altitude_ft: 3_000.0,
+            arrival_grace_nm: 15.0,
+            off_plan_diverts: false,
             traffic_taxi_min: 4,
             traffic_taxi_max: 6,
             traffic_circuit_jet_nm: 30.0,
@@ -511,6 +532,9 @@ impl Default for Settings {
             wake_standard: "auto".into(),
             allow_wake_waits: true,
             hear_traffic_radio: true,
+            map_visual_traffic: true,
+            map_radio_traffic: true,
+            map_external_traffic: true,
             talk_to_traffic: false,
             informal_pilot_chat: false,
             pilot_chat_humour: false,

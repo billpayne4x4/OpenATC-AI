@@ -402,7 +402,17 @@ pub fn page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
             }
         }
         if interface.map_traffic_visible {
-            for target in crate::traffic::targets(state).take(126) {
+            for target in state
+                .map_traffic
+                .iter()
+                .filter(|target| {
+                    crate::maps::map_category_visible(
+                        interface,
+                        crate::maps::map_category(&target.source),
+                    )
+                })
+                .take(126)
+            {
                 if !target.latitude.is_finite()
                     || !target.longitude.is_finite()
                     || !target.track_degrees.is_finite()
@@ -418,7 +428,13 @@ pub fn page(ui: &imgui::Ui, interface: &mut Interface, state: &State) {
                 {
                     continue;
                 }
-                crate::maps::draw_traffic(ui, &draw, screen, target);
+                crate::maps::draw_traffic(
+                    ui,
+                    &draw,
+                    screen,
+                    target,
+                    crate::maps::map_category(&target.source),
+                );
             }
         }
         let aircraft = project([t.latitude, t.longitude]);

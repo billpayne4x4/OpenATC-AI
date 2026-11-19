@@ -6,6 +6,9 @@ rustflags = ["-C", "link-args=-Wl,-rpath,$ORIGIN"]
 # selects optimized kernels at runtime.
 [env]
 GGML_NATIVE = "OFF"
+# Traffic fixtures use real timestamps and a shared simulator model. Serialize
+# the test harness so a loaded machine cannot change a fixture's tick order.
+RUST_TEST_THREADS = "1"
 
 [alias]
 xtask = "run --locked --package xtask --"

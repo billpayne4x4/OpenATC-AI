@@ -96,28 +96,6 @@ pub async fn post_telemetry(
     Json(telemetry): Json<Telemetry>,
 ) -> Response {
     let shared = state;
-    // Load the CSL catalogue once so the ambient traffic layer can spawn models.
-    let needs_models = {
-        let state = shared.read().await;
-        state.ambient.needs_models() && !state.settings.simulator_root.is_empty()
-    };
-    if needs_models {
-        let shared = shared.clone();
-        tokio::spawn(async move {
-            let (root, workers, installer) = {
-                let state = shared.read().await;
-                (
-                    state.settings.simulator_root.clone(),
-                    state.workers.clone(),
-                    state.model_installer.clone(),
-                )
-            };
-            if let Ok(models) = installer.models(&root, &workers).await {
-                let mut state = shared.write().await;
-                state.ambient.set_models(models);
-            }
-        });
-    }
     let arrival_job = {
         let mut state = shared.write().await;
         if arrival_load_needed(&state) {
@@ -258,9 +236,6 @@ pub async fn post_telemetry(
         state.session.demo = false;
         super::generated::step(&mut state);
         super::flight::observe_takeoff_hold(&mut state);
-        let mut ambient = std::mem::take(&mut state.ambient);
-        ambient.tick(&mut state);
-        state.ambient = ambient;
         if state.settings.generated_traffic {
             let worker_state = shared.clone();
             tokio::spawn(async move {

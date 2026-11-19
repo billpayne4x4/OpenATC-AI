@@ -517,6 +517,13 @@ fn departure_hold(state: &mut EngineState) {
     let candidates: Vec<_> = all
         .iter()
         .filter(|pose| at_hold.contains(&pose.id))
+        // Local circuits and CTAF traffic carry their own procedure and
+        // clearance path. The controlled departure gate must not treat them as
+        // planned flights waiting for a clearance that cannot be issued.
+        .filter(|pose| {
+            !state.generated.advisories.contains_key(&pose.id)
+                && !super::ctaf::is_generated(pose.id)
+        })
         .cloned()
         .collect();
     // A short, rate-limited trace of the departure gate: how many aircraft exist, how many are

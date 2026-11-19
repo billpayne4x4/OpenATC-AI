@@ -2281,22 +2281,6 @@ pub(crate) fn runway_sequence(
     runway: &str,
 ) -> RunwaySequence {
     use crate::generated::RunwayUse;
-    use crate::traffic::manager::RunwayState;
-    let player_remaining = (state.session.phase == PhaseCode::Taxi
-        && state.session.plan.runway == runway
-        && state.session.taxi_clearance.approved)
-        .then(|| {
-            crate::traffic::manager::player_runway_remaining(
-                airport,
-                runway,
-                &state.session.telemetry,
-            )
-        })
-        .flatten();
-    let ambient =
-        state
-            .ambient
-            .runway_state_for(&airport.icao, runway, player_remaining, None, None);
     let generated = airport
         .runways
         .iter()
@@ -2307,14 +2291,11 @@ pub(crate) fn runway_sequence(
                 airport.icao, candidate.first_name, candidate.second_name
             ))
         });
-    if ambient == RunwayState::Landing || generated == RunwayUse::Landing {
-        RunwaySequence::Landing
-    } else if ambient == RunwayState::LineUp || generated == RunwayUse::LineUp {
-        RunwaySequence::LineUp
-    } else if ambient == RunwayState::Rolling || generated == RunwayUse::Departing {
-        RunwaySequence::Rolling
-    } else {
-        RunwaySequence::Clear
+    match generated {
+        RunwayUse::Landing => RunwaySequence::Landing,
+        RunwayUse::LineUp => RunwaySequence::LineUp,
+        RunwayUse::Departing => RunwaySequence::Rolling,
+        RunwayUse::Clear => RunwaySequence::Clear,
     }
 }
 

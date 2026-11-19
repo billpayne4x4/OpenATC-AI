@@ -97,6 +97,17 @@ pub struct Settings {
     pub cooldown_seconds: u64,
     /// Flight-plan cross-track tolerance in nautical miles.
     pub off_plan_tolerance_nm: f64,
+    /// Distance from the departure airport where a no-SID departure may still
+    /// be joining the first en-route leg.
+    pub departure_grace_nm: f64,
+    /// Height above the departure airport where a no-SID departure may still
+    /// be joining the first en-route leg.
+    pub departure_grace_altitude_ft: f64,
+    /// Distance from the arrival airport where a no-STAR arrival may still be
+    /// joining the approach or the last en-route leg.
+    pub arrival_grace_nm: f64,
+    /// Repeated off-plan warnings may divert the flight and issue a number.
+    pub off_plan_diverts: bool,
     /// Serious findings divert immediately instead of adding strikes.
     pub serious_immediate: bool,
     /// Runway entry reaches the warning limit in one event.
@@ -118,6 +129,10 @@ impl Default for Settings {
             flight_warnings: 3,
             cooldown_seconds: 15,
             off_plan_tolerance_nm: 2.0,
+            departure_grace_nm: 10.0,
+            departure_grace_altitude_ft: 3_000.0,
+            arrival_grace_nm: 15.0,
+            off_plan_diverts: false,
             serious_immediate: false,
             runway_entry_immediate: true,
             serious_strikes: 2,
@@ -284,6 +299,8 @@ pub struct DeviationContext<'a> {
     pub vector_active: bool,
     /// A direct-to clearance is active.
     pub direct_active: bool,
+    /// Departure and arrival tracking state.
+    pub route: crate::route_monitor::RouteStatus,
     /// Effective policy.
     pub settings: &'a Settings,
 }
@@ -395,6 +412,7 @@ impl DeviationRule for OffPlan {
             || !context.telemetry.position_valid
             || context.vector_active
             || context.direct_active
+            || context.route.grace(context.phase)
             || !matches!(
                 context.phase,
                 PhaseCode::Departure | PhaseCode::Cruise | PhaseCode::Arrival
@@ -518,11 +536,69 @@ points = [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
             next_fix: 1,
             vector_active: false,
             direct_active: false,
+            route: crate::route_monitor::RouteStatus {
+                departure: crate::route_monitor::DepartureMode::Sid,
+                arrival: crate::route_monitor::ArrivalMode::NoStar,
+                departure_grace: false,
+                arrival_grace: false,
+            },
             settings: &settings,
         };
         assert_eq!(
             OffPlan.evaluate(&context).map(|finding| finding.phrase),
             Some("deviation_off_plan")
         );
+    }
+
+    #[test]
+    fn off_plan_rule_stays_quiet_while_a_no_sid_departure_joins() {
+        let plan = FlightPlan {
+            fixes: vec![
+                crate::state::RouteFix {
+                    identifier: "A".to_owned(),
+                    latitude: 0.0,
+                    longitude: 0.0,
+                    path_terminator: "TF".to_owned(),
+                    ..Default::default()
+                },
+                crate::state::RouteFix {
+                    identifier: "B".to_owned(),
+                    latitude: 0.0,
+                    longitude: 1.0,
+                    path_terminator: "TF".to_owned(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let telemetry = Telemetry {
+            position_valid: true,
+            on_ground: false,
+            latitude: 0.05,
+            longitude: 0.5,
+            altitude_feet: 2_000.0,
+            ..Default::default()
+        };
+        let taxi = TaxiClearance::default();
+        let settings = Settings::default();
+        let context = DeviationContext {
+            telemetry: &telemetry,
+            plan: &plan,
+            taxi: &taxi,
+            airport: None,
+            airspace: None,
+            phase: PhaseCode::Departure,
+            next_fix: 1,
+            vector_active: false,
+            direct_active: false,
+            route: crate::route_monitor::RouteStatus {
+                departure: crate::route_monitor::DepartureMode::NoSid,
+                arrival: crate::route_monitor::ArrivalMode::NoStar,
+                departure_grace: true,
+                arrival_grace: false,
+            },
+            settings: &settings,
+        };
+        assert!(OffPlan.evaluate(&context).is_none());
     }
 }

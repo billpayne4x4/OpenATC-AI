@@ -71,7 +71,6 @@ pub struct EngineState {
     /// Generated scene preparation and future movement state.
     pub generated: generated::Runtime,
     /// Plan key already auto-enabled for generated traffic.
-    pub auto_generated_plan: String,
     /// Shared CPU budget for work that must not occupy the HTTP executor.
     pub workers: Arc<workers::Workers>,
     /// Model downloads run separately from flight and radio work.
@@ -84,11 +83,9 @@ pub struct EngineState {
     pub initiative: initiative::Monitor,
     /// Arrival stand changes are retried at a bounded rate.
     pub parking: parking::Monitor,
-    /// Persistent ambient airport traffic.
-    pub ambient: traffic::manager::TrafficManager,
-    /// CSL animation channel names shared by generated and ambient traffic.
+    /// CSL animation channel names shared by generated traffic.
     pub traffic_channels: BTreeMap<String, openatc_core::traffic::animation::Channel>,
-    /// Animation rates shared by generated and ambient traffic.
+    /// Animation rates shared by generated traffic.
     pub traffic_handling: BTreeMap<
         openatc_core::traffic::animation::Kind,
         openatc_core::traffic::animation::Handling,
@@ -222,7 +219,12 @@ impl EngineState {
         let mut ids: std::collections::BTreeSet<u32> =
             targets.iter().map(|target| target.id).collect();
         for frame in &self.session.generated_traffic {
-            if frame.target.id != 0 && ids.insert(frame.target.id) {
+            // A rendered frame is not a lifecycle. Only an aircraft with a
+            // flight, advisory or apron owner may affect the player's clearance.
+            if frame.target.id != 0
+                && self.generated.owns(frame.target.id)
+                && ids.insert(frame.target.id)
+            {
                 targets.push(frame.target.clone());
             }
         }
@@ -666,7 +668,6 @@ async fn main() {
         mission: Default::default(),
         parking: Default::default(),
         initiative: Default::default(),
-        ambient: Default::default(),
         traffic_channels: generated::animation_channels(&config_dir),
         traffic_handling: generated::animation_handling(&config_dir),
         aircraft: Default::default(),
@@ -675,7 +676,6 @@ async fn main() {
         station_bus: Default::default(),
         traffic_profiles,
         generated: Default::default(),
-        auto_generated_plan: String::new(),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,
@@ -735,7 +735,6 @@ async fn main() {
         .route("/speech/voices", post(routes::post_voices))
         .route("/debug/map", post(radio::debug_map))
         .route("/debug/atc", get(atc::debug_atc))
-        .route("/debug/ambient", get(debug_ambient))
         .route("/debug/generated", get(generated::debug_generated))
         .route("/state", get(routes::full_state))
         .route("/settings", post(routes::post_settings))
@@ -807,16 +806,6 @@ async fn main() {
     lifecycle::serve(listener, app, lifetime).await;
 }
 
-async fn debug_ambient(
-    axum::extract::State(shared): axum::extract::State<Shared>,
-) -> axum::Json<serde_json::Value> {
-    let state = shared.read().await;
-    let Some(airport) = state.airport.as_ref() else {
-        return axum::Json(serde_json::json!({"error": "airport not loaded"}));
-    };
-    axum::Json(state.ambient.debug(airport))
-}
-
 #[cfg(test)]
 fn test_state() -> EngineState {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -838,7 +827,6 @@ fn test_state() -> EngineState {
         mission: Default::default(),
         parking: Default::default(),
         initiative: Default::default(),
-        ambient: Default::default(),
         traffic_channels: generated::animation_channels(&config_dir),
         traffic_handling: generated::animation_handling(&config_dir),
         aircraft: Default::default(),
@@ -847,7 +835,6 @@ fn test_state() -> EngineState {
         station_bus: Default::default(),
         traffic_profiles: Default::default(),
         generated: Default::default(),
-        auto_generated_plan: String::new(),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,
@@ -928,6 +915,7 @@ mod traffic_target_tests {
             ..Default::default()
         }]);
         state.session.generated_traffic = vec![frame(14_680_064, "AMBIENT2")];
+        state.generated.register_owned(14_680_064);
         let targets = state.traffic_targets();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].id, 14_680_064);
@@ -942,6 +930,7 @@ mod traffic_target_tests {
             ..Default::default()
         }]);
         state.session.generated_traffic = vec![frame(14_680_064, "F-OMBT")];
+        state.generated.register_owned(14_680_064);
         let targets = state.traffic_targets();
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].id, 14_680_064);
@@ -956,6 +945,8 @@ mod traffic_target_tests {
             ..Default::default()
         }]);
         state.session.generated_traffic = vec![frame(1, "DUPLICATE"), frame(2, "AMBIENT2")];
+        state.generated.register_owned(1);
+        state.generated.register_owned(2);
         let targets = state.traffic_targets();
         assert_eq!(targets.len(), 2);
         assert!(targets.iter().any(|target| target.callsign == "NATIVE1"));

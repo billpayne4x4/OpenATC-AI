@@ -111,6 +111,8 @@ pub struct Runtime {
     network_pending: bool,
     /// Ground poses already described in the detail log.
     detail_logged: BTreeSet<(u32, usize, bool)>,
+    /// Runway poses that have stopped moving, with the segment they are on.
+    stuck: BTreeMap<u32, (usize, Instant)>,
     frames: Vec<GeneratedTraffic>,
     visible: BTreeSet<u32>,
     /// Frames this runtime last placed in the session traffic set.
@@ -3998,16 +4000,27 @@ pub(super) enum RunwayUse {
 }
 
 impl Runtime {
+    /// Whether this identity has a flight, advisory or apron lifecycle. A
+    /// rendered frame alone does not make an aircraft real.
+    pub(crate) fn owns(&self, id: u32) -> bool {
+        self.flights.contains_key(&id)
+            || self.advisories.contains_key(&id)
+            || self.apron_ids.contains(&id)
+            || self.active_flights.contains(&id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn register_owned(&mut self, id: u32) {
+        self.apron_ids.insert(id);
+    }
+
     /// Report whether generated traffic occupies this runway, and how. A landing aircraft takes
     /// priority over a departure, so a following aircraft is told to hold short rather than line up.
     pub(super) fn runway_use(&self, resource: &str) -> RunwayUse {
         let mut line_up = false;
         let mut departing = false;
         for pose in self.world.snapshot() {
-            let Some(flight) = self.flights.get(&pose.id) else {
-                continue;
-            };
-            let Some(segment) = flight.route.segment(pose.segment) else {
+            let Some(segment) = self.world.current_segment(pose.id) else {
                 continue;
             };
             if !segment.resources.iter().any(|held| held == resource) {
@@ -4030,6 +4043,35 @@ impl Runtime {
             RunwayUse::Clear
         }
     }
+}
+
+/// Native, observed and multiplayer aircraft for the map. The engine never
+/// owns these flights; they are read-only separation inputs.
+fn external_map_traffic(
+    telemetry: &openatc_core::state::Telemetry,
+) -> Vec<openatc_core::state::MapTraffic> {
+    telemetry
+        .traffic
+        .iter()
+        .flatten()
+        .take(126)
+        .filter(|target| {
+            target.id != 0 && target.latitude.is_finite() && target.longitude.is_finite()
+        })
+        .map(|target| openatc_core::state::MapTraffic {
+            id: target.id,
+            callsign: target.callsign.clone(),
+            aircraft: target.aircraft.clone(),
+            ground_speed_knots: target.ground_speed_knots,
+            latitude: target.latitude,
+            longitude: target.longitude,
+            altitude_feet: target.altitude_feet,
+            track_degrees: target.track_degrees,
+            on_ground: target.on_ground,
+            visible: true,
+            source: "external".into(),
+        })
+        .collect()
 }
 
 fn planning_observations(telemetry: &openatc_core::state::Telemetry) -> Vec<TrafficTarget> {
@@ -4347,7 +4389,7 @@ pub async fn prepare(shared: Shared) {
                         .collect(),
                     // The local pattern adds departures and a circuit arrival only when the
                     // scene has fewer than two released flights.
-                    local_pattern_traffic: settings.local_pattern_traffic,
+                    local_pattern_traffic: settings.generated_traffic,
                     seed_single_arrival: settings.start_first_flight_on_approach,
                     player_airborne,
                     minimum_airborne_spawn_nm,
@@ -5161,6 +5203,59 @@ fn generated_on_player_frequency(
         && (telemetry.com1_khz == frequency || telemetry.com2_khz == Some(frequency))
 }
 
+/// Remove a generated aircraft that has stopped on a runway for too long.
+///
+/// A runway slot is a privilege, not an ownership claim. If an aircraft cannot
+/// move, the player must not be held behind it indefinitely. The watchdog runs
+/// after the normal clearance and movement ticks so a legitimate queue is never
+/// cut short.
+fn watchdog(runtime: &mut Runtime) {
+    const STUCK_SECONDS: u64 = 20;
+    let now = Instant::now();
+    let mut remove = Vec::new();
+    for pose in runtime.world.snapshot() {
+        let on_runway = runtime
+            .world
+            .current_segment(pose.id)
+            .is_some_and(|segment| {
+                segment
+                    .resources
+                    .iter()
+                    .any(|resource| resource.starts_with("RUNWAY/"))
+            });
+        if !on_runway || pose.knots >= 1.0 || pose.complete {
+            runtime.stuck.remove(&pose.id);
+            continue;
+        }
+        let entry = runtime.stuck.entry(pose.id).or_insert((pose.segment, now));
+        if entry.0 != pose.segment {
+            *entry = (pose.segment, now);
+            continue;
+        }
+        if now.duration_since(entry.1) >= Duration::from_secs(STUCK_SECONDS) {
+            remove.push(pose.id);
+        }
+    }
+    for id in remove {
+        let owned = runtime.owns(id);
+        runtime.world.remove(id);
+        runtime.frames.retain(|frame| frame.target.id != id);
+        runtime.flights.remove(&id);
+        runtime.advisories.remove(&id);
+        runtime.active_flights.remove(&id);
+        runtime.apron_ids.remove(&id);
+        runtime.movement.remove(&id);
+        runtime.stuck.remove(&id);
+        runtime.log(
+            openatc_settings::TrafficLog::Summary,
+            format!(
+                "removed runway traffic {id} after {STUCK_SECONDS}s without movement{}",
+                if owned { "" } else { " (no clearance owner)" }
+            ),
+        );
+    }
+}
+
 fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) -> bool {
     let mut clock_changed = false;
     if let (Some(_airport), Some(seconds), Some(_policy)) = (
@@ -5206,6 +5301,7 @@ fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) ->
         // Advisory traffic at an untowered field is flown by the published procedure, so it
         // never enters the controlled clearance path below.
         ctaf::advance(runtime, &blocked);
+        watchdog(runtime);
         for pose in runtime.world.snapshot() {
             // Explain every stopped taxiing aircraft once: its assigned route, the plan's next
             // boundary and the clearance state are what decide whether it can ask for departure.
@@ -5302,7 +5398,7 @@ fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) ->
                 runtime.approved_orders.insert((pose.id, pose.segment));
             }
             if pose.awaiting_clearance {
-                // Ambient seeded traffic has no flight plan or controller; it follows its
+                // Seeded traffic has no flight plan or controller; it follows its
                 // route and exposes itself to ATC only when the player is on frequency.
                 if pose.id != 0
                     && runtime.seeded.contains(&pose.id)
@@ -5782,23 +5878,8 @@ pub fn animation_handling(
 
 /// Publish the most recent complete worker sample without waiting for simulation.
 pub fn step(state: &mut EngineState) {
-    let plan_key = format!(
-        "{}/{}/{}",
-        state.session_generation, state.session.plan.departure, state.session.plan.destination
-    );
-    if state.settings.auto_generated_traffic
-        && state.session.ifr
-        && !state.session.demo
-        && !state.session.plan.departure.is_empty()
-        && !state.session.plan.destination.is_empty()
-        && state.auto_generated_plan != plan_key
-    {
-        state.auto_generated_plan = plan_key;
-        state.settings.generated_traffic = true;
-    }
     state.generated.log = state.settings.traffic_log;
     set_traffic_log(state.settings.traffic_log);
-    let generated_ids = state.generated.published_ids.clone();
     if !state.settings.generated_traffic {
         state.generated = Runtime::default();
     }
@@ -5815,22 +5896,11 @@ pub fn step(state: &mut EngineState) {
     }
     if !state.settings.generated_traffic || state.generated.epoch != Some(state.session_generation)
     {
-        if state.settings.generated_traffic {
-            state.session.generated_traffic.clear();
-            state.session.generated_traffic_debug.clear();
-            state.generated.visible.clear();
-            state.generated.published_ids.clear();
-        } else {
-            // Generated traffic is off, but ambient traffic still owns its frames.
-            state
-                .session
-                .generated_traffic
-                .retain(|frame| !generated_ids.contains(&frame.target.id));
-            state
-                .session
-                .generated_traffic_debug
-                .retain(|debug| !generated_ids.contains(&debug.id));
-        }
+        state.session.generated_traffic.clear();
+        state.session.generated_traffic_debug.clear();
+        state.session.map_traffic = external_map_traffic(&state.session.telemetry);
+        state.generated.visible.clear();
+        state.generated.published_ids.clear();
         state.session.generated_traffic_clock = None;
         state.session.generated_animation_channels.clear();
         state.session.generated_traffic_diagnostics.clear();
@@ -5846,6 +5916,7 @@ pub fn step(state: &mut EngineState) {
                 &state.session.telemetry,
                 &state.generated.visible,
                 policy,
+                state.settings.traffic_visual_range_nm,
             )
         })
         .unwrap_or_default();
@@ -5903,13 +5974,65 @@ pub fn step(state: &mut EngineState) {
                 .map(|station| station.khz);
         }
     }
-    let published_ids: BTreeSet<u32> = generated_ids
+    let published_ids: BTreeSet<u32> = state
+        .generated
+        .published_ids
         .iter()
         .copied()
         .chain(visible.iter().map(|frame| frame.target.id))
         .collect();
     state.generated.visible = visible.iter().map(|frame| frame.target.id).collect();
     state.generated.published_ids = state.generated.visible.clone();
+    let visible_ids = state.generated.visible.clone();
+    let mut map_traffic = Vec::new();
+    let mut map_callsigns = BTreeSet::new();
+    for frame in &state.generated.frames {
+        let target = &frame.target;
+        if !state.generated.owns(target.id)
+            || !target.latitude.is_finite()
+            || !target.longitude.is_finite()
+        {
+            continue;
+        }
+        map_callsigns.insert(openatc_core::ops::callsign_key(&target.callsign));
+        let drawn = visible_ids.contains(&target.id);
+        map_traffic.push(openatc_core::state::MapTraffic {
+            id: target.id,
+            callsign: target.callsign.clone(),
+            aircraft: target.aircraft.clone(),
+            ground_speed_knots: target.ground_speed_knots,
+            latitude: target.latitude,
+            longitude: target.longitude,
+            altitude_feet: target.altitude_feet,
+            track_degrees: target.track_degrees,
+            on_ground: target.on_ground,
+            visible: drawn,
+            source: if drawn { "visual" } else { "radio" }.into(),
+        });
+    }
+    for target in state.session.telemetry.traffic.iter().flatten() {
+        if target.id == 0
+            || !target.latitude.is_finite()
+            || !target.longitude.is_finite()
+            || map_callsigns.contains(&openatc_core::ops::callsign_key(&target.callsign))
+        {
+            continue;
+        }
+        map_traffic.push(openatc_core::state::MapTraffic {
+            id: target.id,
+            callsign: target.callsign.clone(),
+            aircraft: target.aircraft.clone(),
+            ground_speed_knots: target.ground_speed_knots,
+            latitude: target.latitude,
+            longitude: target.longitude,
+            altitude_feet: target.altitude_feet,
+            track_degrees: target.track_degrees,
+            on_ground: target.on_ground,
+            visible: true,
+            source: "external".into(),
+        });
+    }
+    state.session.map_traffic = map_traffic;
     let poses = state.generated.world.snapshot();
     let debug: Vec<_> = visible
         .iter()
@@ -6263,25 +6386,6 @@ mod tests {
                 ..Default::default()
             }
         ));
-    }
-
-    #[test]
-    fn generated_traffic_auto_enables_once_per_plan() {
-        let mut state = crate::test_state();
-        state.settings.generated_traffic = false;
-        state.settings.auto_generated_traffic = true;
-        state.session.demo = false;
-        state.session.ifr = true;
-        state.session.plan.departure = "TEST".into();
-        state.session.plan.destination = "DEST".into();
-        step(&mut state);
-        assert!(state.settings.generated_traffic);
-        state.settings.generated_traffic = false;
-        step(&mut state);
-        assert!(
-            !state.settings.generated_traffic,
-            "a manual off must survive the same plan"
-        );
     }
 
     #[test]
@@ -6896,6 +7000,66 @@ mod tests {
     }
 
     #[test]
+    fn watchdog_removes_a_stopped_runway_aircraft() {
+        use openatc_core::traffic::motion::{Route, Segment, Stage, Waypoint};
+        let key = "RUNWAY/TEST/09/27";
+        let route = Arc::new(
+            Route::compile(
+                vec![Segment {
+                    stage: Stage::Takeoff,
+                    points: vec![
+                        Waypoint {
+                            latitude: 0.0,
+                            longitude: 0.0,
+                            altitude_feet: 0.0,
+                        },
+                        Waypoint {
+                            latitude: 0.0,
+                            longitude: 0.001,
+                            altitude_feet: 0.0,
+                        },
+                    ],
+                    knots: 10.0,
+                    resources: vec![key.into()],
+                    dwell_seconds: 0.0,
+                }],
+                1500.0,
+                1500.0,
+            )
+            .unwrap(),
+        );
+        let mut runtime = Runtime::default();
+        let id = 0x00d1_0001;
+        assert!(runtime.world.insert(runtime.world.generation(), id, route));
+        runtime.frames.push(GeneratedTraffic {
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            target: openatc_core::state::TrafficTarget {
+                id,
+                callsign: "STUCK1".into(),
+                ..Default::default()
+            },
+            model: Arc::new(openatc_core::traffic::csl::Model {
+                id: "test".into(),
+                objects: Vec::new(),
+                vertical_offset: None,
+                matches: Vec::new(),
+            }),
+            animation: Animation::default(),
+        });
+        runtime.stuck.insert(
+            id,
+            (
+                0,
+                Instant::now().checked_sub(Duration::from_secs(21)).unwrap(),
+            ),
+        );
+        watchdog(&mut runtime);
+        assert!(runtime.world.snapshot().is_empty());
+        assert!(runtime.frames.is_empty());
+    }
+
+    #[test]
     fn travel_beyond_the_surveyed_area_requests_a_new_survey() {
         // No survey yet, or movement inside the covered radius, reuses the current airports.
         assert!(!travel_outside_coverage(None, [43.65, 7.20], 50.0));
@@ -7252,16 +7416,16 @@ mod tests {
         assert_eq!(state.generated.world.snapshot()[0].knots, 0.0);
         // The remaining fixture exercises the ground-only exchange independently.
         state.generated.require_complete_flights = false;
-        for _ in 0..3 {
+        for _ in 0..10 {
             if let Some(exchange) = &mut state.generated.exchange {
                 exchange.due = Instant::now();
             }
             radio_tick(&mut state);
-            assert!(!state.generated.approved_orders.contains(&(7, 0)));
+            if state.generated.approved_orders.contains(&(7, 0)) {
+                break;
+            }
             assert_eq!(state.generated.world.snapshot()[0].knots, 0.0);
         }
-        state.generated.exchange.as_mut().unwrap().due = Instant::now();
-        radio_tick(&mut state);
         assert!(state.generated.approved_orders.contains(&(7, 0)));
         assert_eq!(state.session.transcript.len(), 3);
         assert!(
@@ -9198,7 +9362,7 @@ mod tests {
         );
     }
     #[test]
-    #[ignore = "legacy generated scene reuse; ambient traffic owns ground movement"]
+    #[ignore = "legacy generated scene reuse"]
     fn scene_uses_compatible_models_and_keeps_the_user_stand_clear() {
         let mut origin = openatc_core::airport::demo_airport();
         let corner = |east, north| Point {

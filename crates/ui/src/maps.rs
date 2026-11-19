@@ -20,6 +20,7 @@ pub(crate) fn aircraft_symbol(
     center: [f32; 2],
     heading: f64,
     color: [f32; 4],
+    filled: bool,
 ) {
     // Headings are small whole degrees; pixels cannot tell the difference.
     #[allow(clippy::cast_possible_truncation)]
@@ -31,10 +32,10 @@ pub(crate) fn aircraft_symbol(
         ]
     };
     draw.add_triangle(point(0.0, 13.0), point(-8.0, -9.0), point(0.0, -5.0), color)
-        .filled(true)
+        .filled(filled)
         .build();
     draw.add_triangle(point(0.0, 13.0), point(0.0, -5.0), point(8.0, -9.0), color)
-        .filled(true)
+        .filled(filled)
         .build();
     draw.add_circle(center, 19.0, rgba(220, 241, 252, 70))
         .thickness(1.0)
@@ -494,7 +495,12 @@ fn draw_map(
         );
     }
     if interface.taxi_traffic_visible && !interface.settings.show_traffic_debug {
-        for target in crate::traffic::targets(state).take(126) {
+        for target in state
+            .map_traffic
+            .iter()
+            .filter(|target| map_category_visible(interface, map_category(&target.source)))
+            .take(126)
+        {
             if !target.latitude.is_finite()
                 || !target.longitude.is_finite()
                 || !target.track_degrees.is_finite()
@@ -514,7 +520,7 @@ fn draw_map(
             {
                 continue;
             }
-            draw_traffic(ui, draw, screen, target);
+            draw_traffic(ui, draw, screen, target, map_category(&target.source));
         }
     }
     if interface.settings.show_traffic_debug {
@@ -1110,18 +1116,63 @@ fn draw_approach_beam(
 }
 
 /// Ownship triangle or the outside-area/unavailable notes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MapCategory {
+    Visual,
+    Radio,
+    External,
+}
+
+pub(crate) fn map_category(source: &str) -> MapCategory {
+    match source {
+        "radio" => MapCategory::Radio,
+        "external" => MapCategory::External,
+        _ => MapCategory::Visual,
+    }
+}
+
+pub(crate) fn map_category_visible(
+    interface: &crate::interface::Interface,
+    category: MapCategory,
+) -> bool {
+    match category {
+        MapCategory::Visual => interface.settings.map_visual_traffic,
+        MapCategory::Radio => interface.settings.map_radio_traffic,
+        MapCategory::External => interface.settings.map_external_traffic,
+    }
+}
+
+impl MapCategory {
+    fn color(self) -> [f32; 4] {
+        match self {
+            Self::Visual => [0.35, 0.90, 0.55, 1.0],
+            Self::Radio => [1.0, 0.72, 0.25, 1.0],
+            Self::External => [0.35, 0.65, 1.0, 1.0],
+        }
+    }
+
+    fn filled(self) -> bool {
+        !matches!(self, Self::Radio)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Visual => "Visual",
+            Self::Radio => "ATC only",
+            Self::External => "External",
+        }
+    }
+}
+
 pub(crate) fn draw_traffic(
     ui: &imgui::Ui,
     draw: &imgui::DrawListMut<'_>,
     screen: [f32; 2],
-    target: &openatc_core::state::TrafficTarget,
+    target: &openatc_core::state::MapTraffic,
+    category: MapCategory,
 ) {
-    let color = if target.on_ground {
-        [0.4, 0.9, 0.65, 1.0]
-    } else {
-        [1.0, 0.65, 0.3, 1.0]
-    };
-    aircraft_symbol(draw, screen, target.track_degrees, color);
+    let color = category.color();
+    aircraft_symbol(draw, screen, target.track_degrees, color, category.filled());
     let label = if target.callsign.is_empty() {
         format!("Traffic {}", target.id)
     } else {
@@ -1131,7 +1182,7 @@ pub(crate) fn draw_traffic(
     let mouse = ui.io().mouse_pos;
     if (mouse[0] - screen[0]).hypot(mouse[1] - screen[1]) < 14.0 {
         ui.tooltip_text(format!(
-            "{label} / {}\n{} / {:.0} ft MSL\n{}\nName: {}\nCOM1: {}\nCOM2: {}",
+            "{label} / {}\n{} / {:.0} ft MSL\n{}\n{}",
             target.aircraft,
             if target.on_ground {
                 "On ground"
@@ -1143,24 +1194,9 @@ pub(crate) fn draw_traffic(
                 || "Speed unavailable".into(),
                 |speed| format!("{speed:.0} kt")
             ),
-            if target.name.is_empty() {
-                &label
-            } else {
-                &target.name
-            },
-            traffic_frequency(target.com1_khz),
-            traffic_frequency(target.com2_khz),
+            category.label(),
         ));
     }
-}
-
-fn traffic_frequency(channel: Option<i32>) -> String {
-    channel
-        .filter(|channel| (118_000..=136_990).contains(channel))
-        .map_or_else(
-            || "Unavailable".into(),
-            |channel| format!("{:.3} MHz", f64::from(channel) / 1000.0),
-        )
 }
 
 fn draw_ownship(
@@ -1190,6 +1226,7 @@ fn draw_ownship(
             project(&point),
             state.telemetry.heading_degrees,
             rgba(246, 251, 255, 255),
+            true,
         );
     } else {
         draw.add_text(
@@ -1236,6 +1273,16 @@ mod beam_tests {
         ];
         assert!((screen[0] - mouse[0]).abs() < 1e-3);
         assert!((screen[1] - mouse[1]).abs() < 1e-3);
+    }
+
+    #[cfg(test)]
+    fn traffic_frequency(channel: Option<i32>) -> String {
+        channel
+            .filter(|channel| (118_000..=136_990).contains(channel))
+            .map_or_else(
+                || "Unavailable".into(),
+                |channel| format!("{:.3} MHz", f64::from(channel) / 1000.0),
+            )
     }
 
     #[test]

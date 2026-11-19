@@ -3051,6 +3051,7 @@ mod tests {
                 &observer,
                 &BTreeSet::new(),
                 state.generated.policy.as_ref().unwrap(),
+                state.settings.traffic_visual_range_nm,
             );
             assert!(
                 visible.iter().any(|drawn| drawn.target.id == 1),

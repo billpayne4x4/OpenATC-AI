@@ -29,6 +29,7 @@ pub mod profiles;
 pub mod radiotelephony;
 pub mod readback;
 pub mod regions;
+pub mod route_monitor;
 pub mod simbrief;
 pub mod speech;
 pub mod state;
