@@ -683,7 +683,7 @@ pub(super) fn prepare_tower(
     let generation = scene.world.generation();
     let mut seed = input.epoch.wrapping_add(41);
     let mut added = 0u32;
-    for _departure in [false] {
+    for slot in 0..capacity {
         if added >= capacity as u32 {
             break;
         }
@@ -712,13 +712,19 @@ pub(super) fn prepare_tower(
         else {
             continue;
         };
-        if let Some(warning) = warning {
+        if let Some(warning) = warning
+            && !scene.warnings.contains(&warning)
+        {
             scene.warnings.push(warning);
         }
         let circuit = pattern.circuit().clone();
         let route = circuit.route();
         let local_runway = pattern.runway().to_owned();
         let straight_in = pattern.is_straight_in();
+        if straight_in && slot > 0 {
+            break;
+        }
+        let start = if straight_in { 0 } else { slot.min(2) };
         let identity = LOCAL_ID_BASE + added + 1;
         if scene.frames.iter().any(|frame| frame.target.id == identity)
             || input.observed.iter().any(|target| target.id == identity)
@@ -740,7 +746,7 @@ pub(super) fn prepare_tower(
         };
         if !scene
             .world
-            .insert_advisory(generation, identity, route.clone(), 0)
+            .insert_advisory(generation, identity, route.clone(), start)
         {
             scene.warnings.push(format!(
                 "{}: local Tower traffic could not be admitted",
@@ -769,7 +775,7 @@ pub(super) fn prepare_tower(
                 cross: None,
                 controlled: true,
                 runway: local_runway,
-                cleared: false,
+                cleared: slot > 0,
             },
         );
         scene.frames.push(frame);
@@ -2161,9 +2167,10 @@ mod tests {
             local_spares: Vec::new(),
         };
         prepare_tower(&mut scene, &input, &handling);
-        assert!(
-            !scene.frames.is_empty(),
-            "YSCB must keep a local circuit: {:?}",
+        assert_eq!(
+            scene.frames.len(),
+            3,
+            "YSCB must keep its local circuits: {:?}",
             scene.warnings
         );
         assert!(scene.advisories.values().all(|plan| plan.controlled));
