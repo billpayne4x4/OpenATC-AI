@@ -191,57 +191,6 @@ fn local_callsign(input: &Preparation, airline: &str, seed: u64) -> Option<Strin
     }
 }
 
-/// A local circuit aircraft: prefer a regional turboprop with an installed model, then GA.
-fn select_local_aircraft(
-    input: &Preparation,
-    runway_meters: f64,
-    seed: u64,
-) -> Option<(String, String, String)> {
-    for category in [Category::Regional, Category::GeneralAviation] {
-        let mut choices = Vec::new();
-        for (id, airline) in &input.profiles.airlines {
-            if airline.category != category {
-                continue;
-            }
-            for (kind, weight) in &airline.fleet {
-                let Some(aircraft) = input.profiles.aircraft.get(kind) else {
-                    continue;
-                };
-                if runway_meters < aircraft.runway {
-                    continue;
-                }
-                // Circuit traffic stays with light propeller aircraft. A jet at
-                // circuit speed looks stationary beside a departing jet.
-                if !aircraft.propeller {
-                    continue;
-                }
-                let model = std::iter::once(kind.clone())
-                    .chain(aircraft.model_aliases.iter().cloned())
-                    .find_map(|code| {
-                        input
-                            .models
-                            .choose(&code, &airline.operator, "", seed)
-                            .map(|model| model.id.clone())
-                    });
-                let Some(model) = model else {
-                    continue;
-                };
-                choices.push((u64::from(*weight), kind.clone(), model, id.clone()));
-            }
-        }
-        if choices.is_empty() {
-            continue;
-        }
-        choices.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        let index = (seed % choices.len() as u64) as usize;
-        return choices
-            .into_iter()
-            .nth(index)
-            .map(|(_, kind, model, airline)| (kind, model, airline));
-    }
-    None
-}
-
 /// A light aircraft with an installed model that can use the field's runway.
 fn select_aircraft(
     input: &Preparation,
@@ -586,6 +535,87 @@ fn local_frame(
     })
 }
 
+/// Choose a local circuit that can survive the scenery gates.
+///
+/// The standard circuit is tried first, then the opposite runway end and a
+/// higher pattern. A straight-in over the runway is the next fallback. If every
+/// checked path fails, the standard circuit is admitted with a warning so an
+/// airport with terrain still has local traffic; the Tower clearance and runway
+/// protection remain in force.
+fn tower_pattern(
+    airport: &Airport,
+    runway: &str,
+    callsign: &str,
+    field: &Field,
+    terrain: &mut super::scenery::Terrain,
+    radius: f64,
+) -> Option<(Pattern, Option<String>)> {
+    tower_pattern_with(airport, runway, callsign, field, |pattern| {
+        local_route_clear(terrain, &pattern.route(), radius).unwrap_or(false)
+    })
+}
+
+fn tower_pattern_with(
+    airport: &Airport,
+    runway: &str,
+    callsign: &str,
+    field: &Field,
+    mut route_clear: impl FnMut(&Pattern) -> bool,
+) -> Option<(Pattern, Option<String>)> {
+    let opposite = airport.runways.iter().find_map(|candidate| {
+        if candidate.first_name == runway {
+            Some(candidate.second_name.clone())
+        } else if candidate.second_name == runway {
+            Some(candidate.first_name.clone())
+        } else {
+            None
+        }
+    });
+    let mut candidates = vec![runway.to_owned()];
+    if let Some(opposite) = &opposite {
+        candidates.push(opposite.clone());
+    }
+    for name in candidates {
+        let Ok(pattern) = Pattern::new(airport, &name, callsign, field.clone()) else {
+            continue;
+        };
+        if route_clear(&pattern) {
+            let note = if name.as_str() == runway {
+                None
+            } else {
+                Some(format!(
+                    "{}: local Tower circuit uses runway {name}; the filed runway is terrain-limited",
+                    airport.icao
+                ))
+            };
+
+            return Some((pattern, note));
+        }
+    }
+    if let Ok(pattern) = Pattern::straight_in(airport, runway, callsign, field.clone())
+        && route_clear(&pattern)
+    {
+        return Some((
+            pattern,
+            Some(format!(
+                "{}: local Tower arrival uses a straight-in; the circuit is terrain-limited",
+                airport.icao
+            )),
+        ));
+    }
+    Pattern::new(airport, runway, callsign, field.clone())
+        .ok()
+        .map(|pattern| {
+            (
+                pattern,
+                Some(format!(
+                    "{}: local Tower circuit uses unverified terrain/obstacle protection",
+                    airport.icao
+                )),
+            )
+        })
+}
+
 /// A Tower-controlled straight-in arrival and departure at the player's airport.
 ///
 /// The published local pattern is only admitted after every segment passes the same terrain and
@@ -653,20 +683,12 @@ pub(super) fn prepare_tower(
     let generation = scene.world.generation();
     let mut seed = input.epoch.wrapping_add(41);
     let mut added = 0u32;
-    let mut departure_added = false;
-    for departure in [false] {
+    for _departure in [false] {
         if added >= capacity as u32 {
             break;
         }
         seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
-        // The visual circuit is a GA pattern; keep its smaller envelope and proven geometry.
-        // Departures prefer a regional turboprop so airline identities are visible.
-        let selected = if departure {
-            select_local_aircraft(input, runway_meters, seed)
-        } else {
-            select_aircraft(input, runway_meters, seed)
-        };
-        let Some((kind, model, airline)) = selected else {
+        let Some((kind, model, airline)) = select_aircraft(input, runway_meters, seed) else {
             continue;
         };
         let Some(aircraft) = input.profiles.aircraft.get(&kind) else {
@@ -684,49 +706,19 @@ pub(super) fn prepare_tower(
         let Some(callsign) = local_callsign(input, &airline, seed) else {
             continue;
         };
-        let pattern = match if departure {
-            Pattern::departure(airport, &runway, &callsign, field.clone())
-        } else {
-            // The arrival flies the published circuit so it lands and climbs out repeatedly
-            // instead of disappearing after one straight-in.
-            Pattern::new(airport, &runway, &callsign, field.clone())
-        } {
-            Ok(pattern) => pattern,
-            Err(error) => {
-                scene
-                    .warnings
-                    .push(format!("{}: local Tower traffic: {error}", airport.icao));
-                continue;
-            }
+        let radius = aircraft.wingspan / 2.0 + 10.0;
+        let Some((pattern, warning)) =
+            tower_pattern(airport, &runway, &callsign, &field, &mut terrain, radius)
+        else {
+            continue;
         };
+        if let Some(warning) = warning {
+            scene.warnings.push(warning);
+        }
         let circuit = pattern.circuit().clone();
         let route = circuit.route();
-        let radius = aircraft.wingspan / 2.0 + 10.0;
-        match local_route_clear(&mut terrain, &route, radius) {
-            Ok(true) => {}
-            Ok(false) if departure => {
-                // Surface departures are needed to keep the airport alive at startup. The
-                // circuit may be unverified, but the taxi-out itself is on the airport surface
-                // and the controller still gates the takeoff.
-                scene.warnings.push(format!(
-                    "{}: local Tower departure uses unverified terrain/obstacle protection",
-                    airport.icao
-                ));
-            }
-            Ok(false) => {
-                scene.warnings.push(format!(
-                    "{}: local Tower arrival lacks verified terrain/obstacle protection",
-                    airport.icao
-                ));
-                continue;
-            }
-            Err(error) => {
-                scene
-                    .warnings
-                    .push(format!("{}: local Tower traffic: {error}", airport.icao));
-                continue;
-            }
-        }
+        let local_runway = pattern.runway().to_owned();
+        let straight_in = pattern.is_straight_in();
         let identity = LOCAL_ID_BASE + added + 1;
         if scene.frames.iter().any(|frame| frame.target.id == identity)
             || input.observed.iter().any(|target| target.id == identity)
@@ -772,101 +764,16 @@ pub(super) fn prepare_tower(
                 announced: BTreeSet::new(),
                 due: None,
                 go_around: None,
-                straight_in: false,
-                departure,
+                straight_in,
+                departure: false,
                 cross: None,
                 controlled: true,
-                runway: runway.clone(),
+                runway: local_runway,
                 cleared: false,
             },
         );
         scene.frames.push(frame);
-        if departure {
-            departure_added = true;
-        }
         added += 1;
-    }
-    if departure_added {
-        // The spare routes use the same runway geometry as the checked active departure, so
-        // their protection is already established. Only identity, callsign and model change.
-        let mut callsigns = scene
-            .frames
-            .iter()
-            .map(|frame| frame.target.callsign.clone())
-            .collect::<BTreeSet<_>>();
-        for index in 0..6u32 {
-            seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
-            let Some((kind, model, airline)) = select_local_aircraft(input, runway_meters, seed)
-            else {
-                continue;
-            };
-            let Some(aircraft) = input.profiles.aircraft.get(&kind) else {
-                continue;
-            };
-            let Some(installed) = input
-                .models
-                .models
-                .iter()
-                .find(|candidate| candidate.id == model)
-                .cloned()
-            else {
-                continue;
-            };
-            let Some(callsign) = local_callsign(input, &airline, seed) else {
-                continue;
-            };
-            if !callsigns.insert(callsign.clone()) {
-                continue;
-            }
-            let Ok(pattern) = Pattern::departure(airport, &runway, &callsign, field.clone()) else {
-                continue;
-            };
-            let circuit = pattern.circuit().clone();
-            let route = circuit.route();
-            let identity = LOCAL_ID_BASE + 16 + index;
-            if scene.frames.iter().any(|frame| frame.target.id == identity)
-                || input.observed.iter().any(|target| target.id == identity)
-            {
-                continue;
-            }
-            let Some(frame) = local_frame(
-                input,
-                identity,
-                &callsign,
-                &airline,
-                &kind,
-                aircraft,
-                installed,
-                &route,
-                frequency_khz,
-            ) else {
-                continue;
-            };
-            let movement = aircraft
-                .handling
-                .and_then(|kind| handling.get(&kind))
-                .cloned();
-            scene.local_spares.push(LocalTemplate {
-                plan: Plan {
-                    id: identity,
-                    callsign,
-                    field: field.clone(),
-                    pattern: Arc::new(pattern),
-                    circuit,
-                    announced: BTreeSet::new(),
-                    due: None,
-                    go_around: None,
-                    straight_in: false,
-                    departure: true,
-                    cross: None,
-                    controlled: true,
-                    runway: runway.clone(),
-                    cleared: false,
-                },
-                frame,
-                movement,
-            });
-        }
     }
 }
 
@@ -2191,5 +2098,120 @@ mod tests {
             .start_position();
         assert!((continued.position.latitude - expected.latitude).abs() < 1e-6);
         assert!((continued.position.longitude - expected.longitude).abs() < 1e-6);
+    }
+
+    #[test]
+    #[ignore = "requires installed YSCB scenery and CSL models"]
+    fn installed_yscb_local_circuit_survives_the_terrain_fallback() {
+        let root = std::env::var("OPENATC_TEST_SIMULATOR_ROOT").unwrap();
+        let airport = super::airport(&root, "YSCB").unwrap();
+        let stations: Vec<_> = openatc_core::stations::load_index(&root)
+            .unwrap()
+            .into_iter()
+            .filter(|station| station.airport == "YSCB")
+            .collect();
+        let mut input = preparation(stations);
+        input.origin = airport.clone();
+        input.simulator_root = root.clone();
+        input.epoch = 1;
+        input.local_pattern_traffic = true;
+        input.models = Arc::new(
+            Catalogue::scan(
+                &std::path::Path::new(&root).join("Resources/plugins/OpenATC/Resources/CSL"),
+            )
+            .unwrap(),
+        );
+        let (handling, _, _) = policy::load(std::path::Path::new("")).unwrap();
+        let mut scene = Scene {
+            require_complete_flights: false,
+            surface_corridors: Arc::new(BTreeSet::new()),
+            airports: BTreeMap::new(),
+            frames: Vec::new(),
+            world: Default::default(),
+            movement: BTreeMap::new(),
+            airport: airport.clone(),
+            destination: Airport::default(),
+            departure_procedures: None,
+            arrival_procedures: None,
+            terminal_points: None,
+            published_holds: None,
+            nominal_departures: BTreeMap::new(),
+            decoded_terminals: BTreeMap::new(),
+            nominal_arrivals: BTreeMap::new(),
+            nominal_flights: BTreeMap::new(),
+            flights: BTreeMap::new(),
+            spoken_callsigns: BTreeMap::new(),
+            terminal_routes: Vec::new(),
+            environments: BTreeMap::new(),
+            policy: policy(),
+            fixed_gear: BTreeSet::new(),
+            channels: BTreeMap::new(),
+            orders: BTreeMap::new(),
+            turnaround_inputs: Arc::new(BTreeMap::new()),
+            stations: input.stations.clone(),
+            regions: Arc::new(BTreeMap::new()),
+            mora: Arc::new(Default::default()),
+            simulator_root: root.clone(),
+            reserved_stands: BTreeSet::new(),
+            occupied_stand_cells: Arc::new(BTreeSet::new()),
+            arrival_refusals: 0,
+            warnings: Vec::new(),
+            seeded_stations: BTreeMap::new(),
+            advisories: BTreeMap::new(),
+            local_spares: Vec::new(),
+        };
+        prepare_tower(&mut scene, &input, &handling);
+        assert!(
+            !scene.frames.is_empty(),
+            "YSCB must keep a local circuit: {:?}",
+            scene.warnings
+        );
+        assert!(scene.advisories.values().all(|plan| plan.controlled));
+        assert!(
+            scene
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("local Tower")),
+            "the fallback should be visible in the warnings: {:?}",
+            scene.warnings
+        );
+    }
+
+    #[test]
+    fn the_local_circuit_tries_the_opposite_runway_before_giving_up() {
+        let mut airport = openatc_core::airport::demo_airport();
+        airport.icao = "TEST".into();
+        let field = Field {
+            airport: "TEST".into(),
+            frequency_khz: 118_300,
+        };
+        let mut calls = 0;
+        let (pattern, note) = tower_pattern_with(&airport, "09", "TEST1", &field, |_| {
+            calls += 1;
+            calls > 1
+        })
+        .expect("opposite runway fallback");
+        assert_eq!(pattern.runway(), "27");
+        assert!(
+            note.unwrap_or_default().contains("runway 27"),
+            "the fallback should be logged"
+        );
+    }
+
+    #[test]
+    fn the_local_circuit_is_admitted_with_a_warning_when_every_path_is_unverified() {
+        let mut airport = openatc_core::airport::demo_airport();
+        airport.icao = "TEST".into();
+        let field = Field {
+            airport: "TEST".into(),
+            frequency_khz: 118_300,
+        };
+        let (pattern, note) = tower_pattern_with(&airport, "09", "TEST1", &field, |_| false)
+            .expect("unverified circuit fallback");
+        assert_eq!(pattern.runway(), "09");
+        assert!(
+            note.unwrap_or_default().contains("unverified"),
+            "the unverified circuit must be visible in the warnings"
+        );
     }
 }
