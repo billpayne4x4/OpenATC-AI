@@ -1640,9 +1640,26 @@ fn local_departure_queue(runtime: &mut Runtime) {
             .unwrap_or_default();
         let owner = runtime.world.resource_owner(&runway);
         let wake = runtime.departure_wake.get(&id).copied().unwrap_or(0.0);
+        let arrival_on_final = runtime.airport.as_ref().is_some_and(|airport| {
+            runtime.advisories.iter().any(|(id, plan)| {
+                !plan.departure
+                    && plan.controlled
+                    && plan.final_segment().is_some_and(|segment| {
+                        poses.iter().any(|pose| {
+                            pose.id == *id
+                                && pose.segment == segment
+                                && pose.stage == openatc_core::traffic::motion::Stage::Approach
+                                && openatc_core::arrival::distance_nm(
+                                    [airport.reference_latitude, airport.reference_longitude],
+                                    [pose.position.latitude, pose.position.longitude],
+                                ) <= 5.0
+                        })
+                    })
+            })
+        });
         if let Some(plan) = runtime.advisories.get_mut(&id) {
             plan.wake_caution = wake > 0.0;
-            if owner.is_none() && wake <= 0.0 && plan.line_up_announced {
+            if owner.is_none() && wake <= 0.0 && plan.line_up_announced && !arrival_on_final {
                 plan.takeoff_cleared = true;
             }
         }
