@@ -2460,6 +2460,49 @@ fn prepare_scene(
 }
 
 impl Scene {
+    /// A scene with only the local airport traffic; the network planner fills
+    /// the rest later.
+    fn local(input: &Preparation, policy: Operations) -> Self {
+        Self {
+            require_complete_flights: false,
+            surface_corridors: Arc::new(BTreeSet::new()),
+            airports: BTreeMap::new(),
+            frames: Vec::new(),
+            world: Default::default(),
+            movement: BTreeMap::new(),
+            airport: input.origin.clone(),
+            destination: input.destination.clone(),
+            departure_procedures: None,
+            arrival_procedures: None,
+            terminal_points: None,
+            published_holds: None,
+            nominal_departures: BTreeMap::new(),
+            decoded_terminals: BTreeMap::new(),
+            nominal_arrivals: BTreeMap::new(),
+            nominal_flights: BTreeMap::new(),
+            flights: BTreeMap::new(),
+            spoken_callsigns: BTreeMap::new(),
+            terminal_routes: Vec::new(),
+            environments: BTreeMap::new(),
+            policy,
+            fixed_gear: BTreeSet::new(),
+            channels: BTreeMap::new(),
+            orders: BTreeMap::new(),
+            turnaround_inputs: Arc::new(BTreeMap::new()),
+            stations: input.stations.clone(),
+            regions: Arc::new(BTreeMap::new()),
+            mora: Arc::new(Default::default()),
+            simulator_root: input.simulator_root.clone(),
+            reserved_stands: BTreeSet::new(),
+            occupied_stand_cells: Arc::new(BTreeSet::new()),
+            arrival_refusals: 0,
+            warnings: Vec::new(),
+            seeded_stations: BTreeMap::new(),
+            advisories: BTreeMap::new(),
+            local_spares: Vec::new(),
+        }
+    }
+
     fn observe_prepared(&self, request: &mut Preparation) {
         request
             .reserved_surface_corridors
@@ -4336,6 +4379,19 @@ pub async fn prepare(shared: Shared) {
             workers.count()
         ),
     );
+    let (local_tx, mut local_rx) = tokio::sync::mpsc::channel::<Scene>(1);
+    let publisher = tokio::spawn({
+        let shared = shared.clone();
+        let key = key.clone();
+        async move {
+            while let Some(scene) = local_rx.recv().await {
+                let mut state = shared.write().await;
+                if state.session_generation == epoch {
+                    publish_scene(&mut state.generated, scene, key.clone(), epoch);
+                }
+            }
+        }
+    });
     let result = async {
         let profiles = profiles.get(&config, &workers, false).await?;
         let models = models.models(&settings.simulator_root, &workers).await?;
@@ -4395,6 +4451,11 @@ pub async fn prepare(shared: Shared) {
                     minimum_airborne_spawn_nm,
                     airport_codes,
                 };
+                {
+                    let mut local = Scene::local(&input, policy.clone());
+                    ctaf::prepare(&mut local, &input);
+                    let _ = local_tx.blocking_send(local);
+                }
                 match network {
                     None => network::survey(&input, survey_key)
                         .map(|plan| PreparedJob::Survey(Arc::new(plan))),
@@ -4409,6 +4470,7 @@ pub async fn prepare(shared: Shared) {
             .await?
     }
     .await;
+    let _ = publisher.await;
     let mut state = shared.write().await;
     if !finish_job(&mut state.generated.preparation_job, job) {
         return;
