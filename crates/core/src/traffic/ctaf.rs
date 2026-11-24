@@ -116,6 +116,15 @@ pub struct Circuit {
 }
 
 impl Circuit {
+    /// Build a circuit from an explicit route and advisory legs.
+    ///
+    /// Local surface departures use this to map the hold, takeoff and climb
+    /// segments onto one procedure without inventing a second circuit.
+    #[must_use]
+    pub fn new(route: Arc<Route>, legs: Vec<Leg>) -> Self {
+        Self { route, legs }
+    }
+
     /// Geometry of this circuit.
     #[must_use]
     pub fn route(&self) -> Arc<Route> {

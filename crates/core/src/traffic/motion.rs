@@ -1226,6 +1226,14 @@ impl World {
         );
         true
     }
+    /// Whether the aircraft has movement authority for its current segment.
+    #[must_use]
+    pub fn is_authorised(&self, id: u32) -> bool {
+        self.aircraft
+            .get(&id)
+            .is_some_and(|aircraft| aircraft.authorised)
+    }
+
     /// Clear inherited movement authority without changing the aircraft's position.
     pub fn clear_authority(&mut self, id: u32) {
         if let Some(aircraft) = self.aircraft.get_mut(&id) {
@@ -1367,6 +1375,26 @@ impl World {
         true
     }
 
+    /// Insert a local procedure that starts on the surface and later needs
+    /// advisory authorisation for its takeoff and climb.
+    pub fn insert_local(
+        &mut self,
+        generation: u64,
+        id: u32,
+        route: std::sync::Arc<Route>,
+        segment: usize,
+    ) -> bool {
+        if !self.insert(generation, id, route) {
+            return false;
+        }
+        if segment > 0 && !self.place_on_segment(id, segment) {
+            self.remove(id);
+            return false;
+        }
+        self.advisory.insert(id);
+        true
+    }
+
     /// Admit an aircraft that flies a published advisory procedure with no controller behind it.
     ///
     /// The procedure is the authority for this traffic, so the aircraft is admitted without
@@ -1425,7 +1453,17 @@ impl World {
         };
         if !matches!(
             current.stage,
-            Stage::Climb | Stage::Cruise | Stage::Descent | Stage::Approach | Stage::Rollout
+            Stage::Pushback
+                | Stage::TaxiOut
+                | Stage::TaxiIn
+                | Stage::Holding
+                | Stage::LineUp
+                | Stage::Takeoff
+                | Stage::Climb
+                | Stage::Cruise
+                | Stage::Descent
+                | Stage::Approach
+                | Stage::Rollout
         ) {
             return false;
         }

@@ -4487,6 +4487,53 @@ fn frames_overlap(first: &GeneratedTraffic, second: &GeneratedTraffic) -> bool {
     latitude.hypot(longitude) <= APRON_MATCH_METERS
 }
 
+/// Carry live local circuits and CTAF traffic into a replacement scene.
+///
+/// Local traffic is not a planned flight, so the smaller-scene guard cannot see it
+/// in `flights`. Without this merge a network or empty scene replaces the local
+/// aircraft and the airport goes silent.
+fn preserve_local(scene: &mut Scene, previous: &Runtime) {
+    let generation = scene.world.generation();
+    for (id, plan) in &previous.advisories {
+        if scene.advisories.contains_key(id)
+            || scene.frames.iter().any(|frame| frame.target.id == *id)
+        {
+            continue;
+        }
+        let Some(pose) = previous
+            .world
+            .snapshot()
+            .into_iter()
+            .find(|pose| pose.id == *id)
+        else {
+            continue;
+        };
+        let route = plan
+            .cross
+            .as_ref()
+            .map_or_else(|| plan.circuit.route(), |cross| cross.route());
+        let inserted = if plan.departure {
+            scene
+                .world
+                .insert_local(generation, *id, route, pose.segment)
+        } else {
+            scene
+                .world
+                .insert_advisory(generation, *id, route, pose.segment)
+        };
+        if !inserted {
+            continue;
+        }
+        if let Some(movement) = previous.movement.get(id) {
+            scene.movement.insert(*id, movement.clone());
+        }
+        if let Some(frame) = previous.frames.iter().find(|frame| frame.target.id == *id) {
+            scene.frames.push(frame.clone());
+        }
+        scene.advisories.insert(*id, plan.clone());
+    }
+}
+
 /// Keep the apron visual for stands that the production scene only fills with another parked
 /// aircraft. Released flights still take their stand so their movement and controller identity
 /// remain visible.
@@ -4535,6 +4582,24 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
     // A scene for another airport is different: the old traffic belongs to the departure airport
     // and must not stay visible after the player has landed elsewhere.
     let replacing_airport = replaces_airport(runtime, &scene.airport);
+    if !replacing_airport {
+        preserve_local(&mut scene, runtime);
+    }
+    let live_local = runtime
+        .advisories
+        .keys()
+        .filter(|id| ctaf::is_generated(**id))
+        .count();
+    let next_local = scene
+        .advisories
+        .keys()
+        .filter(|id| ctaf::is_generated(**id))
+        .count();
+    if !replacing_airport && live_local > 0 && next_local < live_local {
+        runtime.status =
+            "Smaller local traffic scene skipped; the live traffic owns the airport".into();
+        return;
+    }
     if !replacing_airport
         && !runtime.flights.is_empty()
         && scene.flights.len() < runtime.flights.len()

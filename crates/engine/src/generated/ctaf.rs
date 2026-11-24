@@ -524,7 +524,7 @@ fn local_frame(
             longitude: start.longitude,
             altitude_feet: start.altitude_feet,
             track_degrees: track,
-            on_ground: false,
+            on_ground: first.stage.on_ground(),
             ground_speed_knots: Some(first.knots),
             wingspan_meters: Some(aircraft.wingspan),
             com1_khz: Some(frequency_khz),
@@ -689,6 +689,10 @@ pub(super) fn prepare_tower(
         }
         seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
         let Some((kind, model, airline)) = select_aircraft(input, runway_meters, seed) else {
+            scene.warnings.push(format!(
+                "{}: local surface departure has no installed light aircraft",
+                airport.icao
+            ));
             continue;
         };
         let Some(aircraft) = input.profiles.aircraft.get(&kind) else {
@@ -783,6 +787,317 @@ pub(super) fn prepare_tower(
     }
 }
 
+/// Local surface departures for the player's airport.
+///
+/// Each aircraft is a local `Plan`: it taxis from a stand, makes a ready call
+/// at the hold, receives a Tower takeoff clearance, rolls and climbs out. The
+/// old surface path inserted a pose without a flight or clearance contract; this
+/// one keeps the same procedure and clearance machinery as the local circuits.
+fn prepare_local_departures(
+    scene: &mut Scene,
+    input: &Preparation,
+    handling: &std::collections::BTreeMap<animation::Kind, animation::Handling>,
+    policy: &Operations,
+) {
+    if input.simulator_root.is_empty() {
+        return;
+    }
+    let airport = &input.origin;
+    let Some(frequency_khz) = tower_frequency(airport, &input.stations) else {
+        return;
+    };
+    let runway = if airport
+        .runways
+        .iter()
+        .any(|runway| runway.first_name == input.runway || runway.second_name == input.runway)
+    {
+        input.runway.clone()
+    } else {
+        let Some(runway) = longest_runway(airport) else {
+            return;
+        };
+        runway
+    };
+    let Some(runway_data) = airport
+        .runways
+        .iter()
+        .find(|candidate| candidate.first_name == runway || candidate.second_name == runway)
+        .cloned()
+    else {
+        return;
+    };
+    let runway_meters = (runway_data.second.east - runway_data.first.east)
+        .hypot(runway_data.second.north - runway_data.first.north);
+    let (threshold_point, far_point) = if runway_data.first_name == runway {
+        (runway_data.first, runway_data.second)
+    } else {
+        (runway_data.second, runway_data.first)
+    };
+    let to_waypoint = |point: openatc_core::state::Point, altitude: f64| {
+        openatc_core::traffic::motion::Waypoint {
+            latitude: airport.reference_latitude + point.north / 111_320.0,
+            longitude: airport.reference_longitude
+                + point.east
+                    / (111_320.0 * (airport.reference_latitude.to_radians().cos()).max(0.01)),
+            altitude_feet: altitude,
+        }
+    };
+    let threshold = to_waypoint(threshold_point, airport.elevation_feet);
+    let (east, north) = (
+        far_point.east - threshold_point.east,
+        far_point.north - threshold_point.north,
+    );
+    let length = east.hypot(north).max(1.0);
+    let far_point = openatc_core::state::Point {
+        east: far_point.east + east / length * 5_000.0,
+        north: far_point.north + north / length * 5_000.0,
+        ..far_point
+    };
+    let far = to_waypoint(far_point, airport.elevation_feet + 1_000.0);
+    let field = Field {
+        airport: airport.icao.clone(),
+        frequency_khz,
+    };
+    let target = input.taxi_target.clamp(2, 6).min(3);
+    let generation = scene.world.generation();
+    let mut used_stands = BTreeSet::new();
+    let mut seed = input.epoch.wrapping_add(0x9E37_79B9);
+    for slot in 0..target {
+        seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
+        let Some((kind, model, airline)) = select_aircraft(input, runway_meters, seed) else {
+            scene.warnings.push(format!(
+                "{}: local surface departure has no installed light aircraft",
+                airport.icao
+            ));
+            continue;
+        };
+        let Some(aircraft) = input.profiles.aircraft.get(&kind) else {
+            continue;
+        };
+        let Some(installed) = input
+            .models
+            .models
+            .iter()
+            .find(|candidate| candidate.id == model)
+            .cloned()
+        else {
+            scene.warnings.push(format!(
+                "{}: local surface departure {kind} has no installed model",
+                airport.icao
+            ));
+            continue;
+        };
+        let Some(handling_kind) = aircraft.handling else {
+            scene.warnings.push(format!(
+                "{}: local surface departure {kind} has no handling profile",
+                airport.icao
+            ));
+            continue;
+        };
+        let Some(handling_for) = handling.get(&handling_kind) else {
+            scene.warnings.push(format!(
+                "{}: local surface departure {kind} has no ground movement",
+                airport.icao
+            ));
+            continue;
+        };
+        let mut first_error = None;
+        let Some((stand, plan)) = airport
+            .parking
+            .iter()
+            .filter(|stand| {
+                !input.reserved_stands.contains(&stand.name)
+                    && !used_stands.contains(&stand.name)
+                    && stand
+                        .size
+                        .chars()
+                        .next()
+                        .is_some_and(|size| size >= aircraft.parking_size())
+            })
+            .find_map(|stand| {
+                match super::ground_route(
+                    airport,
+                    stand.point,
+                    stand.heading,
+                    stand.kind == "gate",
+                    aircraft,
+                    handling_for,
+                    &runway,
+                    seed,
+                    policy,
+                    false,
+                    &input.observed,
+                    false,
+                ) {
+                    Ok(plan) => Some((stand, plan)),
+                    Err(error) => {
+                        first_error.get_or_insert(format!("{}: {error}", stand.name));
+                        None
+                    }
+                }
+            })
+        else {
+            scene.warnings.push(format!(
+                "{}: local surface departure: {}",
+                airport.icao,
+                first_error.unwrap_or_else(|| "no compatible stand".into())
+            ));
+            continue;
+        };
+        let surface_count = plan.route.segment_count();
+        if surface_count == 0 {
+            scene.warnings.push(format!(
+                "{}: local surface departure has an empty taxi route",
+                airport.icao
+            ));
+            continue;
+        }
+        let hold = plan.route.end_position();
+        let mut segments: Vec<openatc_core::traffic::motion::Segment> = (0..surface_count)
+            .filter_map(|index| plan.route.segment(index).cloned())
+            .collect();
+        segments.push(openatc_core::traffic::motion::Segment {
+            stage: openatc_core::traffic::motion::Stage::Takeoff,
+            points: vec![hold, threshold],
+            knots: 120.0,
+            resources: vec![format!(
+                "RUNWAY/{}/{}/{}",
+                airport.icao, runway_data.first_name, runway_data.second_name
+            )],
+            dwell_seconds: 0.0,
+        });
+        segments.push(openatc_core::traffic::motion::Segment {
+            stage: openatc_core::traffic::motion::Stage::Climb,
+            points: vec![threshold, far],
+            knots: 160.0,
+            resources: vec![],
+            dwell_seconds: 0.0,
+        });
+        let route = match openatc_core::traffic::motion::Route::compile_departure(
+            segments,
+            aircraft.climb_fpm,
+            aircraft.descent_fpm,
+        ) {
+            Ok(route) => route,
+            Err(error) => {
+                scene.warnings.push(format!(
+                    "{}: local surface departure route: {error}",
+                    airport.icao
+                ));
+                continue;
+            }
+        };
+        let route = Arc::new(route);
+        let hold_index = surface_count - 1;
+        let takeoff_index = surface_count;
+        let climb_index = surface_count + 1;
+        let identity = LOCAL_ID_BASE + 0x100 + u32::try_from(slot).unwrap_or(0);
+        if scene.frames.iter().any(|frame| frame.target.id == identity)
+            || input.observed.iter().any(|target| target.id == identity)
+        {
+            continue;
+        }
+        let Some(callsign) = local_callsign(input, &airline, seed) else {
+            scene.warnings.push(format!(
+                "{}: local surface departure has no callsign",
+                airport.icao
+            ));
+            continue;
+        };
+        let Some(frame) = local_frame(
+            input,
+            identity,
+            &callsign,
+            &airline,
+            &kind,
+            aircraft,
+            installed,
+            &route,
+            frequency_khz,
+        ) else {
+            continue;
+        };
+        let Ok(pattern) = Pattern::departure(airport, &runway, &callsign, field.clone()) else {
+            continue;
+        };
+        let legs = vec![
+            openatc_core::traffic::ctaf::Leg {
+                segment: hold_index,
+                advisory: openatc_core::traffic::ctaf::Advisory {
+                    leg: "ready",
+                    text: openatc_core::dialogue::say(
+                        "pilot_ready",
+                        &[("callsign", callsign.clone()), ("runway", runway.clone())],
+                    ),
+                },
+            },
+            openatc_core::traffic::ctaf::Leg {
+                segment: takeoff_index,
+                advisory: openatc_core::traffic::ctaf::Advisory {
+                    leg: "departing",
+                    text: openatc_core::dialogue::say(
+                        "tower_departing",
+                        &[("callsign", callsign.clone()), ("runway", runway.clone())],
+                    ),
+                },
+            },
+            openatc_core::traffic::ctaf::Leg {
+                segment: climb_index,
+                advisory: openatc_core::traffic::ctaf::Advisory {
+                    leg: "leaving",
+                    text: openatc_core::dialogue::say(
+                        "tower_leaving",
+                        &[("callsign", callsign.clone())],
+                    ),
+                },
+            },
+        ];
+        let circuit = Circuit::new(route.clone(), legs);
+        if !scene.world.insert_local(generation, identity, route, 0) {
+            scene.warnings.push(format!(
+                "{}: local surface departure could not be admitted",
+                airport.icao
+            ));
+            continue;
+        }
+        if !scene
+            .world
+            .authorise(generation, identity, 0, &BTreeSet::new())
+        {
+            scene.world.remove(identity);
+            scene.warnings.push(format!(
+                "{}: local surface departure could not leave its stand",
+                airport.icao
+            ));
+            continue;
+        }
+        if let Some(movement) = handling.get(&handling_kind) {
+            scene.movement.insert(identity, movement.clone());
+        }
+        scene.advisories.insert(
+            identity,
+            Plan {
+                id: identity,
+                callsign,
+                field: field.clone(),
+                pattern: Arc::new(pattern),
+                circuit,
+                announced: BTreeSet::new(),
+                due: None,
+                go_around: None,
+                straight_in: false,
+                departure: true,
+                cross: None,
+                controlled: true,
+                runway: runway.clone(),
+                cleared: true,
+            },
+        );
+        scene.frames.push(frame);
+        used_stands.insert(stand.name.clone());
+    }
+}
+
 /// Publish advisory traffic at the untowered fields near the player.
 pub(super) fn prepare(scene: &mut Scene, input: &Preparation) {
     if input.simulator_root.is_empty() {
@@ -796,6 +1111,7 @@ pub(super) fn prepare(scene: &mut Scene, input: &Preparation) {
         }
     };
     prepare_tower(scene, input, &handling);
+    prepare_local_departures(scene, input, &handling, &policy);
     if input.counts[3] == 0 {
         return;
     }
@@ -944,8 +1260,15 @@ pub(super) fn advance(runtime: &mut Runtime, blocked: &BTreeSet<String>) {
         }
     }
     // An occupied runway is never landed on: the aircraft goes around instead.
+    // A departure that has not reached the runway waits for its slot; it is not
+    // redirected into a go-around circuit.
     for pose in &poses {
-        if !runtime.world.is_advisory(pose.id) {
+        if !runtime.world.is_advisory(pose.id)
+            || runtime
+                .advisories
+                .get(&pose.id)
+                .is_some_and(|plan| plan.departure)
+        {
             continue;
         }
         let occupied = runtime
@@ -1089,6 +1412,7 @@ fn controlled_text(plan: &Plan, leg: &str) -> String {
         "landing" => "tower_landing",
         "departing" => "tower_departing",
         "leaving" => "tower_leaving",
+        "ready" => "pilot_ready",
         "downwind" => "tower_downwind",
         "base" => "tower_base",
         "go_around" => "tower_go_around",
@@ -1170,7 +1494,7 @@ pub(super) fn announce(state: &mut EngineState) {
         let clearance = if plan.controlled {
             match advisory.leg {
                 "downwind" | "five_miles" => Some("tower_clear_land"),
-                "departing" => Some("tower_clear_takeoff"),
+                "ready" | "departing" => Some("tower_clear_takeoff"),
                 _ => None,
             }
         } else {
@@ -2127,7 +2451,7 @@ mod tests {
             )
             .unwrap(),
         );
-        let (handling, _, _) = policy::load(std::path::Path::new("")).unwrap();
+        let (handling, operations, _) = super::policy::load(std::path::Path::new("")).unwrap();
         let mut scene = Scene {
             require_complete_flights: false,
             surface_corridors: Arc::new(BTreeSet::new()),
@@ -2182,6 +2506,90 @@ mod tests {
             "the fallback should be visible in the warnings: {:?}",
             scene.warnings
         );
+        prepare_local_departures(&mut scene, &input, &handling, &operations);
+        assert!(
+            scene.advisories.values().any(|plan| plan.departure),
+            "YSCB should keep local surface departures: {:?}",
+            scene.warnings
+        );
+        assert!(
+            scene.frames.iter().any(|frame| frame.target.on_ground),
+            "a local departure frame should start on the ground"
+        );
+        let local_ids: BTreeSet<u32> = scene.advisories.keys().copied().collect();
+        let mut replacement = scene.clone();
+        replacement.frames.clear();
+        replacement.advisories.clear();
+        replacement.world = Default::default();
+        replacement.movement.clear();
+        let mut published = Runtime {
+            world: scene.world.clone(),
+            advisories: scene.advisories.clone(),
+            frames: scene.frames.clone(),
+            movement: scene.movement.clone(),
+            ..Runtime::default()
+        };
+        publish_scene(&mut published, replacement, "test".into(), 0);
+        assert!(
+            published.advisories.keys().any(|id| local_ids.contains(id)),
+            "local plans must survive a smaller scene: {:?}",
+            published.status
+        );
+        assert!(
+            published
+                .frames
+                .iter()
+                .any(|frame| local_ids.contains(&frame.target.id)),
+            "local frames must survive a smaller scene: {:?}",
+            published.status
+        );
+        let departure = scene
+            .advisories
+            .iter()
+            .find(|(_, plan)| plan.departure)
+            .map(|(id, _)| *id)
+            .expect("local departure");
+        let start = scene
+            .world
+            .snapshot()
+            .into_iter()
+            .find(|pose| pose.id == departure)
+            .expect("departure pose")
+            .segment;
+        let mut runtime = Runtime {
+            world: scene.world,
+            advisories: scene.advisories,
+            frames: scene.frames,
+            movement: scene.movement,
+            ..Runtime::default()
+        };
+        let mut moved = false;
+        let mut now = 0.0;
+        for _ in 0..4_000 {
+            advance(&mut runtime, &BTreeSet::new());
+            now += 1.0;
+            runtime.world.advance(now, false);
+            let Some(pose) = runtime
+                .world
+                .snapshot()
+                .into_iter()
+                .find(|pose| pose.id == departure)
+            else {
+                moved = true;
+                break;
+            };
+            if pose.segment > start
+                || matches!(
+                    pose.stage,
+                    openatc_core::traffic::motion::Stage::Takeoff
+                        | openatc_core::traffic::motion::Stage::Climb
+                )
+            {
+                moved = true;
+                break;
+            }
+        }
+        assert!(moved, "the local departure never taxied or took off");
     }
 
     #[test]

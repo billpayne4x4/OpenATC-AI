@@ -17971,6 +17971,10 @@ say = ["Tower, {callsign}, base runway {runway}"]
 slots = ["callsign", "runway"]
 say = ["Tower, {callsign}, going around runway {runway}"]
 
+[pilot_ready]
+slots = ["callsign", "runway"]
+say = ["Tower, {callsign}, ready for departure runway {runway}"]
+
 [tower_clear_land]
 slots = ["callsign", "runway"]
 say = ["{callsign}, Tower, cleared to land runway {runway}"]
