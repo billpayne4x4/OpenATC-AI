@@ -929,12 +929,15 @@ fn prepare_local_departures(
         departure_point.north - threshold_point.north,
     );
     let length = east.hypot(north).max(1.0);
+    // Keep the one-shot departure alive beyond the visual range, so it does not disappear
+    // while the player is still watching it.
+    let climb_out_meters = (policy.display_enter_nm * 2.0 * 1_852.0).max(20_000.0);
     let climb_end_point = openatc_core::state::Point {
-        east: departure_point.east + east / length * 5_000.0,
-        north: departure_point.north + north / length * 5_000.0,
+        east: departure_point.east + east / length * climb_out_meters,
+        north: departure_point.north + north / length * climb_out_meters,
         ..departure_point
     };
-    let climb_end = to_waypoint(climb_end_point, airport.elevation_feet + 1_000.0);
+    let climb_end = to_waypoint(climb_end_point, airport.elevation_feet + 2_000.0);
     let field = Field {
         airport: airport.icao.clone(),
         frequency_khz,
@@ -2705,6 +2708,30 @@ mod tests {
         assert!(
             takeoff_meters > 1_000.0,
             "a local departure needs a real takeoff roll, found {takeoff_meters:.0} m"
+        );
+        let climb_end_meters = scene
+            .advisories
+            .values()
+            .filter(|plan| plan.departure)
+            .filter_map(|plan| {
+                let route = plan.route();
+                (0..route.segment_count()).find_map(|index| {
+                    let segment = route.segment(index)?;
+                    (segment.stage == openatc_core::traffic::motion::Stage::Climb).then(|| {
+                        let end = segment.points.last()?;
+                        Some(
+                            openatc_core::arrival::distance_nm(
+                                [airport.reference_latitude, airport.reference_longitude],
+                                [end.latitude, end.longitude],
+                            ) * 1_852.0,
+                        )
+                    })?
+                })
+            })
+            .fold(0.0, f64::max);
+        assert!(
+            climb_end_meters > 10.0 * 1_852.0,
+            "a one-shot departure must finish beyond the visual range, found {climb_end_meters:.0} m"
         );
         assert!(
             scene

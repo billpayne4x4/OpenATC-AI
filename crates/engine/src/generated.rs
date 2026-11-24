@@ -4463,7 +4463,7 @@ pub async fn prepare(shared: Shared) {
         .map(|count| count);
         workers
             .run(move || {
-                let (_, policy, _) = policy::load(&config)?;
+                let (_, policy, channels) = policy::load(&config)?;
                 let (origin, destination, runway, arrival_runway) = network::endpoints(
                     &settings.simulator_root,
                     &plan,
@@ -4514,6 +4514,7 @@ pub async fn prepare(shared: Shared) {
                 input.apply_weather_runways();
                 {
                     let mut local = Scene::local(&input, policy.clone());
+                    local.channels = channels;
                     ctaf::prepare(&mut local, &input);
                     let _ = local_tx.blocking_send(local);
                 }
@@ -4699,12 +4700,13 @@ fn replaces_airport(runtime: &Runtime, airport: &Airport) -> bool {
 fn local_runway(advisories: &BTreeMap<u32, ctaf::Plan>) -> Option<&str> {
     advisories
         .values()
-        .find(|plan| ctaf::is_local(plan.id))
+        .find(|plan| plan.departure)
         .map(|plan| plan.runway.as_str())
 }
 
-/// Whether the replacement scene uses a different local runway. Local traffic then belongs to
-/// the old flow and must be replaced, not carried across.
+/// Whether the replacement scene uses a different local departure runway. Circuits may use a
+/// different end for terrain, so they must not trigger a departure-flow replacement. Local
+/// traffic then belongs to the old flow and must be replaced, not carried across.
 fn local_flow_changed(scene: &Scene, previous: &Runtime) -> bool {
     match (
         local_runway(&scene.advisories),
@@ -4715,6 +4717,15 @@ fn local_flow_changed(scene: &Scene, previous: &Runtime) -> bool {
     }
 }
 
+fn retain_animation_channels(
+    channels: &mut BTreeMap<String, animation::Channel>,
+    previous: &BTreeMap<String, animation::Channel>,
+) {
+    if channels.is_empty() {
+        channels.clone_from(previous);
+    }
+}
+
 fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u64) {
     // Never replace a live scene with fewer planned aircraft. The population and replenishment
     // passes add traffic; publishing a smaller scene over a larger one deletes aircraft the
@@ -4722,6 +4733,7 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
     // A scene for another airport is different: the old traffic belongs to the departure airport
     // and must not stay visible after the player has landed elsewhere.
     let replacing_airport = replaces_airport(runtime, &scene.airport);
+    retain_animation_channels(&mut scene.channels, &runtime.channels);
     let replacing_flow = !replacing_airport && local_flow_changed(&scene, runtime);
     if !replacing_airport && !replacing_flow {
         preserve_local(&mut scene, runtime);
@@ -6702,6 +6714,26 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(before, scene_key(&state));
+    }
+
+    #[test]
+    fn a_local_scene_cannot_clear_the_animation_channels() {
+        let name = "libxplanemp/controls/gear_ratio".to_owned();
+        let previous = BTreeMap::from([(name.clone(), animation::Channel::Gear)]);
+        let mut channels = BTreeMap::new();
+        retain_animation_channels(&mut channels, &previous);
+        assert_eq!(channels.get(&name), Some(&animation::Channel::Gear));
+        let mut supplied = BTreeMap::from([(
+            "libxplanemp/controls/flap_ratio".to_owned(),
+            animation::Channel::Flaps,
+        )]);
+        retain_animation_channels(&mut supplied, &previous);
+        assert_eq!(supplied.len(), 1);
+        assert!(
+            supplied
+                .values()
+                .all(|channel| *channel == animation::Channel::Flaps)
+        );
     }
 
     #[test]
