@@ -1113,6 +1113,12 @@ fn prepare_local_departures(
         let mut segments: Vec<openatc_core::traffic::motion::Segment> = (0..surface_count)
             .filter_map(|index| plan.route.segment(index).cloned())
             .collect();
+        // Only one departure may occupy the hold-short point. A shared resource on the final
+        // taxi segment keeps followers at the preceding segment instead of stacking them on
+        // top of the leader.
+        segments[surface_count - 1]
+            .resources
+            .push(format!("HOLD/{}/{}", airport.icao, runway_data.first_name));
         let (line_up_added, takeoff_index, climb_index) = if line_up_meters > 1.0 {
             let index = segments.len();
             segments.push(openatc_core::traffic::motion::Segment {
@@ -3231,6 +3237,7 @@ mod tests {
         let mut queue_seen = false;
         let mut max_takeoff = 0usize;
         let mut max_line_up = 0usize;
+        let mut max_line_up_stage = 0usize;
         let mut now = 0.0;
         for _ in 0..1_200 {
             super::advance(&mut queue, &BTreeSet::new());
@@ -3255,8 +3262,19 @@ mod tests {
                     })
                 })
                 .count();
+            let line_up_stage = poses
+                .iter()
+                .filter(|pose| {
+                    queue
+                        .advisories
+                        .get(&pose.id)
+                        .is_some_and(|plan| plan.departure && plan.controlled)
+                        && pose.stage == openatc_core::traffic::motion::Stage::LineUp
+                })
+                .count();
             max_takeoff = max_takeoff.max(takeoff);
             max_line_up = max_line_up.max(line_up);
+            max_line_up_stage = max_line_up_stage.max(line_up_stage);
             queue_seen |= takeoff > 0 && line_up > 0;
             if queue_seen {
                 break;
@@ -3269,6 +3287,10 @@ mod tests {
         assert!(
             max_line_up <= 1,
             "two local aircraft occupied the line-up point together: {max_line_up}"
+        );
+        assert!(
+            max_line_up_stage <= 1,
+            "two local aircraft physically occupied the line-up point together: {max_line_up_stage}"
         );
         assert!(
             queue_seen,
