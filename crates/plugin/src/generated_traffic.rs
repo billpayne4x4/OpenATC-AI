@@ -138,9 +138,18 @@ struct Timeline {
     rendered: Vec<GeneratedTraffic>,
     /// Monotonic source-time playhead; a late HTTP sample must not jump the traffic back.
     playhead: Option<f64>,
+    /// Playout delay derived from the observed source cadence.
+    delay: Option<f64>,
 }
 impl Timeline {
-    const DELAY_SECONDS: f64 = 0.75;
+    /// Smallest buffer; fast servers do not need the extra lag.
+    const MIN_DELAY_SECONDS: f64 = 0.75;
+    /// Largest buffer; protects against a slow scene-preparation interval.
+    const MAX_DELAY_SECONDS: f64 = 2.5;
+
+    fn delay(&self) -> f64 {
+        self.delay.unwrap_or(Self::MIN_DELAY_SECONDS)
+    }
 
     fn receive(
         &mut self,
@@ -173,12 +182,20 @@ impl Timeline {
             if !self.rendered.is_empty() {
                 self.samples.push_back(TimelineSample {
                     arrived: now
-                        .checked_sub(std::time::Duration::from_secs_f64(Self::DELAY_SECONDS))
+                        .checked_sub(std::time::Duration::from_secs_f64(self.delay()))
                         .unwrap_or(now),
                     source: stamp.map(|(_, time)| time),
                     frames: self.rendered.clone(),
                 });
             }
+        }
+        if let (Some((_, previous)), Some((_, next))) = (self.stamp, stamp)
+            && next > previous
+            && next - previous <= 30.0
+        {
+            self.delay = Some(
+                ((next - previous) * 1.5).clamp(Self::MIN_DELAY_SECONDS, Self::MAX_DELAY_SECONDS),
+            );
         }
         self.paused = paused;
         // Equal source times can carry a clearance/visibility change; replace that sample
@@ -218,7 +235,7 @@ impl Timeline {
             // Advance the source-time playhead with wall time since the newest sample.
             // This keeps motion continuous when HTTP samples arrive early or late, and it
             // still reaches the newest pose after the playout delay.
-            let target = latest_source - Self::DELAY_SECONDS
+            let target = latest_source - self.delay()
                 + now.saturating_duration_since(latest.arrived).as_secs_f64();
             let target = self
                 .playhead
@@ -256,7 +273,7 @@ impl Timeline {
             }
         } else {
             let at = now
-                .checked_sub(std::time::Duration::from_secs_f64(Self::DELAY_SECONDS))
+                .checked_sub(std::time::Duration::from_secs_f64(self.delay()))
                 .unwrap_or(now);
             while self.samples.len() > 2 && self.samples[1].arrived <= at {
                 self.samples.pop_front();
@@ -310,7 +327,7 @@ impl Timeline {
                     let span = left
                         .source
                         .zip(right.source)
-                        .map_or(Self::DELAY_SECONDS, |(start, end)| (end - start).max(0.0));
+                        .map_or(self.delay(), |(start, end)| (end - start).max(0.0));
                     frame.animation.propeller_angle = (from.animation.propeller_angle
                         + from.animation.propeller_rpm * 6.0 * span * amount)
                         .rem_euclid(360.0);
@@ -812,7 +829,7 @@ mod tests {
             for sub in 0..10 {
                 let wall = t + f64::from(sub) * 0.05;
                 let drawn = timeline.sample(start + std::time::Duration::from_secs_f64(wall));
-                let expected = (wall - 0.75).clamp(0.0, 2.0) * 0.001;
+                let expected = (wall - Timeline::MIN_DELAY_SECONDS).clamp(0.0, 2.0) * 0.001;
                 assert!(
                     (drawn[0].target.latitude - expected).abs() < 1e-9,
                     "wall={wall}"
@@ -826,6 +843,37 @@ mod tests {
                 - 0.002)
                 .abs()
                 < 1e-9
+        );
+    }
+
+    #[test]
+    fn one_hertz_samples_keep_moving_without_a_hold() {
+        let start = std::time::Instant::now();
+        let mut timeline = Timeline::default();
+        let mut previous = None;
+        let mut hold: f64 = 0.0;
+        let mut longest_hold: f64 = 0.0;
+        for step in 0..80 {
+            let wall = f64::from(step) * 0.1;
+            let now = start + std::time::Duration::from_secs_f64(wall);
+            if step % 10 == 0 {
+                timeline.receive(&[frame(wall * 0.001, 0.0)], Some((1, wall)), false, now);
+            }
+            if wall < 2.0 {
+                continue;
+            }
+            let latitude = timeline.sample(now)[0].target.latitude;
+            if previous == Some(latitude) {
+                hold += 0.1;
+                longest_hold = longest_hold.max(hold);
+            } else {
+                hold = 0.0;
+            }
+            previous = Some(latitude);
+        }
+        assert!(
+            longest_hold < 0.2,
+            "one-hertz source samples stalled the timeline for {longest_hold:.1} s"
         );
     }
 
@@ -956,7 +1004,7 @@ mod tests {
             start + std::time::Duration::from_millis(500),
         );
         assert_eq!(
-            timeline.sample(start + std::time::Duration::from_secs(1))[0]
+            timeline.sample(start + std::time::Duration::from_secs(2))[0]
                 .target
                 .latitude,
             0.005

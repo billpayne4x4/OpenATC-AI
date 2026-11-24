@@ -10,6 +10,7 @@
 - Fixed-gear local traffic stays gear-down in every phase. Retractable local traffic sets takeoff flaps at the holding point, keeps the gear down until a positive rate, and retracts the flaps after the gear. Takeoff flap setting increases on shorter runways.
 - A live local aircraft keeps its route, segment, elapsed time, movement authority and surface reservations when a survey scene replaces the bootstrap scene. The replacement scene's copy is removed before the live aircraft is carried across, which stops the visible snap-back on each scene refresh.
 - A cached preview of the last visible traffic draws immediately after an engine restart, and the live scene replaces it without mixing preview and live ownership.
+- The traffic renderer derives its playout delay from the observed engine sample interval instead of using a fixed short buffer. One-hertz samples now interpolate continuously instead of catching the newest pose and holding until the next update.
 
 ## One traffic engine, visible range and no-SID grace — 20 November 2026
 
