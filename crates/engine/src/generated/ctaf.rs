@@ -715,6 +715,105 @@ fn tower_pattern_with(
         })
 }
 
+/// Shortest paved taxi path from the holding point to a line-up point. A direct line is used
+/// when it is entirely pavement; otherwise the path follows the installed taxi graph so a
+/// departure never cuts across grass.
+fn paved_line_up_path(
+    airport: &Airport,
+    hold: openatc_core::state::Point,
+    target: openatc_core::state::Point,
+) -> Option<Vec<openatc_core::state::Point>> {
+    use openatc_core::airport::taxi_segment_on_pavement;
+    if taxi_segment_on_pavement(airport, hold, target) {
+        return Some(vec![hold, target]);
+    }
+    if airport.nodes.is_empty() || airport.edges.is_empty() {
+        return None;
+    }
+    let nodes: BTreeMap<i64, openatc_core::state::Point> = airport
+        .nodes
+        .iter()
+        .map(|node| (node.id, node.point))
+        .collect();
+    let distance = |first: openatc_core::state::Point, second: openatc_core::state::Point| {
+        (first.east - second.east).hypot(first.north - second.north)
+    };
+    let nearest = |point: openatc_core::state::Point| {
+        nodes
+            .iter()
+            .min_by(|left, right| distance(*left.1, point).total_cmp(&distance(*right.1, point)))
+            .map(|(id, point)| (*id, *point))
+    };
+    let (start_id, start_point) = nearest(hold)?;
+    let (goal_id, goal_point) = nearest(target)?;
+    if distance(hold, start_point) > 80.0 || distance(goal_point, target) > 80.0 {
+        return None;
+    }
+    let mut graph: BTreeMap<i64, Vec<(i64, f64)>> = BTreeMap::new();
+    for edge in &airport.edges {
+        let (Some(first), Some(second)) = (nodes.get(&edge.first), nodes.get(&edge.second)) else {
+            continue;
+        };
+        let length = distance(*first, *second);
+        if length <= 0.1 {
+            continue;
+        }
+        graph
+            .entry(edge.first)
+            .or_default()
+            .push((edge.second, length));
+        graph
+            .entry(edge.second)
+            .or_default()
+            .push((edge.first, length));
+    }
+    let mut best: BTreeMap<i64, f64> = BTreeMap::new();
+    let mut previous: BTreeMap<i64, i64> = BTreeMap::new();
+    let mut pending: BTreeSet<(u64, i64)> = BTreeSet::new();
+    best.insert(start_id, 0.0);
+    pending.insert((0, start_id));
+    while let Some((_, id)) = pending.pop_first() {
+        if id == goal_id {
+            break;
+        }
+        let current = best.get(&id).copied().unwrap_or(f64::INFINITY);
+        for (next, length) in graph.get(&id).into_iter().flatten() {
+            let candidate = current + length;
+            if candidate < best.get(next).copied().unwrap_or(f64::INFINITY) {
+                best.insert(*next, candidate);
+                previous.insert(*next, id);
+                #[allow(clippy::cast_possible_truncation)]
+                let key = (candidate * 1000.0) as u64;
+                pending.insert((key, *next));
+            }
+        }
+    }
+    if !best.contains_key(&goal_id) {
+        return None;
+    }
+    let mut path = vec![goal_id];
+    let mut cursor = goal_id;
+    while cursor != start_id {
+        let predecessor = *previous.get(&cursor)?;
+        path.push(predecessor);
+        cursor = predecessor;
+    }
+    path.reverse();
+    let mut points = Vec::with_capacity(path.len() + 2);
+    points.push(hold);
+    for id in path {
+        if let Some(point) = nodes.get(&id) {
+            points.push(*point);
+        }
+    }
+    points.push(target);
+    points.dedup_by(|first, second| distance(*first, *second) <= 0.1);
+    points
+        .windows(2)
+        .all(|pair| taxi_segment_on_pavement(airport, pair[0], pair[1]))
+        .then_some(points)
+}
+
 /// Local circuits are traffic-dependent, not airport-name-specific. Airline-capable airports
 /// get at most one circuit and busy airports get none; intersecting runways are limited to one
 /// circuit on the active runway. This is a generic capacity rule for all airports.
@@ -1126,22 +1225,35 @@ fn prepare_local_departures(
             + (hold_point.north - threshold_point.north) * north)
             / (length * length);
         let fraction = along.clamp(0.0, 0.85);
-        let line_up_point = openatc_core::state::Point {
+        let intersection_point = openatc_core::state::Point {
             east: threshold_point.east + east * fraction,
             north: threshold_point.north + north * fraction,
             ..threshold_point
         };
-        let line_up = to_waypoint(line_up_point, airport.elevation_feet);
-        let line_up_meters =
-            (line_up_point.east - hold_point.east).hypot(line_up_point.north - hold_point.north);
-        let remaining_meters = length * (1.0 - fraction);
-        if remaining_meters < aircraft.runway {
+        let intersection_remaining = length * (1.0 - fraction);
+        // Prefer the nearest usable intersection, but never draw a line-up path across grass.
+        // If the intersection lead-in is unpaved, use the physical runway end instead.
+        // Prefer the physical runway end so the takeoff can use the pavement before the
+        // displaced landing threshold. An intersection is a fallback when the full-length
+        // lead-in is not paved.
+        let line_up_path = paved_line_up_path(airport, hold_point, threshold_point)
+            .map(|path| (threshold_point, path))
+            .or_else(|| {
+                (intersection_remaining >= aircraft.runway)
+                    .then(|| paved_line_up_path(airport, hold_point, intersection_point))
+                    .flatten()
+                    .map(|path| (intersection_point, path))
+            });
+        let Some((line_up_point, line_up_path)) = line_up_path else {
             scene.warnings.push(format!(
-                "{}: local surface departure {kind} has only {remaining_meters:.0} m of runway from its hold",
+                "{}: local surface departure {kind} has no paved line-up path",
                 airport.icao
             ));
             continue;
-        }
+        };
+        let line_up = to_waypoint(line_up_point, airport.elevation_feet);
+        let line_up_meters =
+            (line_up_point.east - hold_point.east).hypot(line_up_point.north - hold_point.north);
         let runway_resource = format!(
             "RUNWAY/{}/{}/{}",
             airport.icao, runway_data.first_name, runway_data.second_name
@@ -1152,16 +1264,20 @@ fn prepare_local_departures(
         // Only one departure may occupy the hold-short point. A shared resource on the final
         // taxi segment keeps followers at the preceding segment instead of stacking them on
         // top of the leader.
+        let hold_resource = format!("HOLD/{}/{}", airport.icao, runway_data.first_name);
         segments[surface_count - 1]
             .resources
-            .push(format!("HOLD/{}/{}", airport.icao, runway_data.first_name));
+            .push(hold_resource.clone());
         let (line_up_added, takeoff_index, climb_index) = if line_up_meters > 1.0 {
             let index = segments.len();
             segments.push(openatc_core::traffic::motion::Segment {
                 stage: openatc_core::traffic::motion::Stage::LineUp,
-                points: vec![hold, line_up],
+                points: line_up_path
+                    .iter()
+                    .map(|point| to_waypoint(*point, airport.elevation_feet))
+                    .collect(),
                 knots: handling_for.taxi_knots.clamp(10.0, 15.0),
-                resources: vec![format!("LINEUP/{}/{}", airport.icao, runway)],
+                resources: vec![format!("LINEUP/{}/{}", airport.icao, runway), hold_resource],
                 dwell_seconds: 0.0,
             });
             (true, index + 1, index + 2)
@@ -1508,6 +1624,7 @@ fn local_departure_queue(runtime: &mut Runtime) {
         if plan.departure
             && plan.controlled
             && pose.stage == openatc_core::traffic::motion::Stage::Takeoff
+            && pose.knots > 1.0
         {
             taking_off = Some(pose.id);
         }
@@ -1516,6 +1633,7 @@ fn local_departure_queue(runtime: &mut Runtime) {
     // may reach the holding point, but they do not own the runway until this flag is set.
     for pose in &poses {
         if pose.stage == openatc_core::traffic::motion::Stage::Takeoff
+            && pose.knots > 1.0
             && let Some(plan) = runtime.advisories.get_mut(&pose.id)
             && plan.departure
         {
@@ -1529,7 +1647,11 @@ fn local_departure_queue(runtime: &mut Runtime) {
             plan.departure
                 && plan.controlled
                 && plan.line_up_cleared
-                && poses.iter().any(|pose| pose.id == **id)
+                && poses.iter().any(|pose| {
+                    pose.id == **id
+                        && (pose.stage == openatc_core::traffic::motion::Stage::LineUp
+                            || pose.stage == openatc_core::traffic::motion::Stage::Takeoff)
+                })
         })
         .map(|(id, _)| *id);
     // The first aircraft reaching the hold owns the next slot. This is deliberately based on
@@ -1620,8 +1742,9 @@ fn local_departure_queue(runtime: &mut Runtime) {
             if clear && let Some(plan) = runtime.advisories.get_mut(&id) {
                 if already_line_up || next == Some(openatc_core::traffic::motion::Stage::LineUp) {
                     plan.line_up_cleared = true;
-                } else {
-                    // No physical line-up segment; the hold is the line-up point.
+                } else if taking_off.is_none() {
+                    // No physical line-up segment; the hold is the line-up point. Wait until
+                    // the preceding aircraft has left the runway before granting the roll.
                     plan.wake_caution = runtime
                         .departure_wake
                         .get(&id)
@@ -1724,15 +1847,37 @@ pub(super) fn advance(runtime: &mut Runtime, blocked: &BTreeSet<String>) {
         .world
         .snapshot()
         .into_iter()
-        .filter(|pose| pose.complete && runtime.world.is_advisory(pose.id))
+        .filter(|pose| {
+            if !runtime.world.is_advisory(pose.id) {
+                return false;
+            }
+            if pose.complete {
+                return true;
+            }
+            // A local one-shot whose final climb has reached its limit must not sit at zero
+            // knots waiting for a segment that does not exist.
+            pose.stage == openatc_core::traffic::motion::Stage::Climb
+                && pose.awaiting_clearance
+                && pose.knots < 1.0
+                && pose.seconds_to_limit <= 0.1
+                && runtime.advisories.get(&pose.id).is_some_and(|plan| {
+                    plan.departure
+                        && plan.controlled
+                        && plan.route().segment_count() == pose.segment + 1
+                })
+        })
         .map(|pose| pose.id)
         .collect::<Vec<_>>();
     for id in finished {
         if runtime.advisories.get(&id).is_some_and(Plan::one_shot) {
             let local = is_local(id);
-            runtime.advisories.remove(&id);
-            runtime.frames.retain(|frame| frame.target.id != id);
-            runtime.world.retire(id);
+            if local {
+                remove_local(runtime, id);
+            } else {
+                runtime.advisories.remove(&id);
+                runtime.frames.retain(|frame| frame.target.id != id);
+                runtime.world.retire(id);
+            }
             if local {
                 activate_local_spare(runtime);
             }
@@ -1758,6 +1903,23 @@ pub(super) fn advance(runtime: &mut Runtime, blocked: &BTreeSet<String>) {
             plan.cleared = plan.controlled;
         }
     }
+}
+
+/// Remove a completed local aircraft and every queue/blocker entry that refers to it.
+fn remove_local(runtime: &mut Runtime, id: u32) {
+    runtime.world.remove(id);
+    runtime.advisories.remove(&id);
+    runtime.frames.retain(|frame| frame.target.id != id);
+    runtime.movement.remove(&id);
+    runtime.held.remove(&id);
+    runtime.player_hold_since.remove(&id);
+    runtime.departure_order.remove(&id);
+    runtime.departure_wake.remove(&id);
+    runtime.tower_ready.remove(&id);
+    runtime.tower_notified.remove(&id);
+    runtime.active_flights.remove(&id);
+    runtime.approved_orders.retain(|(other, _)| *other != id);
+    runtime.reported_crossings.retain(|(other, _)| *other != id);
 }
 
 /// Admit the next prepared local departure after a one-shot departure finishes.
@@ -3150,6 +3312,38 @@ mod tests {
             "YSCB should keep local surface departures (found {departures}): {:?}",
             scene.warnings
         );
+        for plan in scene.advisories.values().filter(|plan| plan.departure) {
+            let route = plan.route();
+            for index in 0..route.segment_count() {
+                let Some(segment) = route.segment(index) else {
+                    continue;
+                };
+                if segment.stage != openatc_core::traffic::motion::Stage::LineUp {
+                    continue;
+                }
+                for pair in segment.points.windows(2) {
+                    assert!(
+                        openatc_core::airport::taxi_segment_on_pavement(
+                            &airport,
+                            openatc_core::airport::airport_point(
+                                &airport,
+                                pair[0].latitude,
+                                pair[0].longitude,
+                            ),
+                            openatc_core::airport::airport_point(
+                                &airport,
+                                pair[1].latitude,
+                                pair[1].longitude,
+                            ),
+                        ),
+                        "{} line-up crosses unpaved ground between {:?} and {:?}",
+                        plan.callsign,
+                        pair[0],
+                        pair[1]
+                    );
+                }
+            }
+        }
         assert!(
             scene
                 .frames
@@ -3325,12 +3519,15 @@ mod tests {
                 plan.takeoff_announced = true;
             }
         }
+        let initial_departures = queue.advisories.len();
         let mut queue_seen = false;
+        let mut completed = false;
         let mut max_takeoff = 0usize;
         let mut max_line_up = 0usize;
         let mut max_line_up_stage = 0usize;
+        let mut stuck_final = 0u32;
         let mut now = 0.0;
-        for _ in 0..1_200 {
+        for _ in 0..2_000 {
             super::advance(&mut queue, &BTreeSet::new());
             now += 1.0;
             queue.world.advance(now, false);
@@ -3343,6 +3540,7 @@ mod tests {
                         .get(&pose.id)
                         .is_some_and(|plan| plan.departure && plan.controlled)
                         && pose.stage == openatc_core::traffic::motion::Stage::Takeoff
+                        && pose.knots > 1.0
                 })
                 .count();
             let line_up = poses
@@ -3367,7 +3565,26 @@ mod tests {
             max_line_up = max_line_up.max(line_up);
             max_line_up_stage = max_line_up_stage.max(line_up_stage);
             queue_seen |= takeoff > 0 && line_up > 0;
-            if queue_seen {
+            let final_stuck = poses.iter().any(|pose| {
+                queue.advisories.get(&pose.id).is_some_and(|plan| {
+                    plan.departure
+                        && plan.controlled
+                        && plan.route().segment_count() == pose.segment + 1
+                }) && pose.stage == openatc_core::traffic::motion::Stage::Climb
+                    && pose.knots < 1.0
+                    && pose.awaiting_clearance
+            });
+            if final_stuck {
+                stuck_final = stuck_final.saturating_add(1);
+                assert!(
+                    stuck_final < 15,
+                    "a local departure stopped at the final climb boundary"
+                );
+            } else {
+                stuck_final = 0;
+            }
+            if queue.advisories.len() < initial_departures {
+                completed = true;
                 break;
             }
         }
@@ -3386,6 +3603,10 @@ mod tests {
         assert!(
             queue_seen,
             "the next departure never lined up while the first was rolling"
+        );
+        assert!(
+            completed,
+            "a local departure never completed and left the queue"
         );
     }
 

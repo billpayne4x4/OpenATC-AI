@@ -67,7 +67,10 @@ pub(super) fn select(
         if ids.contains(&frame.target.id) {
             continue;
         }
-        if distance <= policy.same_direction_range_nm {
+        // Local airport traffic is the queue the player is watching. It must not disappear
+        // behind the same-direction cap; the cap applies to distant en-route flow instead.
+        let local = super::ctaf::is_local(frame.target.id);
+        if !local && distance <= policy.same_direction_range_nm {
             let bearing = openatc_core::arrival::bearing(
                 [telemetry.latitude, telemetry.longitude],
                 [frame.target.latitude, frame.target.longitude],
@@ -218,6 +221,33 @@ mod tests {
             .filter(|frame| frame.target.longitude < own.longitude)
             .count();
         assert_eq!(behind, 2);
+    }
+
+    #[test]
+    fn local_aircraft_are_not_dropped_by_the_same_direction_cap() {
+        let mut policy =
+            parse_operations(include_str!("../../../../traffic/operations.toml")).unwrap();
+        policy.same_direction_limit = 1;
+        policy.trailing_limit = 1;
+        let own = Telemetry {
+            position_valid: true,
+            latitude: 40.0,
+            longitude: 8.0,
+            heading_degrees: 90.0,
+            ground_track_degrees: Some(90.0),
+            ..Default::default()
+        };
+        let mut frames = Vec::new();
+        for index in 0..4 {
+            let mut frame = frame(0x00d1_0000 + index, 5.0);
+            frame.target.track_degrees = 90.0;
+            frames.push(frame);
+        }
+        assert_eq!(
+            select(&frames, &own, &BTreeSet::new(), &policy, 40.0).len(),
+            4,
+            "local airport traffic must stay visible even when aligned"
+        );
     }
 
     #[test]
