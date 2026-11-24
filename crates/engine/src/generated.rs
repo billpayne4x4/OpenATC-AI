@@ -1149,10 +1149,9 @@ fn ground_route_once(
                 telemetry.latitude = coordinate[0];
                 telemetry.longitude = coordinate[1];
                 telemetry.heading_degrees = outgoing;
-                // The pushback ends on the taxiway centreline directly behind the first
-                // route point. Replanning from the endpoint can snap to a node behind the
-                // aircraft and demand a reversal, so keep the already planned onward route
-                // and join it at the entry when the join stays on pavement.
+                // The pushback ends behind the first taxi point. Replanning from there can
+                // snap to a node behind the aircraft and force a reversal, so keep the
+                // planned route and join it at the entry when that join stays paved.
                 if openatc_core::airport::taxi_segment_on_pavement(airport, endpoint, entry) {
                     path.points.drain(..index);
                 } else {

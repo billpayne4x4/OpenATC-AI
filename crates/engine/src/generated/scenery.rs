@@ -904,8 +904,8 @@ impl Footprint {
         }
         // The published outer orientation is not always counter-clockwise in shipped data, so
         // each later winding is compared against the outer winding rather than an absolute sign.
-        // A forest may also publish several separate stands in one placement; a winding that is
-        // not inside an earlier one is another outer boundary, not a hole.
+        // A forest placement can hold several separate stands. A ring outside the first
+        // boundary is another stand, not a hole.
         let outer = valid[0].1;
         let mut depth = vec![0usize; valid.len()];
         for index in 1..valid.len() {
@@ -921,8 +921,7 @@ impl Footprint {
                 }
             }
             let Some(parent) = parent else {
-                // A separate stand is solid under the even-odd test whatever its winding
-                // direction, so it does not need a nesting check.
+                // Disjoint rings are solid whatever their winding; even-odd already handles them.
                 continue;
             };
             depth[index] = depth[parent] + 1;
@@ -1985,10 +1984,8 @@ impl Tile {
                 for index in 0..ring.len() {
                     let a = ring[index];
                     let b = ring[(index + 1) % ring.len()];
-                    // A string can span kilometres. Each segment is cut into short pieces so its
-                    // box follows the published line instead of covering the whole diagonal.
-                    // Fifty metres keeps the box close to a fence or power line while bounding
-                    // the obstacle count for a long perimeter.
+                    // Split long strings so each box follows the fence instead of spanning
+                    // the whole diagonal. Fifty metres bounds the obstacle count.
                     let scale = 111_320.0 * a[0].to_radians().cos();
                     let full_east = (b[1] - a[1]) * scale;
                     let full_north = (b[0] - a[0]) * 111_320.0;

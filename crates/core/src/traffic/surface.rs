@@ -29,9 +29,8 @@ pub fn rounded(
     spacing: f64,
     supported: impl Fn(Point) -> bool,
 ) -> Result<Vec<Sample>, String> {
-    // Installed taxi graphs repeat a node where an edge meets the runway or another edge.
-    // A repeated point leaves a zero-length outgoing segment, and no corner can fit in it.
-    // Half a metre is well below any real taxi segment and only collapses those duplicates.
+    // Taxi graphs often repeat the junction where two edges meet. A zero-length segment
+    // leaves no room for a turn, so drop points closer than half a metre.
     const MINIMUM_SEPARATION_METERS: f64 = 0.5;
     if points.len() < 2
         || points.len() > 4096

@@ -610,9 +610,8 @@ fn compile_selected(
         let radius = (speed.powi(2) / (9.80665 * envelope.bank_degrees.to_radians().tan()))
             .max(speed / envelope.turn_rate_degrees_sec.to_radians());
         let heading = fix.arrival_heading.unwrap_or_else(|| {
-            // A fix without a published arrival course is a fly-by waypoint. Cross it on
-            // the inbound course and let the next connection make the turn, instead of
-            // forcing the outbound course before the fix.
+            // For a fly-by fix, cross it on the inbound course and turn afterwards.
+            // Using the next leg's course before the fix forces an impossible detour.
             let from_point = geographic(from.point, 0.0);
             let inbound = bearing([from_point.latitude, from_point.longitude], fix.coordinate);
             if inbound.is_finite() {
