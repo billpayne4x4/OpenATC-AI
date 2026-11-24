@@ -181,6 +181,25 @@ pub struct Input {
     pub fixed_gear: bool,
     /// Light state determined by the flight lifecycle.
     pub landing_lights: bool,
+    /// Aircraft is at the departure holding point, ready to line up.
+    pub at_hold: bool,
+    /// Normalized takeoff flap setting selected for this runway.
+    pub takeoff_flaps: f64,
+}
+impl Default for Input {
+    fn default() -> Self {
+        Self {
+            stage: Stage::Parked,
+            knots: 0.0,
+            turn_degrees_sec: 0.0,
+            vertical_fpm: 0.0,
+            engines_running: false,
+            fixed_gear: false,
+            landing_lights: false,
+            at_hold: false,
+            takeoff_flaps: 0.0,
+        }
+    }
 }
 
 /// Per-aircraft animation state, retained across snapshots.
@@ -291,7 +310,16 @@ impl Animation {
         };
         self.bank = approach(self.bank, bank, h.bank_rate_degrees_sec);
         self.pitch = approach(self.pitch, pitch, h.pitch_rate_degrees_sec);
-        let gear = input.fixed_gear || ground || input.stage == Stage::Approach;
+        let takeoff_flaps = if input.takeoff_flaps.is_finite() {
+            input.takeoff_flaps.clamp(0.0, 1.0)
+        } else {
+            h.takeoff_flaps
+        };
+        let positive_rate = input.vertical_fpm >= 100.0;
+        let gear = input.fixed_gear
+            || ground
+            || input.stage == Stage::Approach
+            || (input.stage == Stage::Climb && !positive_rate);
         // A generated aircraft that spawns on the ground has its gear down. Lerping from the
         // default would show it taxiing gear-up for several seconds.
         self.gear = if ground {
@@ -299,10 +327,14 @@ impl Animation {
         } else {
             approach(self.gear, f64::from(gear), 1.0 / h.gear_seconds)
         };
+        let at_hold = input.at_hold && matches!(input.stage, Stage::TaxiOut | Stage::Crossing);
         let flaps = match input.stage {
-            Stage::LineUp | Stage::Takeoff | Stage::MissedApproach => h.takeoff_flaps,
+            Stage::LineUp | Stage::Takeoff | Stage::MissedApproach => takeoff_flaps,
             Stage::Approach => h.landing_flaps,
+            // Leave the takeoff setting in place until the gear has retracted.
+            Stage::Climb if self.gear > 0.15 => takeoff_flaps,
             Stage::Rollout => self.flaps,
+            Stage::TaxiOut | Stage::Crossing if at_hold => takeoff_flaps,
             _ => 0.0,
         };
         self.flaps = approach(self.flaps, flaps, 1.0 / h.flap_seconds);
@@ -398,6 +430,7 @@ mod tests {
             engines_running: true,
             fixed_gear: false,
             landing_lights: false,
+            ..Input::default()
         };
         let mut forward = Animation::default();
         let mut reverse = Animation::default();
@@ -432,6 +465,7 @@ mod tests {
             engines_running: true,
             fixed_gear: false,
             landing_lights: true,
+            ..Input::default()
         };
         rotation.advance(ground, jet, 1.0);
         assert!(rotation.pitch > 0.0 && rotation.pitch <= jet.pitch_rate_degrees_sec);
@@ -452,6 +486,7 @@ mod tests {
             engines_running: true,
             fixed_gear: false,
             landing_lights: true,
+            ..Input::default()
         };
         let mut a = Animation::default();
         a.advance(input, &handling[&Kind::Jet], 0.5);
@@ -485,6 +520,7 @@ mod tests {
             engines_running: true,
             fixed_gear: false,
             landing_lights: false,
+            ..Input::default()
         };
         animation.advance(taxi, &handling[&Kind::Jet], 0.5);
         assert!(animation.channel(Channel::Steering) > 0.0);
@@ -564,6 +600,7 @@ mod tests {
             engines_running: true,
             fixed_gear: false,
             landing_lights: stage.landing_lights(),
+            ..Input::default()
         };
         let mut animation = Animation::default();
         animation.advance(input(Stage::TaxiOut), jet, 0.5);
@@ -578,6 +615,158 @@ mod tests {
         animation.advance(input(Stage::Takeoff), jet, 0.5);
         assert!(!animation.taxi_lights);
         assert!(animation.landing_lights);
+    }
+
+    #[test]
+    fn takeoff_configuration_is_set_at_the_hold_and_flaps_follow_the_gear() {
+        let handling = builtin().unwrap();
+        let jet = &handling[&Kind::Jet];
+        let mut hold = Animation::default();
+        for _ in 0..5 {
+            hold.advance(
+                Input {
+                    stage: Stage::TaxiOut,
+                    at_hold: true,
+                    takeoff_flaps: 0.3,
+                    engines_running: true,
+                    ..Input::default()
+                },
+                jet,
+                1.0,
+            );
+        }
+        assert!(hold.flaps > 0.0, "takeoff flaps must be set at the hold");
+        assert!(hold.gear >= 0.99, "gear stays down while taxiing");
+        assert!(!hold.landing_lights, "landing lights stay off at the hold");
+
+        let mut rolling = hold;
+        rolling.advance(
+            Input {
+                stage: Stage::Takeoff,
+                knots: jet.rotation_knots,
+                takeoff_flaps: 0.3,
+                engines_running: true,
+                landing_lights: true,
+                ..Input::default()
+            },
+            jet,
+            1.0,
+        );
+        assert!(rolling.landing_lights);
+        assert!(rolling.gear >= 0.99);
+
+        let mut climb = rolling;
+        climb.advance(
+            Input {
+                stage: Stage::Climb,
+                knots: 180.0,
+                vertical_fpm: 1_500.0,
+                takeoff_flaps: 0.3,
+                engines_running: true,
+                landing_lights: true,
+                ..Input::default()
+            },
+            jet,
+            1.0,
+        );
+        assert!(climb.gear < 1.0, "positive rate retracts the gear");
+        assert!(climb.flaps > 0.0, "flaps wait for the gear");
+        for _ in 0..20 {
+            climb.advance(
+                Input {
+                    stage: Stage::Climb,
+                    knots: 180.0,
+                    vertical_fpm: 1_500.0,
+                    takeoff_flaps: 0.3,
+                    engines_running: true,
+                    landing_lights: true,
+                    ..Input::default()
+                },
+                jet,
+                1.0,
+            );
+        }
+        assert!(climb.gear <= 0.05);
+        assert!(climb.flaps <= 0.05, "flaps retract after the gear");
+
+        let mut initial = Animation::default();
+        initial.advance(
+            Input {
+                stage: Stage::Climb,
+                knots: 160.0,
+                vertical_fpm: 0.0,
+                takeoff_flaps: 0.3,
+                engines_running: true,
+                ..Input::default()
+            },
+            jet,
+            1.0,
+        );
+        assert!(initial.gear >= 0.99, "gear waits for a positive rate");
+    }
+
+    #[test]
+    fn fixed_gear_never_retracts_in_flight() {
+        let handling = builtin().unwrap();
+        let mut animation = Animation::default();
+        animation.advance(
+            Input {
+                stage: Stage::Climb,
+                knots: 90.0,
+                vertical_fpm: 700.0,
+                fixed_gear: true,
+                engines_running: true,
+                landing_lights: true,
+                ..Input::default()
+            },
+            &handling[&Kind::Piston],
+            1.0,
+        );
+        assert_eq!(animation.gear, 1.0);
+    }
+
+    #[test]
+    fn approach_lowers_the_gear_and_sets_landing_flaps() {
+        let handling = builtin().unwrap();
+        let jet = &handling[&Kind::Jet];
+        let mut animation = Animation::default();
+        for _ in 0..12 {
+            animation.advance(
+                Input {
+                    stage: Stage::Approach,
+                    knots: 140.0,
+                    vertical_fpm: -700.0,
+                    takeoff_flaps: 0.3,
+                    engines_running: true,
+                    landing_lights: true,
+                    ..Input::default()
+                },
+                jet,
+                1.0,
+            );
+        }
+        assert!(animation.gear >= 0.99, "approach gear must be down");
+        assert!(
+            animation.flaps >= 0.99,
+            "approach flaps must be landing flaps"
+        );
+        assert!(animation.landing_lights);
+        for _ in 0..12 {
+            animation.advance(
+                Input {
+                    stage: Stage::TaxiIn,
+                    knots: 10.0,
+                    takeoff_flaps: 0.3,
+                    engines_running: true,
+                    ..Input::default()
+                },
+                jet,
+                1.0,
+            );
+        }
+        assert!(animation.flaps <= 0.05, "flaps retract on taxi-in");
+        assert!(!animation.landing_lights);
+        assert!(animation.taxi_lights);
     }
 }
 

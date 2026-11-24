@@ -4638,6 +4638,9 @@ fn preserve_local(scene: &mut Scene, previous: &Runtime) {
         if let Some(movement) = previous.movement.get(id) {
             scene.movement.insert(*id, movement.clone());
         }
+        if previous.fixed_gear.contains(id) {
+            scene.fixed_gear.insert(*id);
+        }
         if let Some(frame) = previous.frames.iter().find(|frame| frame.target.id == *id) {
             let mut frame = frame.clone();
             frame.target.latitude = pose.position.latitude;
@@ -5783,6 +5786,26 @@ fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) ->
                 }
             });
         for pose in runtime.world.snapshot() {
+            let handling = runtime.movement.get(&pose.id).cloned();
+            let fixed_gear = runtime.fixed_gear.contains(&pose.id);
+            let at_hold = pose.stage == openatc_core::traffic::motion::Stage::TaxiOut
+                && matches!(
+                    runtime.world.next_stage(pose.id),
+                    Some(
+                        openatc_core::traffic::motion::Stage::LineUp
+                            | openatc_core::traffic::motion::Stage::Takeoff
+                    )
+                );
+            let takeoff_flaps = handling
+                .as_ref()
+                .map_or(0.0, |handling| departure_flaps(runtime, pose.id, handling));
+            let engines_running = !matches!(
+                pose.stage,
+                openatc_core::traffic::motion::Stage::Parked
+                    | openatc_core::traffic::motion::Stage::Turnaround
+            ) && (pose.stage
+                != openatc_core::traffic::motion::Stage::Pushback
+                || runtime.approved_orders.contains(&(pose.id, pose.segment)));
             let Some(frame) = runtime
                 .frames
                 .iter_mut()
@@ -5843,7 +5866,7 @@ fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) ->
             }
             frame.target.ground_speed_knots = Some(pose.knots);
             frame.target.on_ground = pose.stage.on_ground();
-            let Some(handling) = runtime.movement.get(&pose.id) else {
+            let Some(handling) = handling else {
                 continue;
             };
             // A seeded aircraft is already moving when it is first drawn, so its engines must
@@ -5863,17 +5886,13 @@ fn advance(runtime: &mut Runtime, telemetry: &openatc_core::state::Telemetry) ->
                         knots: pose.knots,
                         turn_degrees_sec: if elapsed > 0.0 { turn / elapsed } else { 0.0 },
                         vertical_fpm: frame.vertical_speed_fpm,
-                        engines_running: !matches!(
-                            pose.stage,
-                            openatc_core::traffic::motion::Stage::Parked
-                                | openatc_core::traffic::motion::Stage::Turnaround
-                        ) && (pose.stage
-                            != openatc_core::traffic::motion::Stage::Pushback
-                            || runtime.approved_orders.contains(&(pose.id, pose.segment))),
-                        fixed_gear: runtime.fixed_gear.contains(&pose.id),
+                        engines_running,
+                        fixed_gear,
                         landing_lights: pose.stage.landing_lights(),
+                        at_hold,
+                        takeoff_flaps,
                     },
-                    handling,
+                    &handling,
                     if telemetry.paused {
                         0.0
                     } else {
@@ -6132,6 +6151,42 @@ pub fn animation_handling(
 }
 
 /// Publish the most recent complete worker sample without waiting for simulation.
+/// Runway length used by a local departure, or the longest runway at the local airport.
+fn departure_runway_meters(runtime: &Runtime, id: u32) -> Option<f64> {
+    let airport = runtime.airport.as_ref()?;
+    let name = runtime
+        .advisories
+        .get(&id)
+        .map_or("", |plan| plan.runway.as_str());
+    let runway = airport
+        .runways
+        .iter()
+        .find(|runway| {
+            !name.is_empty() && (runway.first_name == name || runway.second_name == name)
+        })
+        .or_else(|| {
+            airport.runways.iter().max_by(|left, right| {
+                let length = |runway: &openatc_core::airport::Runway| {
+                    (runway.second.east - runway.first.east)
+                        .hypot(runway.second.north - runway.first.north)
+                };
+                length(left).total_cmp(&length(right))
+            })
+        })?;
+    Some((runway.second.east - runway.first.east).hypot(runway.second.north - runway.first.north))
+}
+
+/// More flap on a short runway, less on a long one. This is a visual configuration, not a
+/// takeoff-performance calculation.
+fn departure_flaps(runtime: &Runtime, id: u32, handling: &animation::Handling) -> f64 {
+    let base = handling.takeoff_flaps;
+    match departure_runway_meters(runtime, id) {
+        Some(meters) if meters < 1_800.0 => (base + 0.2).min(0.7),
+        Some(meters) if meters < 2_400.0 => (base + 0.1).min(0.5),
+        _ => base,
+    }
+}
+
 pub fn step(state: &mut EngineState) {
     state.generated.log = state.settings.traffic_log;
     set_traffic_log(state.settings.traffic_log);

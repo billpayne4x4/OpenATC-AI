@@ -812,6 +812,9 @@ pub(super) fn prepare_tower(
         if scene.frames.iter().any(|frame| frame.target.id == identity) {
             continue;
         }
+        if aircraft.fixed_gear {
+            scene.fixed_gear.insert(identity);
+        }
         let Some(frame) = local_frame(
             input,
             identity,
@@ -906,7 +909,7 @@ fn prepare_local_departures(
     };
     let runway_meters = (runway_data.second.east - runway_data.first.east)
         .hypot(runway_data.second.north - runway_data.first.north);
-    let (threshold_point, far_point) = if runway_data.first_name == runway {
+    let (threshold_point, departure_point) = if runway_data.first_name == runway {
         (runway_data.first, runway_data.second)
     } else {
         (runway_data.second, runway_data.first)
@@ -920,18 +923,18 @@ fn prepare_local_departures(
             altitude_feet: altitude,
         }
     };
-    let threshold = to_waypoint(threshold_point, airport.elevation_feet);
+    let departure = to_waypoint(departure_point, airport.elevation_feet);
     let (east, north) = (
-        far_point.east - threshold_point.east,
-        far_point.north - threshold_point.north,
+        departure_point.east - threshold_point.east,
+        departure_point.north - threshold_point.north,
     );
     let length = east.hypot(north).max(1.0);
-    let far_point = openatc_core::state::Point {
-        east: far_point.east + east / length * 5_000.0,
-        north: far_point.north + north / length * 5_000.0,
-        ..far_point
+    let climb_end_point = openatc_core::state::Point {
+        east: departure_point.east + east / length * 5_000.0,
+        north: departure_point.north + north / length * 5_000.0,
+        ..departure_point
     };
-    let far = to_waypoint(far_point, airport.elevation_feet + 1_000.0);
+    let climb_end = to_waypoint(climb_end_point, airport.elevation_feet + 1_000.0);
     let field = Field {
         airport: airport.icao.clone(),
         frequency_khz,
@@ -1040,22 +1043,59 @@ fn prepare_local_departures(
             continue;
         }
         let hold = plan.route.end_position();
+        let hold_point =
+            openatc_core::airport::airport_point(airport, hold.latitude, hold.longitude);
+        let along = ((hold_point.east - threshold_point.east) * east
+            + (hold_point.north - threshold_point.north) * north)
+            / (length * length);
+        let fraction = along.clamp(0.0, 0.85);
+        let line_up_point = openatc_core::state::Point {
+            east: threshold_point.east + east * fraction,
+            north: threshold_point.north + north * fraction,
+            ..threshold_point
+        };
+        let line_up = to_waypoint(line_up_point, airport.elevation_feet);
+        let line_up_meters =
+            (line_up_point.east - hold_point.east).hypot(line_up_point.north - hold_point.north);
+        let remaining_meters = length * (1.0 - fraction);
+        if remaining_meters < aircraft.runway {
+            scene.warnings.push(format!(
+                "{}: local surface departure {kind} has only {remaining_meters:.0} m of runway from its hold",
+                airport.icao
+            ));
+            continue;
+        }
+        let runway_resource = format!(
+            "RUNWAY/{}/{}/{}",
+            airport.icao, runway_data.first_name, runway_data.second_name
+        );
         let mut segments: Vec<openatc_core::traffic::motion::Segment> = (0..surface_count)
             .filter_map(|index| plan.route.segment(index).cloned())
             .collect();
+        let (line_up_added, takeoff_index, climb_index) = if line_up_meters > 1.0 {
+            let index = segments.len();
+            segments.push(openatc_core::traffic::motion::Segment {
+                stage: openatc_core::traffic::motion::Stage::LineUp,
+                points: vec![hold, line_up],
+                knots: handling_for.taxi_knots.clamp(10.0, 15.0),
+                resources: vec![runway_resource.clone()],
+                dwell_seconds: 0.0,
+            });
+            (true, index + 1, index + 2)
+        } else {
+            (false, segments.len(), segments.len() + 1)
+        };
+        let takeoff_start = if line_up_added { line_up } else { hold };
         segments.push(openatc_core::traffic::motion::Segment {
             stage: openatc_core::traffic::motion::Stage::Takeoff,
-            points: vec![hold, threshold],
-            knots: 120.0,
-            resources: vec![format!(
-                "RUNWAY/{}/{}/{}",
-                airport.icao, runway_data.first_name, runway_data.second_name
-            )],
+            points: vec![takeoff_start, departure],
+            knots: handling_for.rotation_knots,
+            resources: vec![runway_resource],
             dwell_seconds: 0.0,
         });
         segments.push(openatc_core::traffic::motion::Segment {
             stage: openatc_core::traffic::motion::Stage::Climb,
-            points: vec![threshold, far],
+            points: vec![departure, climb_end],
             knots: 160.0,
             resources: vec![],
             dwell_seconds: 0.0,
@@ -1076,11 +1116,12 @@ fn prepare_local_departures(
         };
         let route = Arc::new(route);
         let hold_index = surface_count - 1;
-        let takeoff_index = surface_count;
-        let climb_index = surface_count + 1;
         let identity = LOCAL_ID_BASE + 0x100 + u32::try_from(slot).unwrap_or(0);
         if scene.frames.iter().any(|frame| frame.target.id == identity) {
             continue;
+        }
+        if aircraft.fixed_gear {
+            scene.fixed_gear.insert(identity);
         }
         let Some(callsign) = local_callsign(input, &airline, seed) else {
             scene.warnings.push(format!(
@@ -2630,6 +2671,40 @@ mod tests {
             departures >= 3,
             "YSCB should keep local surface departures (found {departures}): {:?}",
             scene.warnings
+        );
+        assert!(
+            scene
+                .frames
+                .iter()
+                .filter(|frame| frame.target.aircraft == "C172")
+                .all(|frame| scene.fixed_gear.contains(&frame.target.id)),
+            "local fixed-gear aircraft must stay gear-down: {:?}",
+            scene.fixed_gear
+        );
+        let takeoff_meters = scene
+            .advisories
+            .values()
+            .filter(|plan| plan.departure)
+            .filter_map(|plan| {
+                let route = plan.route();
+                (0..route.segment_count()).find_map(|index| {
+                    let segment = route.segment(index)?;
+                    (segment.stage == openatc_core::traffic::motion::Stage::Takeoff).then(|| {
+                        let start = segment.points.first()?;
+                        let end = segment.points.last()?;
+                        Some(
+                            openatc_core::arrival::distance_nm(
+                                [start.latitude, start.longitude],
+                                [end.latitude, end.longitude],
+                            ) * 1_852.0,
+                        )
+                    })?
+                })
+            })
+            .fold(0.0, f64::max);
+        assert!(
+            takeoff_meters > 1_000.0,
+            "a local departure needs a real takeoff roll, found {takeoff_meters:.0} m"
         );
         assert!(
             scene

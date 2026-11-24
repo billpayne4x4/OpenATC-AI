@@ -1169,6 +1169,16 @@ impl World {
         let aircraft = self.aircraft.get(&id)?;
         aircraft.route.segments.get(aircraft.segment)
     }
+    /// Stage of the segment after the current clearance limit, when one exists.
+    #[must_use]
+    pub fn next_stage(&self, id: u32) -> Option<Stage> {
+        let aircraft = self.aircraft.get(&id)?;
+        aircraft
+            .route
+            .segments
+            .get(aircraft.segment + 1)
+            .map(|segment| segment.stage)
+    }
     /// Resources one aircraft currently holds, including those retained while standing.
     #[must_use]
     pub fn owned_resources(&self, id: u32) -> BTreeSet<String> {
