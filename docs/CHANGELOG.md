@@ -14,6 +14,7 @@
 - Pushback joins the already planned taxi route at its first entry when that join is paved, instead of replanning from the endpoint and snapping to a node behind the aircraft.
 - Repeated taxi-graph nodes are collapsed before corners are rounded, so a duplicate runway-entry point no longer reports a false tight turn.
 - Heavy jets accelerate at a realistic rate, so a long takeoff no longer exceeds a runway that the aircraft is cleared to use.
+- Published STAR joins are tried before direct-arrival fallbacks. A direct variant no longer consumes the terminal candidate budget before the published routes have been considered.
 - A controlled local circuit that completes a touch-and-go or a go-around is cleared onto the next climb segment immediately, so it cannot stop on the runway waiting for a clearance leg that does not exist.
 - Local departures now queue at the runway with an exclusive hold-short slot: one aircraft occupies the hold, followers stop on the preceding taxi segment, one aircraft lines up, and one rolls. Two departures can no longer stack at the same holding-point coordinates.
 - Local departures now queue at the runway: one aircraft rolls, the next lines up and waits once the first has moved clear, and no second aircraft starts a takeoff roll until the first is airborne. Wake delays and cautions use the leader/follower table.

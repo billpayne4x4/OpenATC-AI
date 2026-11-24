@@ -304,7 +304,9 @@ impl Planner<'_> {
             .collect::<Vec<_>>();
         order.sort_by_key(|index| {
             (
-                !(self.allow_direct && candidates[*index].direct),
+                // A published STAR is the nominal route. The direct join is a fallback and
+                // must not consume the candidate budget before the STARs are tried.
+                candidates[*index].direct,
                 usage.get(index).copied().unwrap_or(0),
                 *index,
             )

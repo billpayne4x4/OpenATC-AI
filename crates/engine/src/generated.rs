@@ -9836,8 +9836,10 @@ mod tests {
         }
         let threshold_data =
             openatc_core::arrival::ArrivalAirport::load(&root, scene.airport.clone()).unwrap();
-        let runway_surface =
-            runway::Surface::new(&scene.airport, "04R", &threshold_data.thresholds, 2.0).unwrap();
+        let mut runway_surfaces = BTreeMap::from([(
+            "04R".to_owned(),
+            runway::Surface::new(&scene.airport, "04R", &threshold_data.thresholds, 2.0).unwrap(),
+        )]);
         for (id, surface) in &scene.nominal_departures {
             assert!(scene.movement.contains_key(id));
             assert_eq!(
@@ -9854,9 +9856,39 @@ mod tests {
                 surface.rotation.latitude,
                 surface.rotation.longitude,
             );
+            let runway_name = scene
+                .airport
+                .runways
+                .iter()
+                .find(|runway| {
+                    openatc_core::traffic::runway_position(
+                        &scene.airport,
+                        &runway.first_name,
+                        surface.rotation.latitude,
+                        surface.rotation.longitude,
+                    )
+                    .is_some_and(|(along, across, length, _)| {
+                        along >= 0.0 && along <= length && across.abs() <= runway.width / 2.0
+                    })
+                })
+                .map(|runway| runway.first_name.clone())
+                .expect("every departure rotation lies on a runway");
+            let runway_surface = runway_surfaces
+                .entry(runway_name.clone())
+                .or_insert_with(|| {
+                    runway::Surface::new(
+                        &scene.airport,
+                        &runway_name,
+                        &threshold_data.thresholds,
+                        2.0,
+                    )
+                    .unwrap()
+                });
+            let expected = runway_surface.height(rotation_point);
             assert!(
-                (surface.rotation.altitude_feet - runway_surface.height(rotation_point)).abs()
-                    < 1e-8
+                (surface.rotation.altitude_feet - expected).abs() < 1e-8,
+                "departure {id} rotation {:.6} ft differs from {runway_name} surface {expected:.6} ft",
+                surface.rotation.altitude_feet
             );
             assert_eq!(
                 surface.segments[0].points.last(),
@@ -9959,7 +9991,7 @@ mod tests {
             aircraft: profiles.aircraft_for(&frame.target.aircraft).unwrap(),
             handling: &scene.movement[&arrival_id],
             policy: &policy,
-            departure_surface: &runway_surface,
+            departure_surface: &runway_surfaces["04R"],
             arrival_surface: &arrival_surface,
             observed: &[],
             reserved: &unreserved,
