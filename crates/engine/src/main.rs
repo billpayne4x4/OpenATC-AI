@@ -683,7 +683,7 @@ async fn main() {
         traffic: Default::default(),
         station_bus: Default::default(),
         traffic_profiles,
-        generated: Default::default(),
+        generated: generated::Runtime::with_preview(&config_dir),
         session_generation: 0,
         traffic_seed: traffic_seed(),
         debug_jump: None,

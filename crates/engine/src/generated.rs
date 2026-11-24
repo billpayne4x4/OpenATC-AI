@@ -78,6 +78,16 @@ pub(crate) fn traffic_log(level: openatc_settings::TrafficLog, message: impl AsR
     }
 }
 
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct Preview {
+    frames: Vec<GeneratedTraffic>,
+    map: Vec<openatc_core::state::MapTraffic>,
+    airport: String,
+    latitude: f64,
+    longitude: f64,
+}
+
 #[derive(Default, Clone)]
 #[allow(clippy::struct_excessive_bools)] // Preview and flight flags are independent runtime states.
 pub struct Runtime {
@@ -113,6 +123,9 @@ pub struct Runtime {
     detail_logged: BTreeSet<(u32, usize, bool)>,
     /// Runway poses that have stopped moving, with the segment they are on.
     stuck: BTreeMap<u32, (usize, Instant)>,
+    /// Last visible traffic, published while a restarted engine prepares its first scene.
+    preview: Option<Preview>,
+    preview_saved: Option<Instant>,
     frames: Vec<GeneratedTraffic>,
     visible: BTreeSet<u32>,
     /// Frames this runtime last placed in the session traffic set.
@@ -4043,6 +4056,14 @@ pub(super) enum RunwayUse {
 }
 
 impl Runtime {
+    /// Load the last visible traffic so a restarted engine can draw immediately.
+    pub(crate) fn with_preview(config_dir: &std::path::Path) -> Self {
+        Self {
+            preview: load_preview(config_dir),
+            ..Self::default()
+        }
+    }
+
     /// Whether this identity has a flight, advisory or apron lifecycle. A
     /// rendered frame alone does not make an aircraft real.
     pub(crate) fn owns(&self, id: u32) -> bool {
@@ -5330,6 +5351,57 @@ fn generated_on_player_frequency(
         && (telemetry.com1_khz == frequency || telemetry.com2_khz == Some(frequency))
 }
 
+fn load_preview(config_dir: &std::path::Path) -> Option<Preview> {
+    let text = std::fs::read_to_string(config_dir.join("local_traffic.json")).ok()?;
+    let preview: Preview = serde_json::from_str(&text).ok()?;
+    (!preview.frames.is_empty()).then_some(preview)
+}
+
+fn preview_matches(state: &EngineState, preview: &Preview) -> bool {
+    let telemetry = &state.session.telemetry;
+    !telemetry.position_valid
+        || (preview.latitude.is_finite()
+            && preview.longitude.is_finite()
+            && openatc_core::arrival::distance_nm(
+                [telemetry.latitude, telemetry.longitude],
+                [preview.latitude, preview.longitude],
+            ) <= 30.0)
+}
+
+fn save_preview(state: &mut EngineState) {
+    let now = Instant::now();
+    if state
+        .generated
+        .preview_saved
+        .is_some_and(|saved| now.duration_since(saved) < Duration::from_secs(5))
+    {
+        return;
+    }
+    let airport = state
+        .generated
+        .airport
+        .as_ref()
+        .map_or_else(String::new, |airport| airport.icao.clone());
+    if airport.is_empty() || state.session.generated_traffic.is_empty() {
+        return;
+    }
+    state.generated.preview_saved = Some(now);
+    let preview = Preview {
+        frames: state.session.generated_traffic.clone(),
+        map: state.session.map_traffic.clone(),
+        airport,
+        latitude: state.session.telemetry.latitude,
+        longitude: state.session.telemetry.longitude,
+    };
+    let path = state.config_dir.join("local_traffic.json");
+    let temporary = path.with_extension("json.tmp");
+    if let Ok(text) = serde_json::to_string(&preview)
+        && std::fs::write(&temporary, text).is_ok()
+    {
+        let _ = std::fs::rename(&temporary, &path);
+    }
+}
+
 /// Remove a generated aircraft that has stopped on a runway for too long.
 ///
 /// A runway slot is a privilege, not an ownership claim. If an aircraft cannot
@@ -6021,8 +6093,7 @@ pub fn step(state: &mut EngineState) {
         });
         population::request_nearby_scene(&mut state.generated, &telemetry, true, destination);
     }
-    if !state.settings.generated_traffic || state.generated.epoch != Some(state.session_generation)
-    {
+    if !state.settings.generated_traffic {
         state.session.generated_traffic.clear();
         state.session.generated_traffic_debug.clear();
         state.session.map_traffic = external_map_traffic(&state.session.telemetry);
@@ -6031,6 +6102,34 @@ pub fn step(state: &mut EngineState) {
         state.session.generated_traffic_clock = None;
         state.session.generated_animation_channels.clear();
         state.session.generated_traffic_diagnostics.clear();
+        return;
+    }
+    if state.generated.epoch != Some(state.session_generation) {
+        if state.generated.epoch.is_none()
+            && let Some(preview) = state
+                .generated
+                .preview
+                .clone()
+                .filter(|preview| preview_matches(state, preview))
+        {
+            state.session.generated_traffic.clone_from(&preview.frames);
+            state.session.map_traffic.clone_from(&preview.map);
+            state.session.generated_traffic_clock = None;
+            state.session.generated_animation_channels = animation_channels(&state.config_dir);
+            state.generated.visible = preview.frames.iter().map(|frame| frame.target.id).collect();
+            state.generated.published_ids = state.generated.visible.clone();
+            state.session.generated_traffic_debug.clear();
+            state.session.generated_traffic_diagnostics.clear();
+        } else {
+            state.session.generated_traffic.clear();
+            state.session.generated_traffic_debug.clear();
+            state.session.map_traffic = external_map_traffic(&state.session.telemetry);
+            state.generated.visible.clear();
+            state.generated.published_ids.clear();
+            state.session.generated_traffic_clock = None;
+            state.session.generated_animation_channels.clear();
+            state.session.generated_traffic_diagnostics.clear();
+        }
         return;
     }
     let mut visible = state
@@ -6264,6 +6363,7 @@ pub fn step(state: &mut EngineState) {
                 .map(|frame| frame.target.clone()),
         );
     }
+    save_preview(state);
 }
 
 fn publish_revocations(current: &mut Runtime, worker: &Runtime, revoked: &BTreeSet<(u32, usize)>) {
@@ -7127,6 +7227,50 @@ mod tests {
         assert_eq!(landing.runway_use(key), RunwayUse::Landing);
         // The same traffic does not occupy a different runway.
         assert_eq!(landing.runway_use("RUNWAY/TEST/27/09"), RunwayUse::Clear);
+    }
+
+    #[test]
+    fn a_restarted_engine_reuses_the_last_visible_traffic() {
+        let dir = std::env::temp_dir().join(format!("openatc-preview-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut state = crate::test_state();
+        state.config_dir = dir.clone();
+        state.generated.airport = Some(Arc::new(openatc_core::airport::demo_airport()));
+        state.session.generated_traffic = vec![GeneratedTraffic {
+            vertical_speed_fpm: 0.0,
+            body_heading_degrees: None,
+            target: openatc_core::state::TrafficTarget {
+                id: 0x00d1_0001,
+                callsign: "PREVIEW1".into(),
+                ..Default::default()
+            },
+            model: Arc::new(openatc_core::traffic::csl::Model {
+                id: "preview".into(),
+                objects: Vec::new(),
+                vertical_offset: None,
+                matches: Vec::new(),
+            }),
+            animation: Animation::default(),
+        }];
+        state.session.map_traffic = vec![openatc_core::state::MapTraffic {
+            id: 0x00d1_0001,
+            callsign: "PREVIEW1".into(),
+            visible: true,
+            source: "visual".into(),
+            ..Default::default()
+        }];
+        save_preview(&mut state);
+        let preview = load_preview(&dir).expect("saved preview");
+        assert_eq!(preview.frames.len(), 1);
+        let mut restarted = crate::test_state();
+        restarted.settings.generated_traffic = true;
+        restarted.generated.preview = Some(preview);
+        step(&mut restarted);
+        assert_eq!(restarted.session.generated_traffic.len(), 1);
+        assert_eq!(
+            restarted.session.generated_traffic[0].target.callsign,
+            "PREVIEW1"
+        );
     }
 
     #[test]
