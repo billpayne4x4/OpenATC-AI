@@ -5192,6 +5192,65 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
         .retain(|id| runtime.frames.iter().any(|frame| frame.target.id == *id));
 }
 
+/// Distance in metres from a local point to a line segment.
+fn point_segment_distance(
+    point: openatc_core::state::Point,
+    first: openatc_core::state::Point,
+    second: openatc_core::state::Point,
+) -> f64 {
+    let east = second.east - first.east;
+    let north = second.north - first.north;
+    let length = east.hypot(north);
+    if length < 0.1 {
+        return (point.east - first.east).hypot(point.north - first.north);
+    }
+    let along = ((point.east - first.east) * east + (point.north - first.north) * north)
+        / (length * length);
+    let along = along.clamp(0.0, 1.0);
+    (point.east - (first.east + east * along)).hypot(point.north - (first.north + north * along))
+}
+
+/// Whether a stopped player is clear of the movement area. A parked player beside a stand
+/// must not hold taxiing traffic; a player stopped on a taxiway or runway still does.
+fn player_is_parked(airport: &Airport, telemetry: &openatc_core::state::Telemetry) -> bool {
+    if !telemetry.on_ground || telemetry.ground_speed_knots >= 1.0 {
+        return false;
+    }
+    let point =
+        openatc_core::airport::airport_point(airport, telemetry.latitude, telemetry.longitude);
+    if openatc_core::airport::within_runway(airport, &point) {
+        return false;
+    }
+    // An airport without enough surface geometry cannot prove the player is off the movement
+    // area; keep the conservative block.
+    if airport.parking.is_empty() && airport.taxi_centerlines.is_empty() && airport.edges.is_empty()
+    {
+        return false;
+    }
+    let stand = airport.parking.iter().any(|parking| {
+        (point.east - parking.point.east).hypot(point.north - parking.point.north) <= 20.0
+    });
+    // A stand is a parking position even when its taxilane is within the wider taxiway
+    // conflict radius. A player stopped on a taxiway is not parked and must keep blocking.
+    if stand {
+        return true;
+    }
+    let centerline = airport
+        .taxi_centerlines
+        .iter()
+        .any(|[first, second]| point_segment_distance(point, *first, *second) <= 12.0);
+    let edge = airport.edges.iter().any(|edge| {
+        let Some(first) = airport.nodes.iter().find(|node| node.id == edge.first) else {
+            return false;
+        };
+        let Some(second) = airport.nodes.iter().find(|node| node.id == edge.second) else {
+            return false;
+        };
+        point_segment_distance(point, first.point, second.point) <= 12.0
+    });
+    !(centerline || edge)
+}
+
 fn external_surface_cells(
     runtime: &Runtime,
     telemetry: &openatc_core::state::Telemetry,
@@ -5251,17 +5310,26 @@ fn external_surface_cells(
         }
     };
     if telemetry.on_ground {
-        add(&TrafficTarget {
-            id: 0,
-            aircraft: telemetry.aircraft_icao.clone(),
-            latitude: telemetry.latitude,
-            longitude: telemetry.longitude,
-            altitude_feet: telemetry.altitude_feet,
-            track_degrees: telemetry.heading_degrees,
-            on_ground: true,
-            wingspan_meters: telemetry.wingspan_meters,
-            ..Default::default()
+        let parked = runtime.operational_airports().any(|airport| {
+            openatc_core::arrival::distance_nm(
+                [airport.reference_latitude, airport.reference_longitude],
+                [telemetry.latitude, telemetry.longitude],
+            ) <= policy.surface_monitor_radius_nm
+                && player_is_parked(airport, telemetry)
         });
+        if !parked {
+            add(&TrafficTarget {
+                id: 0,
+                aircraft: telemetry.aircraft_icao.clone(),
+                latitude: telemetry.latitude,
+                longitude: telemetry.longitude,
+                altitude_feet: telemetry.altitude_feet,
+                track_degrees: telemetry.heading_degrees,
+                on_ground: true,
+                wingspan_meters: telemetry.wingspan_meters,
+                ..Default::default()
+            });
+        }
     }
     if let Some(observed) = &telemetry.traffic {
         for target in observed
@@ -6797,6 +6865,71 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(before, scene_key(&state));
+    }
+
+    #[test]
+    fn a_parked_player_does_not_block_the_taxi_network() {
+        let mut state = crate::test_state();
+        state.generated.policy =
+            Some(parse_operations(include_str!("../../../traffic/operations.toml")).unwrap());
+        let airport = openatc_core::airport::demo_airport();
+        let stand = airport.parking[0].point;
+        let sample =
+            |airport: &Airport, point: openatc_core::state::Point| openatc_core::state::Telemetry {
+                position_valid: true,
+                on_ground: true,
+                ground_speed_knots: 0.0,
+                latitude: airport.reference_latitude + point.north / 111_320.0,
+                longitude: airport.reference_longitude
+                    + point.east / (111_320.0 * airport.reference_latitude.to_radians().cos()),
+                ..Default::default()
+            };
+        let mut parked_airport = airport.clone();
+        parked_airport.taxi_centerlines = vec![[
+            openatc_core::state::Point {
+                east: 0.0,
+                north: 650.0,
+                height: 0.0,
+            },
+            openatc_core::state::Point {
+                east: 0.0,
+                north: 850.0,
+                height: 0.0,
+            },
+        ]];
+        state.generated.airport = Some(Arc::new(parked_airport.clone()));
+        let parked = external_surface_cells(&state.generated, &sample(&parked_airport, stand));
+        assert!(
+            parked.is_empty(),
+            "a player parked at the stand must not reserve taxi cells: {parked:?}"
+        );
+        let taxiway = external_surface_cells(
+            &state.generated,
+            &sample(
+                &parked_airport,
+                openatc_core::state::Point {
+                    east: 0.0,
+                    north: 750.0,
+                    height: 0.0,
+                },
+            ),
+        );
+        assert!(
+            !taxiway.is_empty(),
+            "a player stopped on the taxiway must still block traffic"
+        );
+        let runway = &airport.runways[0];
+        let midpoint = openatc_core::state::Point {
+            east: f64::midpoint(runway.first.east, runway.second.east),
+            north: f64::midpoint(runway.first.north, runway.second.north),
+            height: 0.0,
+        };
+        state.generated.airport = Some(Arc::new(airport.clone()));
+        let on_runway = external_surface_cells(&state.generated, &sample(&airport, midpoint));
+        assert!(
+            !on_runway.is_empty(),
+            "a player on the runway must still block traffic"
+        );
     }
 
     #[test]
