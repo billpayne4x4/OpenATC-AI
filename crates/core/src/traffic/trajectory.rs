@@ -610,9 +610,16 @@ fn compile_selected(
         let radius = (speed.powi(2) / (9.80665 * envelope.bank_degrees.to_radians().tan()))
             .max(speed / envelope.turn_rate_degrees_sec.to_radians());
         let heading = fix.arrival_heading.unwrap_or_else(|| {
-            fixes.get(index + 1).map_or(final_heading_degrees, |next| {
-                bearing(fix.coordinate, next.coordinate)
-            })
+            // A fix without a published arrival course is a fly-by waypoint. Cross it on
+            // the inbound course and let the next connection make the turn, instead of
+            // forcing the outbound course before the fix.
+            let from_point = geographic(from.point, 0.0);
+            let inbound = bearing([from_point.latitude, from_point.longitude], fix.coordinate);
+            if inbound.is_finite() {
+                inbound
+            } else {
+                from.heading
+            }
         });
         if !heading.is_finite() {
             return Err(format!("Invalid arrival course at {index}"));
@@ -659,7 +666,14 @@ fn compile_selected(
             },
             |_, _| true,
         ) }
-        .map_err(|error| format!("Airborne crossing {index}, radius {radius:.0} m, length {length:.0} m, headings {:.1}/{heading:.1}, ground speed {:.1} kt, preferred {:.0} ft within {:.0}..{:.0} ft, turn {:?}: {error}", from.heading, fix.ground_knots, fix.preferred_feet, fix.minimum_feet, fix.maximum_feet, fix.required_turn))?;
+        .map_err(|error| {
+            let from_point = geographic(from.point, 0.0);
+            let bearing = bearing(
+                [from_point.latitude, from_point.longitude],
+                fix.coordinate,
+            );
+            format!("Airborne crossing {index} from {:.5}/{:.5} to {:.5}/{:.5} (bearing {bearing:.1}), radius {radius:.0} m, length {length:.0} m, headings {:.1}/{heading:.1}, ground speed {:.1} kt, preferred {:.0} ft within {:.0}..{:.0} ft, turn {:?}: {error}", from_point.latitude, from_point.longitude, fix.coordinate[0], fix.coordinate[1], from.heading, fix.ground_knots, fix.preferred_feet, fix.minimum_feet, fix.maximum_feet, fix.required_turn)
+        })?;
         let endpoint = samples.last().ok_or("Airborne connection is empty")?;
         let to = curves::Pose {
             point: endpoint.point,
@@ -966,6 +980,58 @@ mod tests {
                 .is_err()
         );
         assert!(original.split_limits(1.0, |_| true, grid).is_err());
+    }
+
+    #[test]
+    fn fly_by_waypoint_is_crossed_on_the_inbound_course() {
+        let start = Waypoint {
+            latitude: 0.0,
+            longitude: 0.0,
+            altitude_feet: 5000.0,
+        };
+        let fix = |coordinate| Fix {
+            coordinate,
+            arrival_heading: None,
+            minimum_feet: 5000.0,
+            maximum_feet: 5000.0,
+            preferred_feet: 5000.0,
+            ground_knots: 200.0,
+            required_turn: None,
+            intercept: None,
+            airspeed: None,
+        };
+        let fixes = [fix([0.05, 0.0]), fix([0.1, 0.1])];
+        let envelope = Envelope {
+            bank_degrees: 25.0,
+            turn_rate_degrees_sec: 3.0,
+            climb_fpm: 2000.0,
+            descent_fpm: 2000.0,
+            spacing_meters: 250.0,
+            maximum_detour_meters: 5000.0,
+        };
+        let draft = draft(start, 0.0, &fixes, 45.0, &envelope)
+            .expect("a fly-by turn must not force the outbound course early");
+        assert_eq!(draft.legs[0].points.last().unwrap().latitude, 0.05);
+        assert!(
+            draft.legs[0]
+                .points
+                .iter()
+                .take(draft.legs[0].points.len() - 1)
+                .all(|point| point.longitude.abs() < 1e-9),
+            "the path turned toward the next leg before the fly-by fix"
+        );
+        let length = draft
+            .legs
+            .iter()
+            .flat_map(|leg| leg.points.windows(2))
+            .map(|pair| {
+                distance_nm(
+                    [pair[0].latitude, pair[0].longitude],
+                    [pair[1].latitude, pair[1].longitude],
+                )
+            })
+            .sum::<f64>();
+        assert!(length < 20.0, "fly-by path took {length:.1} NM");
     }
 
     #[test]
