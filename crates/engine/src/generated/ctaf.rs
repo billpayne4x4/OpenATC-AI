@@ -83,6 +83,16 @@ pub(super) struct Plan {
     pub(super) runway: String,
     /// Tower has issued the clearance that permits the next movement.
     pub(super) cleared: bool,
+    /// Tower has cleared this departure to line up and wait.
+    pub(super) line_up_cleared: bool,
+    /// Tower has cleared this departure for takeoff.
+    pub(super) takeoff_cleared: bool,
+    /// The line-up clearance has been spoken or logged.
+    pub(super) line_up_announced: bool,
+    /// The takeoff clearance has been spoken or logged.
+    pub(super) takeoff_announced: bool,
+    /// The following departure needs a wake caution.
+    pub(super) wake_caution: bool,
 }
 
 impl Plan {
@@ -94,7 +104,7 @@ impl Plan {
         }
     }
 
-    fn route(&self) -> Arc<openatc_core::traffic::motion::Route> {
+    pub(super) fn route(&self) -> Arc<openatc_core::traffic::motion::Route> {
         self.cross
             .as_ref()
             .map_or_else(|| self.circuit.route(), |cross| cross.route())
@@ -400,6 +410,11 @@ fn plan(
             controlled: false,
             runway: String::new(),
             cleared: false,
+            line_up_cleared: false,
+            takeoff_cleared: false,
+            line_up_announced: false,
+            takeoff_announced: false,
+            wake_caution: false,
         },
         frame,
         aircraft.handling,
@@ -505,6 +520,11 @@ fn plan_cross(
             controlled: false,
             runway: String::new(),
             cleared: false,
+            line_up_cleared: false,
+            takeoff_cleared: false,
+            line_up_announced: false,
+            takeoff_announced: false,
+            wake_caution: false,
         },
         frame,
         aircraft.handling,
@@ -861,6 +881,11 @@ pub(super) fn prepare_tower(
                 controlled: true,
                 runway: local_runway,
                 cleared: slot > 0,
+                line_up_cleared: false,
+                takeoff_cleared: false,
+                line_up_announced: false,
+                takeoff_announced: false,
+                wake_caution: false,
             },
         );
         scene.frames.push(frame);
@@ -994,6 +1019,19 @@ fn prepare_local_departures(
             ));
             continue;
         };
+        let base_climb_knots: f64 = match handling_kind {
+            openatc_core::traffic::animation::Kind::Piston => 110.0,
+            openatc_core::traffic::animation::Kind::Turboprop => 160.0,
+            openatc_core::traffic::animation::Kind::RegionalJet => 200.0,
+            openatc_core::traffic::animation::Kind::Jet => 240.0,
+            openatc_core::traffic::animation::Kind::HeavyJet => 260.0,
+        };
+        let climb_knots = base_climb_knots.min(aircraft.cruise_knots.max(80.0_f64));
+        let slow_turnout = matches!(
+            handling_kind,
+            openatc_core::traffic::animation::Kind::Piston
+                | openatc_core::traffic::animation::Kind::Turboprop
+        );
         let mut first_error = None;
         let Some((stand, plan)) = airport
             .parking
@@ -1081,7 +1119,7 @@ fn prepare_local_departures(
                 stage: openatc_core::traffic::motion::Stage::LineUp,
                 points: vec![hold, line_up],
                 knots: handling_for.taxi_knots.clamp(10.0, 15.0),
-                resources: vec![runway_resource.clone()],
+                resources: vec![format!("LINEUP/{}/{}", airport.icao, runway)],
                 dwell_seconds: 0.0,
             });
             (true, index + 1, index + 2)
@@ -1096,10 +1134,46 @@ fn prepare_local_departures(
             resources: vec![runway_resource],
             dwell_seconds: 0.0,
         });
+        let runway_bearing = openatc_core::arrival::bearing(
+            [departure.latitude, departure.longitude],
+            [climb_end.latitude, climb_end.longitude],
+        );
+        let climb_points = if slow_turnout {
+            let turn_start = openatc_core::arrival::destination(
+                [departure.latitude, departure.longitude],
+                runway_bearing,
+                2.0,
+            );
+            let turn = if runway == "17" || runway == "12" {
+                -25.0
+            } else {
+                25.0
+            };
+            let turn_end = openatc_core::arrival::destination(
+                turn_start,
+                (runway_bearing + turn).rem_euclid(360.0),
+                (climb_out_meters / 1_852.0 - 2.0).max(1.0),
+            );
+            vec![
+                departure,
+                openatc_core::traffic::motion::Waypoint {
+                    latitude: turn_start[0],
+                    longitude: turn_start[1],
+                    altitude_feet: airport.elevation_feet + 500.0,
+                },
+                openatc_core::traffic::motion::Waypoint {
+                    latitude: turn_end[0],
+                    longitude: turn_end[1],
+                    altitude_feet: airport.elevation_feet + 2_000.0,
+                },
+            ]
+        } else {
+            vec![departure, climb_end]
+        };
         segments.push(openatc_core::traffic::motion::Segment {
             stage: openatc_core::traffic::motion::Stage::Climb,
-            points: vec![departure, climb_end],
-            knots: 160.0,
+            points: climb_points,
+            knots: climb_knots,
             resources: vec![],
             dwell_seconds: 0.0,
         });
@@ -1229,6 +1303,11 @@ fn prepare_local_departures(
                 controlled: true,
                 runway: runway.clone(),
                 cleared: true,
+                line_up_cleared: false,
+                takeoff_cleared: false,
+                line_up_announced: false,
+                takeoff_announced: false,
+                wake_caution: false,
             },
         );
         scene.frames.push(frame);
@@ -1372,21 +1451,189 @@ pub(super) fn prepare(scene: &mut Scene, input: &Preparation) {
     }
 }
 
+/// Sequence local departures at the runway holding point.
+///
+/// One aircraft may roll and one may line up and wait. The next departure is allowed to line up
+/// once the rolling aircraft has moved clear of the holding point. Wake delays are applied to
+/// the lined-up aircraft before its takeoff clearance.
+fn local_departure_queue(runtime: &mut Runtime) {
+    let poses = runtime.world.snapshot();
+    let mut taking_off = None;
+    for pose in &poses {
+        let Some(plan) = runtime.advisories.get(&pose.id) else {
+            continue;
+        };
+        if plan.departure
+            && plan.controlled
+            && pose.stage == openatc_core::traffic::motion::Stage::Takeoff
+        {
+            taking_off = Some(pose.id);
+        }
+    }
+    // A line-up clearance is active until the aircraft starts its takeoff roll. Other aircraft
+    // may reach the holding point, but they do not own the runway until this flag is set.
+    for pose in &poses {
+        if pose.stage == openatc_core::traffic::motion::Stage::Takeoff
+            && let Some(plan) = runtime.advisories.get_mut(&pose.id)
+            && plan.departure
+        {
+            plan.line_up_cleared = false;
+        }
+    }
+    let line_up = runtime
+        .advisories
+        .iter()
+        .find(|(id, plan)| {
+            plan.departure
+                && plan.controlled
+                && plan.line_up_cleared
+                && poses.iter().any(|pose| pose.id == **id)
+        })
+        .map(|(id, _)| *id);
+    // The first aircraft reaching the hold owns the next slot. This is deliberately based on
+    // the hold, not the runway distance, so converging taxiways do not reorder the queue.
+    for pose in &poses {
+        let Some(plan) = runtime.advisories.get(&pose.id) else {
+            continue;
+        };
+        if plan.departure
+            && plan.controlled
+            && pose.stage == openatc_core::traffic::motion::Stage::TaxiOut
+            && matches!(
+                runtime.world.next_stage(pose.id),
+                Some(
+                    openatc_core::traffic::motion::Stage::LineUp
+                        | openatc_core::traffic::motion::Stage::Takeoff
+                )
+            )
+            && !runtime.departure_order.contains_key(&pose.id)
+        {
+            runtime.departure_sequence = runtime.departure_sequence.wrapping_add(1);
+            runtime
+                .departure_order
+                .insert(pose.id, runtime.departure_sequence);
+        }
+    }
+    let leader_moved = taking_off
+        .and_then(|id| {
+            let pose = poses.iter().find(|pose| pose.id == id)?;
+            let segment = runtime.world.current_segment(id)?;
+            let start = segment.points.first()?;
+            Some(
+                openatc_core::arrival::distance_nm(
+                    [start.latitude, start.longitude],
+                    [pose.position.latitude, pose.position.longitude],
+                ) * 1_852.0,
+            )
+        })
+        .unwrap_or(0.0);
+    if line_up.is_none() {
+        let candidate = poses
+            .iter()
+            .filter(|pose| {
+                runtime.advisories.get(&pose.id).is_some_and(|plan| {
+                    plan.departure
+                        && plan.controlled
+                        && !plan.announced.is_empty()
+                        && !plan.line_up_cleared
+                        && !plan.takeoff_cleared
+                }) && (pose.stage == openatc_core::traffic::motion::Stage::LineUp
+                    || pose.stage == openatc_core::traffic::motion::Stage::TaxiOut
+                        && matches!(
+                            runtime.world.next_stage(pose.id),
+                            Some(
+                                openatc_core::traffic::motion::Stage::LineUp
+                                    | openatc_core::traffic::motion::Stage::Takeoff
+                            )
+                        ))
+            })
+            .min_by_key(|pose| {
+                runtime
+                    .departure_order
+                    .get(&pose.id)
+                    .copied()
+                    .unwrap_or(u64::MAX)
+            })
+            .map(|pose| pose.id);
+        if let Some(id) = candidate {
+            let (runway, next) = {
+                let plan = runtime.advisories.get(&id).expect("candidate plan");
+                (
+                    plan.runway_resource().to_owned(),
+                    runtime.world.next_stage(id),
+                )
+            };
+            let owner = runtime.world.resource_owner(&runway);
+            let clear = match taking_off {
+                Some(lead) if lead != id => {
+                    leader_moved >= 250.0 && (owner == Some(lead) || owner.is_none())
+                }
+                Some(_) => false,
+                None => owner.is_none() || owner == Some(id),
+            };
+            let already_line_up = poses
+                .iter()
+                .find(|pose| pose.id == id)
+                .is_some_and(|pose| pose.stage == openatc_core::traffic::motion::Stage::LineUp);
+            if clear && let Some(plan) = runtime.advisories.get_mut(&id) {
+                if already_line_up || next == Some(openatc_core::traffic::motion::Stage::LineUp) {
+                    plan.line_up_cleared = true;
+                } else {
+                    // No physical line-up segment; the hold is the line-up point.
+                    plan.wake_caution = runtime
+                        .departure_wake
+                        .get(&id)
+                        .is_some_and(|seconds| *seconds > 0.0);
+                    plan.line_up_announced = true;
+                    plan.takeoff_cleared = true;
+                }
+            }
+        }
+    }
+    if let Some(id) = line_up {
+        let runway = runtime
+            .advisories
+            .get(&id)
+            .map(|plan| plan.runway_resource().to_owned())
+            .unwrap_or_default();
+        let owner = runtime.world.resource_owner(&runway);
+        let wake = runtime.departure_wake.get(&id).copied().unwrap_or(0.0);
+        if let Some(plan) = runtime.advisories.get_mut(&id) {
+            plan.wake_caution = wake > 0.0;
+            if owner.is_none() && wake <= 0.0 && plan.line_up_announced {
+                plan.takeoff_cleared = true;
+            }
+        }
+    }
+}
+
 /// Grant the next segment of every advisory procedure and continue the finished circuits.
 pub(super) fn advance(runtime: &mut Runtime, blocked: &BTreeSet<String>) {
     if runtime.advisories.is_empty() {
         return;
     }
+    local_departure_queue(runtime);
     let generation = runtime.world.generation();
     let poses = runtime.world.snapshot();
     for pose in &poses {
         if !runtime.world.is_advisory(pose.id) {
             continue;
         }
-        let cleared = runtime
-            .advisories
-            .get(&pose.id)
-            .is_none_or(|plan| !plan.controlled || plan.cleared);
+        let cleared = runtime.advisories.get(&pose.id).is_none_or(|plan| {
+            if plan.departure && plan.controlled {
+                match pose.stage {
+                    openatc_core::traffic::motion::Stage::LineUp => {
+                        plan.line_up_cleared && plan.line_up_announced
+                    }
+                    openatc_core::traffic::motion::Stage::Takeoff => {
+                        plan.takeoff_cleared && plan.takeoff_announced
+                    }
+                    _ => plan.cleared,
+                }
+            } else {
+                !plan.controlled || plan.cleared
+            }
+        });
         if pose.awaiting_clearance && cleared {
             runtime
                 .world
@@ -1581,9 +1828,135 @@ fn tower_station(
         .cloned()
 }
 
+/// Speak one background transmission with the station or pilot voice for the frequency.
+fn speak_background(
+    state: &mut EngineState,
+    airport: &str,
+    frequency: i32,
+    callsign: &str,
+    text: &str,
+    tower: bool,
+) {
+    if !state.settings.hear_traffic_radio || !state.session.telemetry.radio_power {
+        return;
+    }
+    let Some(radio) = state.session.receiving_radio(frequency) else {
+        return;
+    };
+    let spoken = state.generated.spoken_text(text);
+    let mut tag = if tower {
+        let Some(station) = tower_station(state, airport, frequency) else {
+            return;
+        };
+        crate::flight::tag(state, &station)
+    } else {
+        SpeechTag {
+            position: "Traffic".into(),
+            voice: crate::traffic::pilot_voice_for_callsign(state, callsign),
+            ..Default::default()
+        }
+    };
+    tag.radio = Some(radio);
+    tag.frequency = Some(frequency);
+    let speaker = if tower { "Tower" } else { &spoken };
+    add_transmission(&mut state.session, speaker, &spoken, &tag);
+    if let Some(entry) = state.session.transcript.last_mut() {
+        entry.background = true;
+        entry.information_only = true;
+    }
+}
+
+/// Speak the queued line-up and takeoff clearances. Returns true when a clearance was spoken.
+fn announce_local_departure_clearances(state: &mut EngineState) -> bool {
+    if state.generated.advisories.is_empty() || state.generated.simulation_job.is_some() {
+        return false;
+    }
+    let now = Instant::now();
+    let Some((id, takeoff, callsign, frequency, airport, runway, wake)) = state
+        .generated
+        .advisories
+        .iter()
+        .filter(|(_, plan)| plan.departure && plan.controlled)
+        .filter(|(_, plan)| plan.due.is_none_or(|due| now >= due))
+        .find_map(|(id, plan)| {
+            let line_up = plan.line_up_cleared && !plan.line_up_announced;
+            let takeoff = plan.takeoff_cleared && !plan.takeoff_announced;
+            (line_up || takeoff).then(|| {
+                (
+                    *id,
+                    takeoff && !line_up,
+                    plan.callsign.clone(),
+                    plan.field.frequency_khz,
+                    plan.field.airport.clone(),
+                    plan.runway.clone(),
+                    plan.wake_caution,
+                )
+            })
+        })
+    else {
+        return false;
+    };
+    let (text_key, readback_key) = if takeoff {
+        ("tower_clear_takeoff", "tower_readback_takeoff")
+    } else if wake {
+        (
+            "flight_line_up_and_wait_wake",
+            "pilot_line_up_and_wait_readback",
+        )
+    } else {
+        ("flight_line_up_and_wait", "pilot_line_up_and_wait_readback")
+    };
+    let text = openatc_core::dialogue::say(
+        text_key,
+        &[("callsign", callsign.clone()), ("runway", runway.clone())],
+    );
+    if !text.is_empty() {
+        speak_background(state, &airport, frequency, &callsign, &text, true);
+        if takeoff {
+            let readback = openatc_core::dialogue::say(
+                readback_key,
+                &[("callsign", callsign.clone()), ("runway", runway.clone())],
+            );
+            if !readback.is_empty() {
+                speak_background(state, &airport, frequency, &callsign, &readback, false);
+            }
+        } else {
+            let readback = openatc_core::dialogue::say(
+                readback_key,
+                &[("callsign", callsign.clone()), ("runway", runway)],
+            );
+            if !readback.is_empty() {
+                speak_background(state, &airport, frequency, &callsign, &readback, false);
+            }
+        }
+    }
+    let rate = state
+        .generated
+        .policy
+        .as_ref()
+        .map_or(12.0, |policy| policy.radio_characters_per_second);
+    let gap = state
+        .generated
+        .policy
+        .as_ref()
+        .map_or(0.4, |policy| policy.radio_gap_seconds);
+    if let Some(plan) = state.generated.advisories.get_mut(&id) {
+        if takeoff {
+            plan.takeoff_announced = true;
+        } else {
+            plan.line_up_announced = true;
+        }
+        plan.due = Some(now + Duration::from_secs_f64(text.chars().count() as f64 / rate + gap));
+    }
+    true
+}
+
 /// Speak the advisories made by the aircraft that are established on a leg.
 pub(super) fn announce(state: &mut EngineState) {
     if state.generated.advisories.is_empty() || state.generated.simulation_job.is_some() {
+        return;
+    }
+    if announce_local_departure_clearances(state) {
         return;
     }
     let poses = state.generated.world.snapshot();
@@ -1625,7 +1998,7 @@ pub(super) fn announce(state: &mut EngineState) {
         } else {
             advisory.text.clone()
         };
-        let clearance = if plan.controlled {
+        let clearance = if plan.controlled && !plan.departure {
             match advisory.leg {
                 "downwind" | "five_miles" => Some("tower_clear_land"),
                 "ready" | "departing" => Some("tower_clear_takeoff"),
@@ -1876,6 +2249,11 @@ mod tests {
             controlled: true,
             runway: "09".into(),
             cleared: false,
+            line_up_cleared: false,
+            takeoff_cleared: false,
+            line_up_announced: false,
+            takeoff_announced: false,
+            wake_caution: false,
         };
         let text = controlled_text(&plan, "five_miles");
         assert!(text.starts_with("Tower, TEST"), "{text}");
@@ -2823,53 +3201,79 @@ mod tests {
             "local frames must survive a smaller scene: {:?}",
             published.status
         );
-        let departure = scene
-            .advisories
-            .iter()
-            .find(|(_, plan)| plan.departure)
-            .map(|(id, _)| *id)
-            .expect("local departure");
-        let start = scene
-            .world
-            .snapshot()
-            .into_iter()
-            .find(|pose| pose.id == departure)
-            .expect("departure pose")
-            .segment;
-        let mut runtime = Runtime {
-            world: scene.world,
-            advisories: scene.advisories,
-            frames: scene.frames,
-            movement: scene.movement,
+        // Run the queue without the circuit traffic, whose test harness does not make the
+        // radio calls that would release a runway resource.
+        let mut queue = Runtime {
+            world: scene.world.clone(),
+            advisories: scene.advisories.clone(),
+            frames: scene.frames.clone(),
+            movement: scene.movement.clone(),
             ..Runtime::default()
         };
-        let mut moved = false;
+        let non_departures: Vec<u32> = queue
+            .advisories
+            .iter()
+            .filter(|(_, plan)| !plan.departure)
+            .map(|(id, _)| *id)
+            .collect();
+        for id in non_departures {
+            queue.world.remove(id);
+            queue.advisories.remove(&id);
+            queue.frames.retain(|frame| frame.target.id != id);
+        }
+        for plan in queue.advisories.values_mut() {
+            if plan.departure {
+                plan.announced.insert(0);
+                plan.line_up_announced = true;
+                plan.takeoff_announced = true;
+            }
+        }
+        let mut queue_seen = false;
+        let mut max_takeoff = 0usize;
+        let mut max_line_up = 0usize;
         let mut now = 0.0;
-        for _ in 0..4_000 {
-            advance(&mut runtime, &BTreeSet::new());
+        for _ in 0..1_200 {
+            super::advance(&mut queue, &BTreeSet::new());
             now += 1.0;
-            runtime.world.advance(now, false);
-            let Some(pose) = runtime
-                .world
-                .snapshot()
-                .into_iter()
-                .find(|pose| pose.id == departure)
-            else {
-                moved = true;
-                break;
-            };
-            if pose.segment > start
-                || matches!(
-                    pose.stage,
-                    openatc_core::traffic::motion::Stage::Takeoff
-                        | openatc_core::traffic::motion::Stage::Climb
-                )
-            {
-                moved = true;
+            queue.world.advance(now, false);
+            let poses = queue.world.snapshot();
+            let takeoff = poses
+                .iter()
+                .filter(|pose| {
+                    queue
+                        .advisories
+                        .get(&pose.id)
+                        .is_some_and(|plan| plan.departure && plan.controlled)
+                        && pose.stage == openatc_core::traffic::motion::Stage::Takeoff
+                })
+                .count();
+            let line_up = poses
+                .iter()
+                .filter(|pose| {
+                    queue.advisories.get(&pose.id).is_some_and(|plan| {
+                        plan.departure && plan.controlled && plan.line_up_cleared
+                    })
+                })
+                .count();
+            max_takeoff = max_takeoff.max(takeoff);
+            max_line_up = max_line_up.max(line_up);
+            queue_seen |= takeoff > 0 && line_up > 0;
+            if queue_seen {
                 break;
             }
         }
-        assert!(moved, "the local departure never taxied or took off");
+        assert!(
+            max_takeoff <= 1,
+            "two local aircraft entered the takeoff roll together: {max_takeoff}"
+        );
+        assert!(
+            max_line_up <= 1,
+            "two local aircraft occupied the line-up point together: {max_line_up}"
+        );
+        assert!(
+            queue_seen,
+            "the next departure never lined up while the first was rolling"
+        );
     }
 
     #[test]

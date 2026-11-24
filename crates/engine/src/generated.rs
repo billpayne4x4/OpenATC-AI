@@ -5930,7 +5930,23 @@ pub(crate) fn refresh_departure_wake(state: &mut EngineState) {
             !pose.recovering
                 && (pose.stage == openatc_core::traffic::motion::Stage::LineUp
                     || pose.stage == openatc_core::traffic::motion::Stage::Takeoff
-                        && pose.knots <= 0.0)
+                        && pose.knots <= 0.0
+                    || state
+                        .generated
+                        .advisories
+                        .get(&pose.id)
+                        .is_some_and(|plan| {
+                            plan.departure
+                                && plan.controlled
+                                && pose.stage == openatc_core::traffic::motion::Stage::TaxiOut
+                                && matches!(
+                                    state.generated.world.next_stage(pose.id),
+                                    Some(
+                                        openatc_core::traffic::motion::Stage::LineUp
+                                            | openatc_core::traffic::motion::Stage::Takeoff
+                                    )
+                                )
+                        }))
         })
         .map(|pose| pose.id)
         .collect::<BTreeSet<_>>();
@@ -6017,6 +6033,73 @@ pub(crate) fn refresh_departure_wake(state: &mut EngineState) {
         );
         if remaining > 0.0 {
             delays.insert(id, remaining);
+        }
+    }
+    // Local departures use the same leader/follower table. Their route contains a LineUp
+    // segment before Takeoff, so find the actual roll rather than assuming segment one.
+    if let Some(airport) = state.generated.airport.clone() {
+        for (&id, plan) in &state.generated.advisories {
+            if !plan.departure || !waiting.contains(&id) {
+                continue;
+            }
+            let Some(frame) = state
+                .generated
+                .frames
+                .iter()
+                .find(|frame| frame.target.id == id)
+            else {
+                continue;
+            };
+            let Some(runway) = airport.runways.iter().find(|runway| {
+                runway.first_name == plan.runway || runway.second_name == plan.runway
+            }) else {
+                continue;
+            };
+            let route = plan.route();
+            let Some(start) = (0..route.segment_count()).find_map(|index| {
+                let segment = route.segment(index)?;
+                (segment.stage == openatc_core::traffic::motion::Stage::Takeoff)
+                    .then(|| segment.points.first().copied())?
+            }) else {
+                continue;
+            };
+            let Some(end) = (0..route.segment_count()).find_map(|index| {
+                let segment = route.segment(index)?;
+                (segment.stage == openatc_core::traffic::motion::Stage::Takeoff)
+                    .then(|| segment.points.last().copied())?
+            }) else {
+                continue;
+            };
+            let heading = openatc_core::arrival::bearing(
+                [start.latitude, start.longitude],
+                [end.latitude, end.longitude],
+            );
+            let first = openatc_core::traffic::runway_position(
+                &airport,
+                &runway.first_name,
+                start.latitude,
+                start.longitude,
+            )
+            .is_some_and(|position| {
+                openatc_core::navigation::turn(position.3, heading).abs() < 90.0
+            });
+            let name = if first {
+                &runway.first_name
+            } else {
+                &runway.second_name
+            };
+            let remaining = crate::traffic::departure_wake_delay(
+                state,
+                id,
+                &airport,
+                name,
+                &frame.target.aircraft,
+                start.latitude,
+                start.longitude,
+            );
+            if remaining > 0.0 {
+                delays.insert(id, remaining);
+            }
         }
     }
     state.generated.departure_wake = delays;
