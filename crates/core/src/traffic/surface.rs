@@ -29,6 +29,10 @@ pub fn rounded(
     spacing: f64,
     supported: impl Fn(Point) -> bool,
 ) -> Result<Vec<Sample>, String> {
+    // Installed taxi graphs repeat a node where an edge meets the runway or another edge.
+    // A repeated point leaves a zero-length outgoing segment, and no corner can fit in it.
+    // Half a metre is well below any real taxi segment and only collapses those duplicates.
+    const MINIMUM_SEPARATION_METERS: f64 = 0.5;
     if points.len() < 2
         || points.len() > 4096
         || !(1.0..=100.0).contains(&preferred_radius)
@@ -43,7 +47,7 @@ pub fn rounded(
     let mut clean = Vec::new();
     for point in points {
         if clean.last().is_none_or(|last: &Point| {
-            (point.east - last.east).hypot(point.north - last.north) > 0.01
+            (point.east - last.east).hypot(point.north - last.north) > MINIMUM_SEPARATION_METERS
         }) {
             clean.push(*point);
         }
@@ -162,5 +166,32 @@ mod tests {
             },
         ];
         assert!(rounded(&short, 30.0, 10.0, 5.0, |_| true).is_err());
+    }
+
+    #[test]
+    fn repeated_taxi_nodes_do_not_create_an_impossible_corner() {
+        let points = [
+            Point {
+                east: -100.0,
+                north: 0.0,
+                height: 0.0,
+            },
+            Point::default(),
+            Point {
+                east: 0.0,
+                north: 0.05,
+                height: 0.0,
+            },
+            Point {
+                east: 0.0,
+                north: 100.0,
+                height: 0.0,
+            },
+        ];
+        let path = rounded(&points, 30.0, 10.0, 5.0, |_| true)
+            .expect("a repeated node must not hide the real corner");
+        assert_eq!(path.first().unwrap().point, points[0]);
+        assert_eq!(path.last().unwrap().point, points[3]);
+        assert!(path.iter().any(|sample| sample.turning));
     }
 }

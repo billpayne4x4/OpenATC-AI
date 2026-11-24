@@ -1149,13 +1149,21 @@ fn ground_route_once(
                 telemetry.latitude = coordinate[0];
                 telemetry.longitude = coordinate[1];
                 telemetry.heading_degrees = outgoing;
-                path = openatc_core::airport::calculate_taxi_route(
-                    airport,
-                    &telemetry,
-                    runway,
-                    false,
-                    aircraft.parking_size(),
-                )?;
+                // The pushback ends on the taxiway centreline directly behind the first
+                // route point. Replanning from the endpoint can snap to a node behind the
+                // aircraft and demand a reversal, so keep the already planned onward route
+                // and join it at the entry when the join stays on pavement.
+                if openatc_core::airport::taxi_segment_on_pavement(airport, endpoint, entry) {
+                    path.points.drain(..index);
+                } else {
+                    path = openatc_core::airport::calculate_taxi_route(
+                        airport,
+                        &telemetry,
+                        runway,
+                        false,
+                        aircraft.parking_size(),
+                    )?;
+                }
             }
         }
     }
@@ -9284,6 +9292,115 @@ mod tests {
                 "geometry/controller fixture flights"
             },
             movement_started.elapsed().as_secs_f64()
+        );
+    }
+
+    #[test]
+    #[ignore = "requires installed scenery and Bluebell"]
+    fn installed_yscb_scene_releases_network_flights() {
+        let root = std::env::var("OPENATC_TEST_SIMULATOR_ROOT").unwrap();
+        let profiles = Arc::new(Profiles::builtin().unwrap());
+        let regions = openatc_core::regions::load_regions(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../regions.toml"),
+        )
+        .unwrap();
+        let stations: Arc<[openatc_core::stations::Station]> =
+            openatc_core::stations::load_index(&root).unwrap().into();
+        let weather = ["YSCB", "YSSY"]
+            .into_iter()
+            .map(|id| {
+                let airport = airport(&root, id).unwrap();
+                let sample = serde_json::json!({
+                    "airport": id,
+                    "latitude": airport.reference_latitude,
+                    "longitude": airport.reference_longitude,
+                    "sampleAltitudeFeet": airport.elevation_feet,
+                    "pressureHpa": 1013.25,
+                    "temperatureC": 15.0,
+                    "magneticVariationDegrees": 0.0,
+                    "windDegrees": 17.0,
+                    "windKnots": 5.0,
+                });
+                (id.to_owned(), (sample, Instant::now()))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let observations: environment::Observations = Arc::new(std::sync::RwLock::new(weather));
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let refresher = {
+            let observations = observations.clone();
+            let stop = stop.clone();
+            std::thread::spawn(move || {
+                while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                    for (_, time) in observations.write().unwrap().values_mut() {
+                        *time = Instant::now();
+                    }
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+            })
+        };
+        let terrain =
+            scenery::Terrain::new(std::path::Path::new(&root)).map(std::cell::RefCell::new);
+        let scene = prepare_scene(
+            Preparation {
+                weather_observations: Some(observations),
+                reserved_stand_cells: BTreeSet::new(),
+                local_pattern_traffic: false,
+                seed_single_arrival: false,
+                player_airborne: false,
+                minimum_airborne_spawn_nm: 0.0,
+                airport_codes: BTreeMap::new(),
+                reserved_surface_corridors: BTreeSet::new(),
+                reserved_stands: BTreeSet::new(),
+                stations,
+                regions,
+                simulator_root: root.clone(),
+                origin: airport(&root, "YSCB").unwrap(),
+                destination: airport(&root, "YSSY").unwrap(),
+                profiles,
+                models: Arc::new(
+                    Catalogue::scan(
+                        &std::path::Path::new(&root)
+                            .join("Resources/plugins/OpenATC/Resources/CSL"),
+                    )
+                    .unwrap(),
+                ),
+                counts: [4, 2, 0, 2],
+                own: [-35.308_8, 149.191_0],
+                observed: vec![],
+                epoch: 1,
+                seed: 7,
+                startup_cast: false,
+                taxi_target: 4,
+                force_runway: false,
+                force_arrival_runway: false,
+                runway: "35".into(),
+                arrival_runway: "34L".into(),
+                config: std::path::PathBuf::new(),
+                weather: BTreeMap::new(),
+            },
+            &terrain,
+        )
+        .unwrap();
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        refresher.join().unwrap();
+        eprintln!(
+            "YSCB network scene: {} complete nominal flights, {} released; warnings:",
+            scene.nominal_flights.len(),
+            scene.flights.len()
+        );
+        for warning in &scene.warnings {
+            eprintln!("  {warning}");
+        }
+        assert!(
+            !scene.nominal_flights.is_empty(),
+            "YSCB should plan complete network flights: {:?}",
+            scene.warnings
+        );
+        assert!(
+            scene.flights.len() >= 4,
+            "YSCB should release a usable network scene ({} flights): {:?}",
+            scene.flights.len(),
+            scene.warnings
         );
     }
 

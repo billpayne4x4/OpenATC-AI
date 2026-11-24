@@ -904,6 +904,8 @@ impl Footprint {
         }
         // The published outer orientation is not always counter-clockwise in shipped data, so
         // each later winding is compared against the outer winding rather than an absolute sign.
+        // A forest may also publish several separate stands in one placement; a winding that is
+        // not inside an earlier one is another outer boundary, not a hole.
         let outer = valid[0].1;
         let mut depth = vec![0usize; valid.len()];
         for index in 1..valid.len() {
@@ -919,7 +921,9 @@ impl Footprint {
                 }
             }
             let Some(parent) = parent else {
-                return Err("Forest footprint winding is not contained by an earlier ring".into());
+                // A separate stand is solid under the even-odd test whatever its winding
+                // direction, so it does not need a nesting check.
+                continue;
             };
             depth[index] = depth[parent] + 1;
             let solid = depth[index].is_multiple_of(2);
@@ -1983,10 +1987,12 @@ impl Tile {
                     let b = ring[(index + 1) % ring.len()];
                     // A string can span kilometres. Each segment is cut into short pieces so its
                     // box follows the published line instead of covering the whole diagonal.
+                    // Fifty metres keeps the box close to a fence or power line while bounding
+                    // the obstacle count for a long perimeter.
                     let scale = 111_320.0 * a[0].to_radians().cos();
                     let full_east = (b[1] - a[1]) * scale;
                     let full_north = (b[0] - a[0]) * 111_320.0;
-                    let pieces = ((full_east.hypot(full_north) / 1000.0).ceil() as usize).max(1);
+                    let pieces = ((full_east.hypot(full_north) / 50.0).ceil() as usize).max(1);
                     for piece in 0..pieces {
                         let start = piece as f64 / pieces as f64;
                         let end = (piece + 1) as f64 / pieces as f64;
@@ -3837,12 +3843,30 @@ mod tests {
             ]))
             .is_err()
         );
+        // A second forest stand that is not inside the first is another outer boundary.
+        // It is solid, and the gap between the two stands stays clear.
+        let separate = facade_obstacle(forest(vec![
+            outer.clone(),
+            ring(&[(1200.0, 1200.0), (1200.0, 1400.0), (1400.0, 1400.0)]),
+        ]))
+        .expect("a separate forest stand");
         assert!(
-            facade_obstacle(forest(vec![
-                outer.clone(),
-                ring(&[(1200.0, 1200.0), (1200.0, 1400.0), (1400.0, 1400.0)])
-            ]))
-            .is_err()
+            !separate.clear(
+                waypoint(1250.0, 1250.0, 20.0),
+                waypoint(1350.0, 1350.0, 20.0),
+                0.0,
+                0.0
+            ),
+            "a corridor through a separate forest stand was cleared"
+        );
+        assert!(
+            separate.clear(
+                waypoint(1050.0, 500.0, 20.0),
+                waypoint(1150.0, 500.0, 20.0),
+                0.0,
+                0.0
+            ),
+            "a corridor between two forest stands was refused"
         );
         assert!(
             facade_obstacle(forest(vec![ring(&[

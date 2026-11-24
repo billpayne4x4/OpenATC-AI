@@ -10,6 +10,10 @@
 - Local departures line up along a paved taxi path. A direct line to the runway centreline is used only when the whole line is pavement; otherwise the path follows the installed taxi graph, and the physical runway end is preferred so takeoff can use the displaced-threshold pavement. Unpaved line-ups are refused rather than drawn across grass.
 - A local departure that reaches the end of its climb is removed with all queue, blocker and wake entries released. A stopped departure at the final climb boundary is retired instead of waiting for a clearance that does not exist.
 - Local airport traffic is exempt from the same-direction display cap, so queued and departing local aircraft stay visible within range.
+- Forests with several separate stands in one scenery placement are accepted as multiple outer boundaries instead of marking the whole tile unresolved. Fences and other object strings are split into short boxes so a diagonal segment no longer covers the runway beside it.
+- Pushback joins the already planned taxi route at its first entry when that join is paved, instead of replanning from the endpoint and snapping to a node behind the aircraft.
+- Repeated taxi-graph nodes are collapsed before corners are rounded, so a duplicate runway-entry point no longer reports a false tight turn.
+- Heavy jets accelerate at a realistic rate, so a long takeoff no longer exceeds a runway that the aircraft is cleared to use.
 - A controlled local circuit that completes a touch-and-go or a go-around is cleared onto the next climb segment immediately, so it cannot stop on the runway waiting for a clearance leg that does not exist.
 - Local departures now queue at the runway with an exclusive hold-short slot: one aircraft occupies the hold, followers stop on the preceding taxi segment, one aircraft lines up, and one rolls. Two departures can no longer stack at the same holding-point coordinates.
 - Local departures now queue at the runway: one aircraft rolls, the next lines up and waits once the first has moved clear, and no second aircraft starts a takeoff roll until the first is airborne. Wake delays and cautions use the leader/follower table.
