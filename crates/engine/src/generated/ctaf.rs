@@ -234,6 +234,80 @@ fn select_aircraft(
         .map(|(_, kind, model, airline)| (kind, model, airline))
 }
 
+/// Local departure categories, largest airport first.
+const AIRLINE_LOCAL: [Category; 3] = [
+    Category::Airline,
+    Category::Regional,
+    Category::GeneralAviation,
+];
+const REGIONAL_LOCAL: [Category; 2] = [Category::Regional, Category::GeneralAviation];
+
+fn local_categories(runway_meters: f64) -> &'static [Category] {
+    if runway_meters >= 2_000.0 {
+        &AIRLINE_LOCAL
+    } else {
+        &REGIONAL_LOCAL
+    }
+}
+
+fn airline_serves(airline: &openatc_core::traffic::profiles::Airline, airport: &str) -> bool {
+    (airline.home_prefixes.is_empty()
+        || airline
+            .home_prefixes
+            .iter()
+            .any(|home| airport.starts_with(home)))
+        && (airline.serves.is_empty()
+            || airline
+                .serves
+                .iter()
+                .any(|serve| airport.starts_with(serve)))
+}
+
+/// Pick one installed aircraft in a requested local category.
+fn select_local_aircraft(
+    input: &Preparation,
+    runway_meters: f64,
+    seed: u64,
+    airport: &str,
+    category: Category,
+) -> Option<(String, String, String)> {
+    let mut choices = Vec::new();
+    for (id, airline) in &input.profiles.airlines {
+        if airline.category != category || !airline_serves(airline, airport) {
+            continue;
+        }
+        for (kind, weight) in &airline.fleet {
+            let Some(aircraft) = input.profiles.aircraft.get(kind) else {
+                continue;
+            };
+            if runway_meters < aircraft.runway {
+                continue;
+            }
+            let model = std::iter::once(kind.clone())
+                .chain(aircraft.model_aliases.iter().cloned())
+                .find_map(|code| {
+                    input
+                        .models
+                        .choose(&code, &airline.operator, "", seed)
+                        .map(|model| model.id.clone())
+                });
+            let Some(model) = model else {
+                continue;
+            };
+            choices.push((u64::from(*weight), kind.clone(), model, id.clone()));
+        }
+    }
+    if choices.is_empty() {
+        return None;
+    }
+    choices.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    let index = (seed % choices.len() as u64) as usize;
+    choices
+        .into_iter()
+        .nth(index)
+        .map(|(_, kind, model, airline)| (kind, model, airline))
+}
+
 /// Plan advisory traffic for one untowered field.
 fn plan(
     input: &Preparation,
@@ -695,7 +769,7 @@ pub(super) fn prepare_tower(
         seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
         let Some((kind, model, airline)) = select_aircraft(input, runway_meters, seed) else {
             scene.warnings.push(format!(
-                "{}: local surface departure has no installed light aircraft",
+                "{}: local Tower circuit has no installed light aircraft",
                 airport.icao
             ));
             continue;
@@ -868,9 +942,18 @@ fn prepare_local_departures(
     let mut seed = input.epoch.wrapping_add(0x9E37_79B9);
     for slot in 0..target {
         seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
-        let Some((kind, model, airline)) = select_aircraft(input, runway_meters, seed) else {
+        let categories = local_categories(runway_meters);
+        let Some((kind, model, airline)) = categories
+            .iter()
+            .cycle()
+            .skip(slot % categories.len())
+            .take(categories.len())
+            .find_map(|category| {
+                select_local_aircraft(input, runway_meters, seed, &airport.icao, *category)
+            })
+        else {
             scene.warnings.push(format!(
-                "{}: local surface departure has no installed light aircraft",
+                "{}: local surface departure has no installed airline or light aircraft",
                 airport.icao
             ));
             continue;
@@ -2525,11 +2608,45 @@ mod tests {
             "YSCB should keep local surface departures (found {departures}): {:?}",
             scene.warnings
         );
+        let airline_departures = scene
+            .advisories
+            .values()
+            .filter(|plan| plan.departure)
+            .filter(|plan| {
+                ["QFA", "QLK", "VOZ", "JST"]
+                    .iter()
+                    .any(|operator| plan.callsign.starts_with(operator))
+            })
+            .count();
+        assert!(
+            airline_departures >= 2,
+            "YSCB should keep an airline or regional departure: {:?}",
+            scene
+                .advisories
+                .values()
+                .filter(|plan| plan.departure)
+                .map(|plan| plan.callsign.clone())
+                .collect::<Vec<_>>()
+        );
         assert!(
             scene.frames.iter().any(|frame| frame.target.on_ground),
             "a local departure frame should start on the ground"
         );
         let local_ids: BTreeSet<u32> = scene.advisories.keys().copied().collect();
+        let departure = scene
+            .advisories
+            .iter()
+            .find(|(_, plan)| plan.departure)
+            .map(|(id, _)| *id)
+            .expect("local departure");
+        scene.world.advance(1_000.0, false);
+        scene.world.advance(1_060.0, false);
+        let before = scene
+            .world
+            .snapshot()
+            .into_iter()
+            .find(|pose| pose.id == departure)
+            .expect("moved local departure");
         let mut replacement = scene.clone();
         replacement.frames.clear();
         replacement.advisories.clear();
@@ -2543,6 +2660,17 @@ mod tests {
             ..Runtime::default()
         };
         publish_scene(&mut published, replacement, "test".into(), 0);
+        let after = published
+            .world
+            .snapshot()
+            .into_iter()
+            .find(|pose| pose.id == departure)
+            .expect("preserved local departure");
+        assert_eq!(
+            after.position, before.position,
+            "a replacement scene must not reset a moving local aircraft"
+        );
+        assert_eq!(after.segment, before.segment);
         assert!(
             published.advisories.keys().any(|id| local_ids.contains(id)),
             "local plans must survive a smaller scene: {:?}",

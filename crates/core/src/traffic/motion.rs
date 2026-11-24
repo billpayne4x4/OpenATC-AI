@@ -921,6 +921,47 @@ impl World {
         true
     }
 
+    /// Copy one live aircraft into this world at the same point on its route.
+    ///
+    /// Used when a freshly prepared scene replaces the live world. The replacement world must
+    /// not restart aircraft the player is already watching, so the original route, segment,
+    /// elapsed time and movement authority are kept. A resource already owned by another
+    /// aircraft in this world refuses the copy; the caller can then keep the live scene.
+    pub fn preserve_aircraft(&mut self, previous: &Self, id: u32) -> bool {
+        let Some(aircraft) = previous.aircraft.get(&id) else {
+            return false;
+        };
+        if self.aircraft.len() >= 63
+            || self.aircraft.contains_key(&id)
+            || self
+                .clock
+                .is_some_and(|clock| Some(clock) != previous.clock)
+        {
+            return false;
+        }
+        let resources = previous
+            .owners
+            .iter()
+            .filter(|(_, owner)| **owner == id)
+            .map(|(resource, _)| resource.clone())
+            .collect::<Vec<_>>();
+        if resources
+            .iter()
+            .any(|resource| self.owners.contains_key(resource))
+        {
+            return false;
+        }
+        self.clock = previous.clock;
+        self.aircraft.insert(id, aircraft.clone());
+        for resource in resources {
+            self.owners.insert(resource, id);
+        }
+        if previous.advisory.contains(&id) {
+            self.advisory.insert(id);
+        }
+        true
+    }
+
     /// Visit a bounded prediction using only current movement grants and registered recoveries.
     /// The live world, its clock and its resource owners remain unchanged.
     pub fn forecast(
@@ -3084,6 +3125,32 @@ mod tests {
         let mut stale = World::default();
         stale.reset();
         assert!(!stale.preserve_surface(&previous, 7));
+    }
+
+    #[test]
+    fn live_aircraft_transfer_keeps_route_progress_and_advisory_ownership() {
+        let mut previous = World::default();
+        assert!(previous.insert_local(0, 7, crossing(), 0));
+        previous.advance(1000.0, false);
+        assert!(previous.authorise(0, 7, 0, &BTreeSet::new()));
+        previous.advance(1005.0, false);
+        let before = previous.snapshot()[0].clone();
+        let mut next = World::default();
+        assert!(next.preserve_aircraft(&previous, 7));
+        let after = next.snapshot()[0].clone();
+        assert_eq!(after.segment, before.segment);
+        assert_eq!(after.position, before.position);
+        assert_eq!(after.knots, before.knots);
+        assert!(next.is_advisory(7));
+        assert_eq!(next.resource_owner("TEST/09-27"), Some(7));
+        next.advance(1006.0, false);
+        assert!(next.snapshot()[0].position.longitude > before.position.longitude);
+        let mut conflicting = World::default();
+        assert!(conflicting.insert(0, 8, crossing()));
+        assert!(conflicting.authorise(0, 8, 0, &BTreeSet::new()));
+        assert!(!conflicting.preserve_aircraft(&previous, 7));
+        assert_eq!(conflicting.snapshot().len(), 1);
+        assert_eq!(conflicting.resource_owner("TEST/09-27"), Some(8));
     }
 
     #[test]

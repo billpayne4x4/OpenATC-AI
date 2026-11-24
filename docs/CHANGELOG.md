@@ -1,5 +1,11 @@
 # Unreleased
 
+## Local airlines and scene continuity — 24 November 2026
+
+- Local surface departures now choose airport-appropriate traffic: airline and regional types at airports with a runway of 2,000 m or more, then general aviation. Callsigns and models come from the installed airline catalogue, so Canberra gets Qantas, QantasLink, Virgin Australia and Jetstar departures instead of only light aircraft.
+- A live local aircraft keeps its route, segment, elapsed time, movement authority and surface reservations when a survey scene replaces the bootstrap scene. The replacement scene's copy is removed before the live aircraft is carried across, which stops the visible snap-back on each scene refresh.
+- A cached preview of the last visible traffic draws immediately after an engine restart, and the live scene replaces it without mixing preview and live ownership.
+
 ## One traffic engine, visible range and no-SID grace — 20 November 2026
 
 - Replaced the separate ambient and generated traffic layers with one engine-owned flight table. Native X-Plane AI and future multiplayer traffic remain external and read-only.

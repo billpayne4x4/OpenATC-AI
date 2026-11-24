@@ -4576,13 +4576,7 @@ fn frames_overlap(first: &GeneratedTraffic, second: &GeneratedTraffic) -> bool {
 /// in `flights`. Without this merge a network or empty scene replaces the local
 /// aircraft and the airport goes silent.
 fn preserve_local(scene: &mut Scene, previous: &Runtime) {
-    let generation = scene.world.generation();
     for (id, plan) in &previous.advisories {
-        if scene.advisories.contains_key(id)
-            || scene.frames.iter().any(|frame| frame.target.id == *id)
-        {
-            continue;
-        }
         let Some(pose) = previous
             .world
             .snapshot()
@@ -4591,27 +4585,28 @@ fn preserve_local(scene: &mut Scene, previous: &Runtime) {
         else {
             continue;
         };
-        let route = plan
-            .cross
-            .as_ref()
-            .map_or_else(|| plan.circuit.route(), |cross| cross.route());
-        let inserted = if plan.departure {
-            scene
-                .world
-                .insert_local(generation, *id, route, pose.segment)
-        } else {
-            scene
-                .world
-                .insert_advisory(generation, *id, route, pose.segment)
-        };
-        if !inserted {
+        // The live local aircraft wins over the replacement scene. A survey
+        // rebuilds the same reserved IDs at the start of their routes; replacing
+        // them there is what made moving aircraft snap back. Remove the fresh
+        // copy, then move the live aircraft across at its current point.
+        scene.advisories.remove(id);
+        scene.frames.retain(|frame| frame.target.id != *id);
+        scene.world.remove(*id);
+        if !scene.world.preserve_aircraft(&previous.world, *id) {
             continue;
         }
         if let Some(movement) = previous.movement.get(id) {
             scene.movement.insert(*id, movement.clone());
         }
         if let Some(frame) = previous.frames.iter().find(|frame| frame.target.id == *id) {
-            scene.frames.push(frame.clone());
+            let mut frame = frame.clone();
+            frame.target.latitude = pose.position.latitude;
+            frame.target.longitude = pose.position.longitude;
+            frame.target.altitude_feet = pose.position.altitude_feet;
+            frame.target.track_degrees = pose.heading;
+            frame.target.on_ground = pose.stage.on_ground();
+            frame.target.ground_speed_knots = Some(pose.knots);
+            scene.frames.push(frame);
         }
         scene.advisories.insert(*id, plan.clone());
     }
