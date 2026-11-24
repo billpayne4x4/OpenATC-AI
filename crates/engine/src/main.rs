@@ -213,8 +213,16 @@ impl EngineState {
             .map(|frame| openatc_core::ops::callsign_key(&frame.target.callsign))
             .filter(|callsign| !callsign.is_empty())
             .collect();
+        let generated_ids: std::collections::BTreeSet<u32> = self
+            .session
+            .generated_traffic
+            .iter()
+            .map(|frame| frame.target.id)
+            .collect();
         targets.retain(|target| {
-            target.id == 0 || !drawn.contains(&openatc_core::ops::callsign_key(&target.callsign))
+            target.id == 0
+                || (!generated_ids.contains(&target.id)
+                    && !drawn.contains(&openatc_core::ops::callsign_key(&target.callsign)))
         });
         let mut ids: std::collections::BTreeSet<u32> =
             targets.iter().map(|target| target.id).collect();
@@ -937,7 +945,7 @@ mod traffic_target_tests {
     }
 
     #[test]
-    fn native_and_simulated_targets_share_one_view_without_duplicates() {
+    fn a_drawn_frame_replaces_a_native_target_with_the_same_id() {
         let mut state = test_state();
         state.session.telemetry.traffic = Some(vec![openatc_core::state::TrafficTarget {
             id: 1,
@@ -949,8 +957,9 @@ mod traffic_target_tests {
         state.generated.register_owned(2);
         let targets = state.traffic_targets();
         assert_eq!(targets.len(), 2);
-        assert!(targets.iter().any(|target| target.callsign == "NATIVE1"));
+        assert!(targets.iter().any(|target| target.callsign == "DUPLICATE"));
         assert!(targets.iter().any(|target| target.callsign == "AMBIENT2"));
+        assert!(!targets.iter().any(|target| target.callsign == "NATIVE1"));
     }
 }
 

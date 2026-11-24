@@ -6051,6 +6051,7 @@ pub fn step(state: &mut EngineState) {
     let visible_ids = state.generated.visible.clone();
     let mut map_traffic = Vec::new();
     let mut map_callsigns = BTreeSet::new();
+    let mut map_ids = BTreeSet::new();
     for frame in &state.generated.frames {
         let target = &frame.target;
         if !state.generated.owns(target.id)
@@ -6060,6 +6061,7 @@ pub fn step(state: &mut EngineState) {
             continue;
         }
         map_callsigns.insert(openatc_core::ops::callsign_key(&target.callsign));
+        map_ids.insert(target.id);
         let drawn = visible_ids.contains(&target.id);
         map_traffic.push(openatc_core::state::MapTraffic {
             id: target.id,
@@ -6079,6 +6081,7 @@ pub fn step(state: &mut EngineState) {
         if target.id == 0
             || !target.latitude.is_finite()
             || !target.longitude.is_finite()
+            || map_ids.contains(&target.id)
             || map_callsigns.contains(&openatc_core::ops::callsign_key(&target.callsign))
         {
             continue;

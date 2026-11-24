@@ -502,10 +502,15 @@ fn local_frame(
     aircraft: &openatc_core::traffic::profiles::Aircraft,
     model: openatc_core::traffic::csl::Model,
     route: &openatc_core::traffic::motion::Route,
+    segment: usize,
     frequency_khz: i32,
 ) -> Option<GeneratedTraffic> {
-    let start = route.start_position();
-    let first = route.segment(0)?;
+    let first = route.segment(segment)?;
+    let start = first
+        .points
+        .first()
+        .copied()
+        .unwrap_or_else(|| route.start_position());
     let track = first.points.windows(2).next().map_or(0.0, |pair| {
         openatc_core::arrival::bearing(
             [pair[0].latitude, pair[0].longitude],
@@ -730,9 +735,7 @@ pub(super) fn prepare_tower(
         }
         let start = if straight_in { 0 } else { slot.min(2) };
         let identity = LOCAL_ID_BASE + added + 1;
-        if scene.frames.iter().any(|frame| frame.target.id == identity)
-            || input.observed.iter().any(|target| target.id == identity)
-        {
+        if scene.frames.iter().any(|frame| frame.target.id == identity) {
             continue;
         }
         let Some(frame) = local_frame(
@@ -744,6 +747,7 @@ pub(super) fn prepare_tower(
             aircraft,
             installed,
             &route,
+            0,
             frequency_khz,
         ) else {
             continue;
@@ -858,7 +862,7 @@ fn prepare_local_departures(
         airport: airport.icao.clone(),
         frequency_khz,
     };
-    let target = input.taxi_target.clamp(2, 6).min(3);
+    let target = input.taxi_target.clamp(2, 6);
     let generation = scene.world.generation();
     let mut used_stands = BTreeSet::new();
     let mut seed = input.epoch.wrapping_add(0x9E37_79B9);
@@ -992,9 +996,7 @@ fn prepare_local_departures(
         let takeoff_index = surface_count;
         let climb_index = surface_count + 1;
         let identity = LOCAL_ID_BASE + 0x100 + u32::try_from(slot).unwrap_or(0);
-        if scene.frames.iter().any(|frame| frame.target.id == identity)
-            || input.observed.iter().any(|target| target.id == identity)
-        {
+        if scene.frames.iter().any(|frame| frame.target.id == identity) {
             continue;
         }
         let Some(callsign) = local_callsign(input, &airline, seed) else {
@@ -1003,6 +1005,11 @@ fn prepare_local_departures(
                 airport.icao
             ));
             continue;
+        };
+        let start_segment = if slot == 0 {
+            0
+        } else {
+            (surface_count * slot / target).min(surface_count - 1)
         };
         let Some(frame) = local_frame(
             input,
@@ -1013,6 +1020,7 @@ fn prepare_local_departures(
             aircraft,
             installed,
             &route,
+            start_segment,
             frequency_khz,
         ) else {
             continue;
@@ -1053,7 +1061,10 @@ fn prepare_local_departures(
             },
         ];
         let circuit = Circuit::new(route.clone(), legs);
-        if !scene.world.insert_local(generation, identity, route, 0) {
+        if !scene
+            .world
+            .insert_local(generation, identity, route, start_segment)
+        {
             scene.warnings.push(format!(
                 "{}: local surface departure could not be admitted",
                 airport.icao
@@ -1062,7 +1073,7 @@ fn prepare_local_departures(
         }
         if !scene
             .world
-            .authorise(generation, identity, 0, &BTreeSet::new())
+            .authorise(generation, identity, start_segment, &BTreeSet::new())
         {
             scene.world.remove(identity);
             scene.warnings.push(format!(
@@ -1138,9 +1149,7 @@ pub(super) fn prepare(scene: &mut Scene, input: &Preparation) {
         };
         seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
         let identity = ADVISORY_ID_BASE + u32::try_from(scene.advisories.len() + 1).unwrap_or(1);
-        if scene.frames.iter().any(|frame| frame.target.id == identity)
-            || input.observed.iter().any(|target| target.id == identity)
-        {
+        if scene.frames.iter().any(|frame| frame.target.id == identity) {
             continue;
         }
         let mut cross = None;
@@ -1208,9 +1217,7 @@ pub(super) fn prepare(scene: &mut Scene, input: &Preparation) {
     {
         seed = seed.wrapping_mul(16_777_619) ^ (seed >> 32);
         let identity = ADVISORY_ID_BASE + u32::try_from(scene.advisories.len() + 1).unwrap_or(1);
-        if !scene.frames.iter().any(|frame| frame.target.id == identity)
-            && !input.observed.iter().any(|target| target.id == identity)
-        {
+        if !scene.frames.iter().any(|frame| frame.target.id == identity) {
             match plan(input, &airport, seed, identity, true, false) {
                 Ok((plan, frame, kind)) => {
                     if scene
@@ -1934,6 +1941,7 @@ mod tests {
                 aircraft,
                 installed.clone(),
                 &route,
+                0,
                 frequency,
             )
             .expect("local frame");
@@ -2507,9 +2515,14 @@ mod tests {
             scene.warnings
         );
         prepare_local_departures(&mut scene, &input, &handling, &operations);
+        let departures = scene
+            .advisories
+            .values()
+            .filter(|plan| plan.departure)
+            .count();
         assert!(
-            scene.advisories.values().any(|plan| plan.departure),
-            "YSCB should keep local surface departures: {:?}",
+            departures >= 3,
+            "YSCB should keep local surface departures (found {departures}): {:?}",
             scene.warnings
         );
         assert!(

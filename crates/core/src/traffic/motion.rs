@@ -1226,14 +1226,6 @@ impl World {
         );
         true
     }
-    /// Whether the aircraft has movement authority for its current segment.
-    #[must_use]
-    pub fn is_authorised(&self, id: u32) -> bool {
-        self.aircraft
-            .get(&id)
-            .is_some_and(|aircraft| aircraft.authorised)
-    }
-
     /// Clear inherited movement authority without changing the aircraft's position.
     pub fn clear_authority(&mut self, id: u32) {
         if let Some(aircraft) = self.aircraft.get_mut(&id) {
