@@ -2362,6 +2362,51 @@ pub fn on_pavement(airport: &Airport, p: Point) -> bool {
     false
 }
 
+/// Near edge of the paved takeoff run.
+///
+/// The published end is the landing datum. A starter extension may be paved outside it.
+/// Walk outwards along the centreline while pavement continues, then leave `margin` metres
+/// for the aircraft centre.
+#[must_use]
+pub fn takeoff_start(airport: &Airport, runway: &Runway, name: &str, margin: f64) -> Point {
+    const STEP: f64 = 5.0;
+    const MAXIMUM: f64 = 1_000.0;
+    let (end, opposite) = if name == runway.first_name {
+        (runway.first, runway.second)
+    } else if name == runway.second_name {
+        (runway.second, runway.first)
+    } else {
+        return runway.first;
+    };
+    let dx = end.east - opposite.east;
+    let dn = end.north - opposite.north;
+    let length = dx.hypot(dn);
+    if length <= 1.0 {
+        return end;
+    }
+    let direction = [dx / length, dn / length];
+    let mut paved = 0.0;
+    let mut distance = STEP;
+    while distance <= MAXIMUM {
+        let point = Point {
+            east: end.east + direction[0] * distance,
+            north: end.north + direction[1] * distance,
+            ..end
+        };
+        if !on_pavement(airport, point) {
+            break;
+        }
+        paved = distance;
+        distance += STEP;
+    }
+    let along = (paved - margin.max(0.0)).max(0.0);
+    Point {
+        east: end.east + direction[0] * along,
+        north: end.north + direction[1] * along,
+        ..end
+    }
+}
+
 /// Even-odd containment across one pavement ring.
 fn contour_contains(point: Point, contour: &[Point]) -> bool {
     if contour.len() < 3 {
@@ -4112,5 +4157,42 @@ mod backtrack_names {
         assert!(same_runway(&airport, "28", "28"));
         assert!(!same_runway(&airport, "10", "09"));
         assert!(!same_runway(&airport, "", "28"));
+    }
+}
+
+#[cfg(test)]
+mod takeoff_start_tests {
+    use super::*;
+
+    #[test]
+    fn takeoff_start_includes_a_paved_starter_extension() {
+        let mut airport = demo_airport();
+        let low = Point {
+            east: -1300.0,
+            north: -22.5,
+            height: 0.0,
+        };
+        let high = Point {
+            east: -1300.0,
+            north: 22.5,
+            height: 0.0,
+        };
+        let near_low = Point {
+            east: -1200.0,
+            north: -22.5,
+            height: 0.0,
+        };
+        let near_high = Point {
+            east: -1200.0,
+            north: 22.5,
+            height: 0.0,
+        };
+        airport.pavement_triangles = vec![[low, high, near_high], [low, near_high, near_low]];
+        let runway = &airport.runways[0];
+        let start = takeoff_start(&airport, runway, "09", 20.0);
+        assert!((start.east + 1280.0).abs() < 1.0);
+        assert!(start.north.abs() < 1e-9);
+        assert_eq!(takeoff_start(&airport, runway, "27", 20.0), runway.second);
+        assert_eq!(takeoff_start(&airport, runway, "09", 2000.0), runway.first);
     }
 }

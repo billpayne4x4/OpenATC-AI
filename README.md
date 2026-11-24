@@ -406,6 +406,8 @@ Holding-point detection considers approach geometry and the aircraft's reference
 
 Generated departures keep the order in which they reached the holding point. An aircraft already lining up or rolling keeps the runway; a later arrival on a taxiway that joins nearer the threshold does not jump ahead. Ground starts the Tower handoff while the aircraft is still taxiing, so the aircraft can request ready immediately at the hold.
 
+Generated departures line up at the near edge of the paved takeoff run, including any starter extension before the displaced landing threshold. Landing still uses the displaced threshold, so touchdown stays beyond the piano keys.
+
 Generated radio keeps one durable station per published frequency, but its worker thread is short-lived: it exits when its trigger and transmission queues drain and restarts when a new aircraft, phase trigger or transmission arrives. Same-frequency speech stays ordered across the restart; different frequencies never wait on each other's queue.
 
 Tower lines a departure up as soon as the runway surface is clear, even when traffic is still on final. The take-off clearance waits for same-runway arrival traffic to pass; an arrival on a parallel runway, including one on short final, does not withhold it. Once the roll has started, a late conflict does not cancel the take-off; the arrival or go-around is sequenced around the departing aircraft. A lined-up aircraft is not repeatedly told to hold, and a distant arrival does not block take-off if the departure will be airborne before it reaches the threshold.

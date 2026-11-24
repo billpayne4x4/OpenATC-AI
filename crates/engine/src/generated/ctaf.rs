@@ -1069,11 +1069,14 @@ fn prepare_local_departures(
     };
     let runway_meters = (runway_data.second.east - runway_data.first.east)
         .hypot(runway_data.second.north - runway_data.first.north);
-    let (threshold_point, departure_point) = if runway_data.first_name == runway {
-        (runway_data.first, runway_data.second)
+    let departure_point = if runway_data.first_name == runway {
+        runway_data.second
     } else {
-        (runway_data.second, runway_data.first)
+        runway_data.first
     };
+    // Leave room for a heavy nose at the paved edge when the starter extension is used.
+    let threshold_point =
+        openatc_core::airport::takeoff_start(airport, &runway_data, &runway, 35.0);
     let to_waypoint = |point: openatc_core::state::Point, altitude: f64| {
         openatc_core::traffic::motion::Waypoint {
             latitude: airport.reference_latitude + point.north / 111_320.0,
@@ -3212,6 +3215,27 @@ mod tests {
             input.runway, "35",
             "wind 017 should select runway 35 for local traffic"
         );
+        let runway_data = airport
+            .runways
+            .iter()
+            .find(|runway| runway.first_name == "35" || runway.second_name == "35")
+            .unwrap();
+        let published_end = if runway_data.first_name == "35" {
+            runway_data.first
+        } else {
+            runway_data.second
+        };
+        let takeoff_point = openatc_core::airport::takeoff_start(&airport, runway_data, "35", 35.0);
+        assert!(
+            takeoff_point.north < published_end.north - 100.0,
+            "takeoff should start on the starter extension, not at the published end"
+        );
+        assert!(openatc_core::airport::on_pavement(&airport, takeoff_point));
+        let landing_threshold = runway_data.landing_threshold("35").unwrap();
+        assert!(
+            landing_threshold.north > published_end.north + 100.0,
+            "landing should use the displaced threshold beyond the published end"
+        );
         let (handling, operations, _) = super::policy::load(std::path::Path::new("")).unwrap();
         let mut scene = Scene {
             require_complete_flights: false,
@@ -3318,6 +3342,19 @@ mod tests {
                 let Some(segment) = route.segment(index) else {
                     continue;
                 };
+                if segment.stage == openatc_core::traffic::motion::Stage::Takeoff {
+                    let start = segment.points.first().unwrap();
+                    let start = openatc_core::airport::airport_point(
+                        &airport,
+                        start.latitude,
+                        start.longitude,
+                    );
+                    assert!(
+                        start.north < published_end.north - 100.0,
+                        "{} takeoff starts at the published end instead of the starter extension",
+                        plan.callsign
+                    );
+                }
                 if segment.stage != openatc_core::traffic::motion::Stage::LineUp {
                     continue;
                 }
