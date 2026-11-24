@@ -768,6 +768,37 @@ pub async fn debug_map(AxumState(shared): AxumState<Shared>, Json(body): Json<Va
 #[cfg(test)]
 mod tests {
     #[test]
+    fn surface_wind_selects_the_into_wind_runway_end() {
+        use openatc_core::airport::Runway;
+        use openatc_core::state::Point;
+        let runway = Runway {
+            first_name: "17".into(),
+            second_name: "35".into(),
+            first: Point {
+                east: 0.0,
+                north: 0.0,
+                height: 0.0,
+            },
+            second: Point {
+                east: 0.0,
+                north: -2_980.0,
+                height: 0.0,
+            },
+            first_displaced_meters: 0.0,
+            second_displaced_meters: 0.0,
+            width: 45.0,
+        };
+        assert_eq!(
+            super::atis_runway(std::slice::from_ref(&runway), "17", 17.0, 12.0),
+            "35"
+        );
+        assert_eq!(
+            super::atis_runway(std::slice::from_ref(&runway), "35", 197.0, 12.0),
+            "17"
+        );
+    }
+
+    #[test]
     fn weather_signature_ignores_cloud_wording_variety() {
         let mut observation = serde_json::json!({"windDegrees":333,"windKnots":9,"pressureHpa":1026,"visibilityMeters":31157,"temperatureC":18,"dewpointC":11,"cloudSignature":[[2,24],[2,112]],"clouds":"Few clouds at 2400 feet"});
         let original = super::weather_signature(&observation);

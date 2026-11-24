@@ -3,6 +3,7 @@
 ## Local airlines and scene continuity — 24 November 2026
 
 - Local surface departures now choose airport-appropriate traffic: airline and regional types at airports with a runway of 2,000 m or more, then general aviation. Callsigns and models come from the installed airline catalogue, so Canberra gets Qantas, QantasLink, Virgin Australia and Jetstar departures instead of only light aircraft.
+- Local traffic applies the same wind-selected runway as the network scene before the bootstrap publishes. A weather sample that selects the other runway end invalidates the prepared scene, and local aircraft from the old flow are replaced instead of being carried across.
 - A live local aircraft keeps its route, segment, elapsed time, movement authority and surface reservations when a survey scene replaces the bootstrap scene. The replacement scene's copy is removed before the live aircraft is carried across, which stops the visible snap-back on each scene refresh.
 - A cached preview of the last visible traffic draws immediately after an engine restart, and the live scene replaces it without mixing preview and live ownership.
 

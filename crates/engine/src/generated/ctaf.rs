@@ -2542,6 +2542,29 @@ mod tests {
             )
             .unwrap(),
         );
+        input.runway = "17".into();
+        input.weather.insert(
+            "YSCB".into(),
+            (
+                serde_json::json!({
+                    "airport": "YSCB",
+                    "latitude": airport.reference_latitude,
+                    "longitude": airport.reference_longitude,
+                    "sampleAltitudeFeet": airport.elevation_feet,
+                    "pressureHpa": 1013.25,
+                    "temperatureC": 15.0,
+                    "magneticVariationDegrees": 12.0,
+                    "windDegrees": 17.0,
+                    "windKnots": 12.0,
+                }),
+                Instant::now(),
+            ),
+        );
+        input.apply_weather_runways();
+        assert_eq!(
+            input.runway, "35",
+            "wind 017 should select runway 35 for local traffic"
+        );
         let (handling, operations, _) = super::policy::load(std::path::Path::new("")).unwrap();
         let mut scene = Scene {
             require_complete_flights: false,
@@ -2607,6 +2630,20 @@ mod tests {
             departures >= 3,
             "YSCB should keep local surface departures (found {departures}): {:?}",
             scene.warnings
+        );
+        assert!(
+            scene
+                .advisories
+                .values()
+                .filter(|plan| plan.departure)
+                .all(|plan| plan.runway == "35"),
+            "local departures should use the wind-selected runway 35: {:?}",
+            scene
+                .advisories
+                .values()
+                .filter(|plan| plan.departure)
+                .map(|plan| (plan.callsign.clone(), plan.runway.clone()))
+                .collect::<Vec<_>>()
         );
         let airline_departures = scene
             .advisories

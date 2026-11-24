@@ -646,6 +646,36 @@ impl Preparation {
         }
         Ok(())
     }
+    /// Point each prepared runway into the current surface wind.
+    ///
+    /// The local bootstrap uses the same runways as the network scene, so this runs before
+    /// either is built. A forced runway keeps the planned end.
+    fn apply_weather_runways(&mut self) {
+        for (airport, runway, forced) in [
+            (&self.origin, &mut self.runway, self.force_runway),
+            (
+                &self.destination,
+                &mut self.arrival_runway,
+                self.force_arrival_runway,
+            ),
+        ] {
+            if forced {
+                continue;
+            }
+            let Some(sample) = self.weather.get(&airport.icao) else {
+                continue;
+            };
+            let Ok(weather) = environment::Environment::from_sample(airport, sample) else {
+                continue;
+            };
+            *runway = crate::radio::atis_runway(
+                &airport.runways,
+                runway,
+                weather.wind_from,
+                weather.wind_knots,
+            );
+        }
+    }
 }
 /// Upper bound on generated aircraft in one scene, including advisory traffic.
 const MAXIMUM_AIRCRAFT: usize = 63;
@@ -1431,15 +1461,9 @@ fn prepare_scene(
 ) -> Result<Scene, String> {
     let setup_started = std::time::Instant::now();
     input.refresh_weather()?;
+    input.apply_weather_runways();
     let mut environments = BTreeMap::new();
-    for (airport, runway, forced) in [
-        (&input.origin, &mut input.runway, input.force_runway),
-        (
-            &input.destination,
-            &mut input.arrival_runway,
-            input.force_arrival_runway,
-        ),
-    ] {
+    for airport in [&input.origin, &input.destination] {
         if let Some(sample) = input.weather.get(&airport.icao)
             && let Ok(weather) = environment::Environment::from_sample(airport, sample)
         {
@@ -1449,14 +1473,6 @@ fn prepare_scene(
                 .map_or(weather.clone(), |observations| {
                     weather.follow(&airport.icao, observations, &sample.0)
                 });
-            if !forced {
-                *runway = crate::radio::atis_runway(
-                    &airport.runways,
-                    runway,
-                    weather.wind_from,
-                    weather.wind_knots,
-                );
-            }
             environments.insert(airport.icao.clone(), weather);
         }
     }
@@ -4001,8 +4017,29 @@ fn scene_key(state: &EngineState) -> String {
         .map(|airport| airport.icao.as_str())
         .filter(|icao| !icao.is_empty())
         .unwrap_or(state.session.plan.departure.as_str());
+    // A weather sample that selects the other runway end changes the traffic flow. Include the
+    // selected end in the key so the next preparation uses the wind, without rebuilding for
+    // every small wind change while the same runway remains active.
+    let wind_runway = state.airport.as_ref().map_or_else(String::new, |airport| {
+        state
+            .sim_weather
+            .get(&airport.icao)
+            .and_then(|sample| {
+                environment::Environment::from_sample(airport, sample)
+                    .ok()
+                    .map(|weather| {
+                        crate::radio::atis_runway(
+                            &airport.runways,
+                            "",
+                            weather.wind_from,
+                            weather.wind_knots,
+                        )
+                    })
+            })
+            .unwrap_or_default()
+    });
     format!(
-        "{}|{}|{}|{}|{}|{}|{:?}|{}|{}",
+        "{}|{}|{}|{}|{}|{}|{:?}|{}|{}|{}",
         state.settings.simulator_root,
         airport,
         state.session.plan.departure,
@@ -4016,7 +4053,8 @@ fn scene_key(state: &EngineState) -> String {
             state.settings.ga_traffic
         ],
         state.session_generation,
-        state.generated.scene_revision
+        state.generated.scene_revision,
+        wind_runway
     )
 }
 
@@ -4435,7 +4473,7 @@ pub async fn prepare(shared: Shared) {
                     player_airborne,
                 )?;
                 let airport_codes = airport_code_map(&settings.simulator_root, &profiles);
-                let input = Preparation {
+                let mut input = Preparation {
                     stations,
                     regions,
                     simulator_root: settings.simulator_root.clone(),
@@ -4472,6 +4510,8 @@ pub async fn prepare(shared: Shared) {
                     minimum_airborne_spawn_nm,
                     airport_codes,
                 };
+                input.refresh_weather()?;
+                input.apply_weather_runways();
                 {
                     let mut local = Scene::local(&input, policy.clone());
                     ctaf::prepare(&mut local, &input);
@@ -4653,6 +4693,25 @@ fn replaces_airport(runtime: &Runtime, airport: &Airport) -> bool {
             .is_some_and(|current| !current.icao.is_empty() && current.icao != airport.icao)
 }
 
+fn local_runway(advisories: &BTreeMap<u32, ctaf::Plan>) -> Option<&str> {
+    advisories
+        .values()
+        .find(|plan| ctaf::is_local(plan.id))
+        .map(|plan| plan.runway.as_str())
+}
+
+/// Whether the replacement scene uses a different local runway. Local traffic then belongs to
+/// the old flow and must be replaced, not carried across.
+fn local_flow_changed(scene: &Scene, previous: &Runtime) -> bool {
+    match (
+        local_runway(&scene.advisories),
+        local_runway(&previous.advisories),
+    ) {
+        (Some(next), Some(previous)) => next != previous,
+        _ => false,
+    }
+}
+
 fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u64) {
     // Never replace a live scene with fewer planned aircraft. The population and replenishment
     // passes add traffic; publishing a smaller scene over a larger one deletes aircraft the
@@ -4660,7 +4719,8 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
     // A scene for another airport is different: the old traffic belongs to the departure airport
     // and must not stay visible after the player has landed elsewhere.
     let replacing_airport = replaces_airport(runtime, &scene.airport);
-    if !replacing_airport {
+    let replacing_flow = !replacing_airport && local_flow_changed(&scene, runtime);
+    if !replacing_airport && !replacing_flow {
         preserve_local(&mut scene, runtime);
     }
     let live_local = runtime
@@ -4673,12 +4733,13 @@ fn publish_scene(runtime: &mut Runtime, mut scene: Scene, key: String, epoch: u6
         .keys()
         .filter(|id| ctaf::is_generated(**id))
         .count();
-    if !replacing_airport && live_local > 0 && next_local < live_local {
+    if !replacing_airport && !replacing_flow && live_local > 0 && next_local < live_local {
         runtime.status =
             "Smaller local traffic scene skipped; the live traffic owns the airport".into();
         return;
     }
     if !replacing_airport
+        && !replacing_flow
         && !runtime.flights.is_empty()
         && scene.flights.len() < runtime.flights.len()
     {
@@ -6586,6 +6647,57 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(before, scene_key(&state));
+    }
+
+    #[test]
+    fn scene_key_changes_when_the_wind_selects_the_other_runway_end() {
+        let mut state = crate::test_state();
+        state.session.plan.departure = "YSCB".into();
+        state.airport = Some(Airport {
+            icao: "YSCB".into(),
+            runways: vec![openatc_core::airport::Runway {
+                first_name: "17".into(),
+                second_name: "35".into(),
+                first: openatc_core::state::Point {
+                    east: 0.0,
+                    north: 0.0,
+                    height: 0.0,
+                },
+                second: openatc_core::state::Point {
+                    east: 0.0,
+                    north: -2_980.0,
+                    height: 0.0,
+                },
+                first_displaced_meters: 0.0,
+                second_displaced_meters: 0.0,
+                width: 45.0,
+            }],
+            ..Default::default()
+        });
+        let sample = |wind| {
+            (
+                serde_json::json!({
+                    "airport": "YSCB",
+                    "latitude": 0.0,
+                    "longitude": 0.0,
+                    "sampleAltitudeFeet": 0.0,
+                    "pressureHpa": 1013.25,
+                    "temperatureC": 15.0,
+                    "magneticVariationDegrees": 0.0,
+                    "windDegrees": wind,
+                    "windKnots": 12.0,
+                }),
+                Instant::now(),
+            )
+        };
+        state.sim_weather.insert("YSCB".into(), sample(17.0));
+        let into_wind = scene_key(&state);
+        state.sim_weather.insert("YSCB".into(), sample(197.0));
+        let downwind = scene_key(&state);
+        assert_ne!(
+            into_wind, downwind,
+            "a runway flow change must invalidate the prepared scene"
+        );
     }
 
     #[test]
