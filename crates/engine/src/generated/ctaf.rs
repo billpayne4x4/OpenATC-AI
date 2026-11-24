@@ -715,6 +715,39 @@ fn tower_pattern_with(
         })
 }
 
+/// Local circuits are traffic-dependent, not airport-name-specific. Airline-capable airports
+/// get at most one circuit and busy airports get none; intersecting runways are limited to one
+/// circuit on the active runway. This is a generic capacity rule for all airports.
+fn circuit_limit(input: &Preparation, airport: &Airport, runway: &str) -> usize {
+    let airline_regional = u16::from(input.counts[0]).saturating_add(u16::from(input.counts[1]));
+    let total = input
+        .counts
+        .iter()
+        .map(|count| u16::from(*count))
+        .fold(0u16, u16::saturating_add);
+    let airline_capable = airport.parking.iter().any(|parking| {
+        parking.kind.eq_ignore_ascii_case("gate")
+            && (!parking.airlines.is_empty()
+                || parking.operations.eq_ignore_ascii_case("airline")
+                || parking
+                    .size
+                    .chars()
+                    .next()
+                    .is_some_and(|size| matches!(size, 'D' | 'E' | 'F')))
+    });
+    let high_traffic = airline_regional >= 2 || total >= 8 || input.taxi_target >= 5;
+    if high_traffic {
+        return 0;
+    }
+    let intersecting = openatc_core::airport::runway_group_keys(airport, runway)
+        .is_some_and(|group| group.len() > 1);
+    if airline_capable || intersecting {
+        1
+    } else {
+        3
+    }
+}
+
 /// A Tower-controlled straight-in arrival and departure at the player's airport.
 ///
 /// The published local pattern is only admitted after every segment passes the same terrain and
@@ -739,11 +772,6 @@ pub(super) fn prepare_tower(
     if !input.local_pattern_traffic || scene.flights.len() >= 2 {
         return;
     }
-    let used = scene.flights.len().max(scene.frames.len());
-    let capacity = MAXIMUM_AIRCRAFT.saturating_sub(used).min(3);
-    if capacity == 0 {
-        return;
-    }
     let runway = if airport
         .runways
         .iter()
@@ -756,6 +784,14 @@ pub(super) fn prepare_tower(
         };
         runway
     };
+    let used = scene.flights.len().max(scene.frames.len());
+    let capacity = MAXIMUM_AIRCRAFT
+        .saturating_sub(used)
+        .min(3)
+        .min(circuit_limit(input, airport, &runway));
+    if capacity == 0 {
+        return;
+    }
     let runway_meters = airport
         .runways
         .iter()
@@ -1701,7 +1737,8 @@ pub(super) fn advance(runtime: &mut Runtime, blocked: &BTreeSet<String>) {
             plan.circuit = circuit;
             plan.announced.clear();
             plan.go_around = None;
-            plan.cleared = false;
+            // A touch-and-go continues from the runway without a new Tower clearance leg.
+            plan.cleared = plan.controlled;
         }
     }
 }
@@ -1787,6 +1824,9 @@ fn go_around(runtime: &mut Runtime, id: u32, position: openatc_core::traffic::mo
         plan.circuit = circuit;
         plan.announced.clear();
         plan.go_around = Some(plan.pattern.go_around());
+        // The aircraft is already established on the go-around. A controlled local circuit
+        // must not stop at the climb boundary waiting for a clearance that has no leg.
+        plan.cleared = plan.controlled;
     }
 }
 
@@ -3035,8 +3075,8 @@ mod tests {
         prepare_tower(&mut scene, &input, &handling);
         assert_eq!(
             scene.frames.len(),
-            3,
-            "YSCB must keep its local circuits: {:?}",
+            1,
+            "an airline-capable airport must limit local circuits with this traffic: {:?}",
             scene.warnings
         );
         assert!(scene.advisories.values().all(|plan| plan.controlled));
@@ -3048,6 +3088,40 @@ mod tests {
             "the fallback should be visible in the warnings: {:?}",
             scene.warnings
         );
+        let mut circuit = Runtime {
+            world: scene.world.clone(),
+            advisories: scene.advisories.clone(),
+            frames: scene.frames.clone(),
+            movement: scene.movement.clone(),
+            ..Runtime::default()
+        };
+        for plan in circuit.advisories.values_mut() {
+            plan.cleared = true;
+        }
+        let mut stopped = 0u32;
+        let mut now = 0.0;
+        for _ in 0..900 {
+            super::advance(&mut circuit, &BTreeSet::new());
+            now += 1.0;
+            circuit.world.advance(now, false);
+            let circling = circuit.world.snapshot().into_iter().any(|pose| {
+                circuit
+                    .advisories
+                    .get(&pose.id)
+                    .is_some_and(|plan| !plan.departure && plan.controlled)
+                    && pose.stage == openatc_core::traffic::motion::Stage::Climb
+                    && pose.knots < 1.0
+            });
+            if circling {
+                stopped = stopped.saturating_add(1);
+                assert!(
+                    stopped < 15,
+                    "a controlled circuit stopped on the runway at the climb boundary"
+                );
+            } else {
+                stopped = 0;
+            }
+        }
         prepare_local_departures(&mut scene, &input, &handling, &operations);
         let departures = scene
             .advisories
@@ -3295,6 +3369,57 @@ mod tests {
         assert!(
             queue_seen,
             "the next departure never lined up while the first was rolling"
+        );
+    }
+
+    #[test]
+    fn circuit_capacity_is_traffic_and_geometry_based() {
+        let mut input = preparation(Vec::new());
+        let mut airport = openatc_core::airport::demo_airport();
+        airport.icao = "TEST".into();
+        input.counts = [0, 0, 0, 1];
+        input.taxi_target = 2;
+        assert_eq!(
+            circuit_limit(&input, &airport, "09"),
+            1,
+            "an airline-capable airport gets at most one circuit"
+        );
+        input.counts = [8, 4, 0, 5];
+        assert_eq!(
+            circuit_limit(&input, &airport, "09"),
+            0,
+            "high traffic suspends circuits"
+        );
+        input.counts = [0, 0, 0, 1];
+        input.taxi_target = 2;
+        airport.parking.clear();
+        assert_eq!(
+            circuit_limit(&input, &airport, "09"),
+            3,
+            "a quiet GA field keeps the normal circuit allowance"
+        );
+        let crossing = openatc_core::airport::Runway {
+            first_name: "18".into(),
+            second_name: "36".into(),
+            first: openatc_core::state::Point {
+                east: 0.0,
+                north: -1_000.0,
+                height: 0.0,
+            },
+            second: openatc_core::state::Point {
+                east: 0.0,
+                north: 1_000.0,
+                height: 0.0,
+            },
+            first_displaced_meters: 0.0,
+            second_displaced_meters: 0.0,
+            width: 30.0,
+        };
+        airport.runways.push(crossing);
+        assert_eq!(
+            circuit_limit(&input, &airport, "09"),
+            1,
+            "intersecting runways limit circuits to one active runway"
         );
     }
 
